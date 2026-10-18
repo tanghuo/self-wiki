@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>self-wiki</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="./brand/self-wiki-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="./brand/self-wiki-180.png" />
+    <script>
+      // Restore before the first paint, including when the desktop port changes.
+      try {
+        const theme = document.cookie.split(";").map((entry) => entry.trim()).find((entry) => entry.startsWith("selfWikiTheme="))?.slice("selfWikiTheme=".length);
+        document.documentElement.dataset.theme = ["paper", "sage", "night", "light"].includes(theme) ? theme : "paper";
+      } catch { document.documentElement.dataset.theme = "paper"; }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

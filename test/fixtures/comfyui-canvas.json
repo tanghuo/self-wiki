@@ -1,0 +1,13 @@
+{
+  "version": 0.4,
+  "nodes": [
+    {"id": 3, "type": "KSampler", "mode": 0, "inputs": [{"name":"model","link":1},{"name":"positive","link":2},{"name":"negative","link":3},{"name":"latent_image","link":4}], "widgets_values": [42,"randomize",20,7,"euler","normal",1]},
+    {"id": 4, "type": "CheckpointLoaderSimple", "mode": 0, "inputs": [], "widgets_values": ["fixture.safetensors"]},
+    {"id": 5, "type": "EmptyLatentImage", "mode": 0, "inputs": [], "widgets_values": [32,24,1]},
+    {"id": 6, "type": "CLIPTextEncode", "mode": 0, "title": "正向提示词", "inputs": [{"name":"clip","link":5}], "widgets_values": ["original positive"]},
+    {"id": 7, "type": "CLIPTextEncode", "mode": 0, "title": "负向提示词", "inputs": [{"name":"clip","link":6}], "widgets_values": ["original negative"]},
+    {"id": 8, "type": "VAEDecode", "mode": 0, "inputs": [{"name":"samples","link":7},{"name":"vae","link":8}], "widgets_values": []},
+    {"id": 9, "type": "SaveImage", "mode": 0, "title": "最终图片", "inputs": [{"name":"images","link":9}], "widgets_values": ["fixture"]}
+  ],
+  "links": [[1,4,0,3,0,"MODEL"],[2,6,0,3,1,"CONDITIONING"],[3,7,0,3,2,"CONDITIONING"],[4,5,0,3,3,"LATENT"],[5,4,1,6,0,"CLIP"],[6,4,1,7,0,"CLIP"],[7,3,0,8,0,"LATENT"],[8,4,2,8,1,"VAE"],[9,8,0,9,0,"IMAGE"]]
+}

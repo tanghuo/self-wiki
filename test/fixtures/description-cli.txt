@@ -1,0 +1,17 @@
+import {readFile, writeFile, appendFile} from "node:fs/promises";
+import path from "node:path";
+const args=process.argv.slice(2);
+if(args.includes('--version')){console.log('fixture');process.exit(0);}
+if(args.includes('--help')){console.log('--image --output-schema --ephemeral');process.exit(0);}
+if(args[0]==='login')process.exit(0);
+const mode=await readFile(path.join(import.meta.dirname,'mode.txt'),'utf8');
+await appendFile(path.join(import.meta.dirname,'calls.txt'),'call\n');
+let prompt='';for await(const chunk of process.stdin)prompt+=chunk;
+if(!args.includes('--image') || !args.includes('gpt-5.6-terra'))process.exit(4);
+const schema=JSON.parse(await readFile(args[args.indexOf('--output-schema')+1],'utf8'));
+if(schema.required.join(',')!=='summary')process.exit(5);
+if(mode==='fail')process.exit(2);
+if(mode==='hang')await new Promise(r=>setTimeout(r,30000));
+if(mode==='slow')await new Promise(r=>setTimeout(r,700));
+await writeFile(args[args.indexOf('-o')+1],JSON.stringify({summary:'重新识别：蓝色雨伞下的人物，远处有街灯。'}));
+console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:100,output_tokens:20}}));

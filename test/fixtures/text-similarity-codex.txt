@@ -1,0 +1,28 @@
+import { readFile, writeFile } from "node:fs/promises";
+const args = process.argv.slice(2);
+if (args[0] === "app-server") {
+  const { createInterface } = await import("node:readline");
+  for await (const line of createInterface({ input: process.stdin })) {
+    const q = JSON.parse(line); if (q.id === undefined) continue;
+    console.log(JSON.stringify({ id: q.id, result: q.method === "config/read" ? { config: { model: "fixture" } } : q.method === "model/list" ? { data: [] } : {} }));
+  }
+  process.exit(0);
+}
+if (args.includes("--version")) { console.log("codex-cli fixture"); process.exit(0); }
+if (args.includes("--help")) { console.log("--image --output-schema --ignore-user-config --ephemeral"); process.exit(0); }
+if (args[0] === "login") { console.log("Logged in"); process.exit(0); }
+let prompt = ""; for await (const chunk of process.stdin) prompt += chunk;
+const context = JSON.parse(prompt.split("资料 JSON：\n").at(-1));
+const source = context.elements.find((e) => e.id === context.sourceId);
+if (source.kind !== "text" || args.includes("--image")) throw new Error("Expected text-only comparison");
+// Fixture decisions are deterministic. This checks worker wiring and full-body
+// delivery, not the real model's semantic accuracy.
+const targets = context.elements.filter((e) => e.id !== source.id && e.body.startsWith("拍摄雨夜街道"));
+if (!targets.length || targets.some((e) => !e.body.includes("结尾要求："))) throw new Error("Missing older candidate or truncated its requirements");
+const output = { summary: "比较完整雨夜拍摄要求", queries: [], tagAdds: [], imageRequests: [],
+  relationAdds: targets.filter((e) => !e.body.includes("必须出现文字水印")).map((e) => ({
+    targetId: e.id, name: "相似", direction: "symmetric", reverseName: "",
+    evidence: { kind: "text", elementId: e.id, quote: e.body.slice(-40), reason: "雨夜构图和禁止水印的要求一致，仅措辞不同" },
+  })) };
+await writeFile(args[args.indexOf("-o") + 1], JSON.stringify(output));
+console.log(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 100, output_tokens: 30 } }));

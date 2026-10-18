@@ -1,0 +1,7 @@
+interface:
+  display_name: "Go Test Seam Discipline"
+  short_description: "Keep tests from shaping production"
+  default_prompt: "Use $go-test-seam-discipline to review this Go code and remove abstractions or nil guards that exist only because tests are driving the production design."
+
+policy:
+  allow_implicit_invocation: true

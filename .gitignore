@@ -1,0 +1,33 @@
+# Dependencies and generated builds
+node_modules/
+dist/
+release/
+.electron-cache/
+.npm-cache/
+.venv-visual/
+
+# Runtime data, crawls, smoke fixtures, and browser profiles
+/data/
+/data-smoke/
+/data-migration-smoke/
+/.local/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.log
+auth.json
+.auth-*.tmp
+*.pma
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# External checkouts kept locally for reference
+tools/th-skill/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

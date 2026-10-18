@@ -1,0 +1,14 @@
+import { readFile, writeFile } from "node:fs/promises";
+const args = process.argv.slice(2);
+let prompt = "";
+for await (const chunk of process.stdin) prompt += chunk;
+const expected = JSON.parse(prompt);
+const schema = JSON.parse(await readFile(args[args.indexOf("--output-schema") + 1], "utf8"));
+if (!schema.properties.observations) process.exit(20);
+const images = args.flatMap((arg, index) => arg === "--image" ? [args[index + 1]] : []);
+if (new Set(images).size !== expected.length) process.exit(21);
+for (let index = 0; index < images.length; index++) {
+  if ((await readFile(images[index])).toString("base64") !== expected[index]) process.exit(22);
+}
+await writeFile(args[args.indexOf("-o") + 1], JSON.stringify({ observations: [{ frameIds: [101, 102], body: "街道由白天变为夜晚", tags: ["街道"] }] }));
+console.log(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 42, output_tokens: 12 } }));

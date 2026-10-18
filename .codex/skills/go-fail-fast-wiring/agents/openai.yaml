@@ -1,0 +1,7 @@
+interface:
+  display_name: "Go Fail-Fast Wiring"
+  short_description: "Move required checks to startup"
+  default_prompt: "Use $go-fail-fast-wiring to refactor this Go service so required dependencies fail fast at startup and impossible runtime nil checks are removed."
+
+policy:
+  allow_implicit_invocation: true

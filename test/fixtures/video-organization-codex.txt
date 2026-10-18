@@ -1,0 +1,38 @@
+import { readFile, writeFile } from "node:fs/promises";
+const args = process.argv.slice(2);
+if (args[0] === "app-server") {
+  const { createInterface } = await import("node:readline");
+  for await (const line of createInterface({ input: process.stdin })) {
+    const q = JSON.parse(line); if (q.id === undefined) continue;
+    console.log(JSON.stringify({ id: q.id, result: q.method === "config/read" ? { config: { model: "fixture" } } : q.method === "model/list" ? { data: [] } : {} }));
+  }
+  process.exit(0);
+}
+if (args.includes("--version")) { console.log("codex-cli fixture"); process.exit(0); }
+if (args.includes("--help")) { console.log("--image --output-schema --ignore-user-config --ephemeral"); process.exit(0); }
+if (args[0] === "login") { console.log("Logged in"); process.exit(0); }
+let prompt = ""; for await (const chunk of process.stdin) prompt += chunk;
+const schema = JSON.parse(await readFile(args[args.indexOf("--output-schema") + 1], "utf8"));
+let output = { summary: "首帧为红色画面，主体构图一致" };
+if (schema.properties.relationAdds) {
+  const context = JSON.parse(prompt.split("资料 JSON：\n").at(-1));
+  const source = context.elements.find((e) => e.id === context.sourceId);
+  const attached = prompt.split("附件顺序对应元素：")[1].split("\n")[0].split(",").map(Number);
+  const files = args.flatMap((arg, index) => arg === "--image" ? [args[index + 1]] : []);
+  if (files.length !== attached.length) throw new Error("Attachment count mismatch");
+  for (let i = 0; i < attached.length; i++) {
+    const element = context.elements.find((e) => e.id === attached[i]);
+    if (element.kind !== "video") continue;
+    if (element.visualScope !== "first-frame-only") throw new Error("Missing first-frame scope");
+    if (!(await readFile(files[i])).equals(await readFile(new URL("expected-frame.png", import.meta.url)))) throw new Error("Model received a preview or later frame");
+  }
+  const targets = context.elements.filter((e) => e.filename === "older.png" || source.filename === "second.webm" && e.filename === "first.webm");
+  if (source.kind !== "video" || !targets.some((e) => e.filename === "older.png") || !attached.includes(source.id)) throw new Error("Missing comparison source or old image");
+  const imageRequests = targets.filter((e) => !attached.includes(e.id)).map((e) => e.id);
+  output = { ...output, queries: [], tagAdds: [], imageRequests, relationAdds: imageRequests.length ? [] : targets.map((e) => ({
+    targetId: e.id, name: "相似", direction: "symmetric", reverseName: "",
+    evidence: { kind: "visual", elementId: e.id, quote: "", reason: "样例验证首帧与候选画面一致，视频后续内容不在判断范围" },
+  })) };
+}
+await writeFile(args[args.indexOf("-o") + 1], JSON.stringify(output));
+console.log(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 100, output_tokens: 20 } }));

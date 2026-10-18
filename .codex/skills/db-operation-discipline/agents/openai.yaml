@@ -1,0 +1,5 @@
+agent:
+  model: gpt-5.4-mini
+  reasoning_effort: medium
+  default_prompt: |-
+    Apply the db-operation-discipline skill. Favor correct consistency boundaries, but push back on oversized transactions. Keep only the minimum required reads, locks, and writes inside a transaction. Treat loops inside transactions as a design smell unless they are clearly necessary and tightly bounded. For cleanup, compensation, reconciliation, or stale-data handling, prefer querying candidate ids first and then processing one record or a small batch at a time instead of forcing whole-batch atomicity unless the business semantics truly require it. When a write relies on a conditional update for optimistic locking, idempotency, or guarded state transitions, verify the affected row count explicitly instead of treating a nil SQL error as success.

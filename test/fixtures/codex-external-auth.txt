@@ -1,0 +1,53 @@
+import { createInterface } from "node:readline";
+import { readFile, access } from "node:fs/promises";
+import path from "node:path";
+import assert from "node:assert/strict";
+const args = process.argv.slice(2);
+if (args.includes("--version")) { console.log("fixture-external-auth"); process.exit(0); }
+assert.equal(args[0], "app-server", "Managed ChatGPT must never run exec with a copied refresh token");
+assert.ok(args.includes('cli_auth_credentials_store="ephemeral"'));
+const send = (value) => console.log(JSON.stringify(value));
+let auth, thread, refreshing;
+createInterface({ input: process.stdin }).on("line", async (line) => {
+  const message = JSON.parse(line), { id, method, params = {} } = message;
+  if (id === undefined) return;
+  if (id === "refresh") {
+    send({ id: refreshing, result: { accepted: !message.error, changed: message.result?.accessToken !== auth.accessToken } });
+    return;
+  }
+  let result = {};
+  if (method === "account/login/start") {
+    assert.equal(params.type, "chatgptAuthTokens");
+    assert.deepEqual(Object.keys(params).sort(), ["accessToken", "chatgptAccountId", "type"]);
+    auth = params; result = { type: params.type };
+  } else if (method === "account/read") result = { account: auth ? { type: "chatgpt" } : null, requiresOpenaiAuth: true };
+  else if (method === "config/read") result = { config: { model: "fixture-external-model" } };
+  else if (method === "fixture/refresh") {
+    refreshing = id;
+    send({ id: "refresh", method: "account/chatgptAuthTokens/refresh", params: { previousAccountId: auth.chatgptAccountId, reason: "unauthorized" } });
+    return;
+  } else if (method === "thread/start") {
+    assert.equal(params.ephemeral, true); assert.equal(params.sandbox, "read-only"); assert.equal(params.approvalPolicy, "never");
+    for (const name of ["shell_tool", "unified_exec", "apps", "plugins", "hooks", "multi_agent", "browser_use", "in_app_browser", "image_generation", "skill_search", "view_image"]) {
+      assert.ok(args.some((arg, i) => arg === "--disable" && args[i + 1] === name));
+    }
+    thread = "test-thread"; result = { thread: { id: thread }, model: params.model };
+  } else if (method === "turn/start") {
+    assert.ok(params.outputSchema.required.includes("summary"));
+    for (const image of params.input.filter((item) => item.type === "localImage")) assert.ok((await readFile(image.path)).length);
+    send({ id, result: { turn: { id: "test-turn" } } });
+    if (params.input[0].text === "WAIT") return;
+    const rejected = await access(path.join(import.meta.dirname, "reject-auth")).then(() => true, () => false);
+    if (rejected) {
+      send({ method: "turn/completed", params: { threadId: thread, turn: { status: "failed", error: { message: "401 Unauthorized private-provider-secret" } } } });
+      return;
+    }
+    const output = params.outputSchema.required.length === 1 ? { summary: "已识别画面" }
+      : { summary: "已完成整理", queries: [], imageRequests: [], tagAdds: [], relationAdds: [] };
+    send({ method: "item/completed", params: { threadId: thread, item: { type: "agentMessage", text: JSON.stringify(output) } } });
+    send({ method: "thread/tokenUsage/updated", params: { threadId: thread, tokenUsage: { total: { inputTokens: 10, outputTokens: 5, cachedInputTokens: 2 } } } });
+    send({ method: "turn/completed", params: { threadId: thread, turn: { status: "completed" } } });
+    return;
+  }
+  send({ id, result });
+}).on("close", () => process.exit(0));

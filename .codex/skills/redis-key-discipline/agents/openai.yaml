@@ -1,0 +1,7 @@
+interface:
+  display_name: "Redis Key Discipline"
+  short_description: "Keep Redis keys readable and cluster-aware"
+  default_prompt: "Use $redis-key-discipline to refactor or review Redis key naming so only the slot-sharing token is inside `{}`, the semantic path stays outside it, and the final key format matches nearby conventions."
+
+policy:
+  allow_implicit_invocation: true

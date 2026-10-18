@@ -1,0 +1,393 @@
+import readline from "node:readline";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { createHash } from "node:crypto";
+// Emulate the runtime prerequisite that previously broke real Wiki queries.
+const flags = process.argv.slice(2);
+const enabled = (name) => flags.some((flag, index) => flag === "--enable" && flags[index + 1] === name);
+const disabled = (name) => flags.some((flag, index) => flag === "--disable" && flags[index + 1] === name);
+if (!enabled("code_mode_host") || disabled("code_mode_host")) throw new Error("code-mode host is disabled");
+for (const name of ["shell_tool", "unified_exec", "apps", "plugins", "skill_search", "view_image"]) {
+  if (!enabled(name) || disabled(name)) throw new Error(`Missing useful capability: ${name}`);
+}
+if (enabled("image_generation") === disabled("image_generation")) throw new Error("Choose one image capability state");
+let n = 0, current, resumed = false;
+const completePrompt = "完整提示词：以傍晚城市街景为主题，采用暖色逆光和低饱和胶片色彩；竖幅构图，前景保留一位行人的背影，中景街道留出纵深，背景建筑细节清晰。避免拥挤人群和过曝灯光，保持自然透视。";
+const threadModels = new Map();
+const threadRequests = new Map();
+const calls = new Map();
+const promptAttempts = new Map();
+const logPath = (threadId) => path.join(process.cwd(), `${threadId}.jsonl`);
+const send = (value) => process.stdout.write(JSON.stringify(value) + "\n");
+const notify = (method, params) => send({ method, params });
+function tool(args, stdin = "", name = "wiki_cli") {
+  const id = `tool-${++n}`;
+  const params = { threadId: current.threadId, turnId: current.id, callId: id, tool: name, arguments: name === "wiki_cli" ? { args, stdin } : args };
+  const item = { type: "dynamicToolCall", id, tool: name, arguments: params.arguments };
+  return new Promise((resolve) => {
+    calls.set(id, (result) => {
+      if (name !== "wiki_cli") notify("item/completed", { ...params, item: { ...item, status: result.success ? "completed" : "failed", ...result } });
+      resolve(result);
+    });
+    if (name !== "wiki_cli") notify("item/started", { ...params, item: { ...item, status: "inProgress" } });
+    send({ id, method: "item/tool/call", params });
+  });
+}
+function complete(status = "completed", error = null) {
+  if (!current) return;
+  const params = { threadId: current.threadId, turnId: current.id,
+    tokenUsage: { total: { inputTokens: 1100, outputTokens: 250, cachedInputTokens: 700, reasoningOutputTokens: 100, totalTokens: 1350 },
+      last: { inputTokens: 100, outputTokens: 50, cachedInputTokens: 70, reasoningOutputTokens: 20, totalTokens: 150 } } };
+  notify("thread/tokenUsage/updated", params);
+  notify("thread/tokenUsage/updated", params);
+  clearTimeout(current.timer);
+  notify("turn/completed", { threadId: current.threadId, turn: { id: current.id, status, error } }); current = null;
+  notify("thread/tokenUsage/updated", params);
+}
+async function answer(text) {
+  const run = current;
+  if (text.startsWith("COMFY_IMAGE")) {
+    const thread = threadRequests.get(run.threadId);
+    const imageTool = thread.dynamicTools?.find((entry) => entry.name === "generate_image");
+    if (!disabled("image_generation") || thread.dynamicTools && !imageTool || imageTool && (imageTool.inputSchema.properties.prompt.minLength !== 0 || imageTool.inputSchema.properties.referencePaths?.maxItems !== 1)) throw new Error("ComfyUI toolset not selected");
+    const result = await tool({ prompt: "一只蓝色纸鹤，水彩背景。" }, "", "generate_image");
+    if (current !== run) return;
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: result.success ? "ComfyUI 图片已返回" : result.contentItems[0].text });
+    complete(); return;
+  }
+  if (text.startsWith("WEB_IMAGE")) {
+    const thread = threadRequests.get(run.threadId);
+    if (!disabled("image_generation") || thread.dynamicTools && !thread.dynamicTools.some((tool) => tool.name === "generate_image")) throw new Error("Web image toolset not selected");
+    await writeFile(path.join(process.cwd(), "web-request.json"), JSON.stringify({ thread, turn: run.request, resumed }));
+    const result = await tool({ prompt: "一只蓝色纸鹤，保留参考图构图。 literal ` $() 中文", size: "auto",
+      referencePaths: text.startsWith("WEB_IMAGE OMIT_REFERENCE") ? [] : run.request.input.filter((item) => item.type === "localImage").map((item) => item.path) }, "", "generate_image");
+    if (current !== run) return;
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: result.success ? "网页版图片已返回" : result.contentItems[0].text });
+    complete(); return;
+  }
+  if (text.startsWith("FILE_TOOLS")) {
+    const directory = path.join(process.cwd(), "tool files 中文");
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, "笔记.txt"), "文件工具第一行\nNeedle literal [1]");
+    const listing = await tool({ path: "tool files 中文", glob: "**/*.txt" }, "", "list_files");
+    if (!listing.success) throw new Error(JSON.stringify(listing));
+    const listed = JSON.parse(listing.contentItems[0].text);
+    const read = await tool({ path: listed.entries[0].path }, "", "read_file");
+    const search = await tool({ path: "tool files 中文", query: "needle literal [1]" }, "", "search_files");
+    if (!read.success || !search.success) throw new Error(JSON.stringify({ read, search }));
+    const forbidden = await tool({ path: "../outside.txt" }, "", "read_file");
+    if (forbidden.success) throw new Error("File tools crossed the session boundary");
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: JSON.stringify({
+      listed, read: JSON.parse(read.contentItems[0].text), search: JSON.parse(search.contentItems[0].text), error: forbidden.contentItems[0].text,
+    }) });
+    complete(); return;
+  }
+  if (text.startsWith("COMMAND_OUTPUT_ERROR")) {
+    notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { type: "commandExecution", id: "command-error", command: "rg --files", status: "failed", aggregatedOutput: "rg : 无法将 rg 项识别为命令。CommandNotFoundException", exitCode: 1 } });
+    complete(); return;
+  }
+  if (text.startsWith("PROCESS_CHECK")) {
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: JSON.stringify({ pid: process.pid, cwd: process.cwd() }) });
+    complete(); return;
+  }
+  if (text.startsWith("CONCURRENT ")) {
+    const [, label, sourceId] = text.split(/\s+/);
+    const read = await tool(["read", sourceId]);
+    if (!read.success) throw new Error(read.contentItems[0].text);
+    const proposal = await tool(["chat", "propose", "--input", "-"], JSON.stringify({ kind: "create_text", body: `并发笔记 ${label}`, tags: [], sourceIds: [Number(sourceId)], reason: `会话 ${label}` }));
+    if (!proposal.success) throw new Error(proposal.contentItems[0].text);
+    const image = Buffer.from(label === "A" ? "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWP4z8AAAAMBAQCc479ZAAAAAElFTkSuQmCC" : "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+    const savedPath = path.join(process.cwd(), "output.png");
+    await writeFile(savedPath, image);
+    notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { type: "imageGeneration", id: "same-image-id", status: "completed", savedPath } });
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "same-answer-id", delta: `${label} ready` });
+    while (current === run && !await readFile(path.join(process.cwd(), "continue")).catch(() => null)) await new Promise((resolve) => setTimeout(resolve, 20));
+    if (current !== run) return;
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "same-answer-id", delta: ` ${label} done` });
+    complete(); return;
+  }
+  if (text.startsWith("CONTENT_INPUT")) {
+    await writeFile(path.join(process.cwd(), "content-request.json"), JSON.stringify({ thread: threadRequests.get(run.threadId), turn: run.request }));
+    if (text.startsWith("CONTENT_INPUT SCHEMA")) {
+      const result = await tool(["schema"]);
+      if (!result.success) throw new Error("Wiki schema request failed");
+    }
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: "已接收材料。" });
+    complete(); return;
+  }
+  if (text.startsWith("TRACE_TOOLS")) {
+    await writeFile(path.join(process.cwd(), "trace-request.json"), JSON.stringify({ thread: threadRequests.get(run.threadId), turn: run.request }));
+    const item = { type: "commandExecution", id: "trace-command", command: "printf 'literal $value\\n<script>text</script>'", cwd: process.cwd(), status: "inProgress" };
+    notify("item/started", { threadId: run.threadId, turnId: run.id, item });
+    notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { ...item, status: "completed", exitCode: 0, aggregatedOutput: "literal $value\n<script>text</script>" } });
+    await tool(["schema"], "实际标准输入\n第二行");
+    const image = { type: "imageGeneration", id: "trace-image", status: "inProgress", prompt: "保持原有构图和姿势。", result: "" };
+    notify("item/started", { threadId: run.threadId, turnId: run.id, item: image });
+    notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { ...image, status: "failed", revisedPrompt: "保持原有构图和姿势，添加暖色灯光。", failure: { message: "fixture image failed" } } });
+    notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { type: "mcpToolCall", id: "trace-plugin", server: "fixture", tool: "lookup", arguments: { query: "完整查询", page: 2 }, result: { content: [{ type: "text", text: "插件原始结果" }] }, status: "completed" } });
+    notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { type: "imageGeneration", id: "trace-missing", status: "failed", result: "", failure: { message: "fixture missing prompt" } } });
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: "调用记录已完成。" });
+    complete(); return;
+  }
+  if (text.startsWith("TIMELINE_SOURCES")) {
+    const sourceId = Number(text.match(/^TIMELINE_SOURCES (\d+)/)[1]);
+    const message = (id, value) => notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { type: "agentMessage", id, text: value } });
+    message("before-read", "先说明，再读取新资料。");
+    await tool(["read", String(sourceId)]);
+    message("after-read", "新资料已读完。");
+    await tool(["read", String(sourceId)]);
+    message("after-reread", "重复读取不移动已有资料。");
+    complete(); return;
+  }
+  if (text.startsWith("BRANCH_CONTEXT")) {
+    const encoded = text.match(/<chat_history>(.*?)<\/chat_history>/s)?.[1];
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: JSON.stringify({
+      threadId: run.threadId, history: encoded ? JSON.parse(encoded) : [], images: run.images.length,
+    }) }); complete(); return;
+  }
+  if (text.startsWith("GENERATE_IMAGE_ERRORS") || text.startsWith("EDIT_IMAGE MODERATION")) {
+    const message = (id, value) => notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { type: "agentMessage", id, text: value } });
+    message("before-errors", "开始生成图片。");
+    for (let i = 0; i < 3; i++) notify("item/completed", { threadId: run.threadId, turnId: run.id,
+      item: { type: "imageGeneration", id: `blocked-${i}`, status: "failed", result: "", failure: null } });
+    const output = ["正面平视", "侧面半身", "后侧全身"].map((view) => ({ type: "input_text", text: JSON.stringify({ view,
+      error: text.includes("MIXED") && view === "侧面半身" ? "image generation failed: connection timed out" : `image generation failed: http 400 Bad Request: Some(${JSON.stringify(JSON.stringify({ error: {
+        message: "Your request was rejected by the safety system. safety_violations=[sexual].", code: "moderation_blocked",
+        moderation_details: { moderation_stage: "output", categories: ["sexual"] },
+      } }))})` }) }));
+    await appendFile(logPath(run.threadId), JSON.stringify({ type: "response_item", payload: { type: "function_call_output", id: `errors-${run.id}`, output,
+      internal_chat_message_metadata_passthrough: { turn_id: run.id } } }) + "\n");
+    message("after-errors", "第一次尝试被审核拦截，调整后重试。");
+    run.timer = setTimeout(() => {
+      if (current !== run) return;
+      if (text.includes("RETRY")) notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { type: "imageGeneration", id: "retry-ok", status: "completed",
+        result: "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWP4z8CAFWEXHbQSACj/P8FTKqelAAAAAElFTkSuQmCC" } });
+      complete();
+    }, 2800);
+    return;
+  }
+  if (text.startsWith("整理已保存图片的独立提示词")) {
+    const material = JSON.parse(text.split("材料：")[1]);
+    if (run.images.length < 1 || material.sources.filter((s) => s.attachment).length !== run.images.length - 1) throw new Error("Prompt extraction must receive result and reference images");
+    const source = material.history.at(-1), attempt = (promptAttempts.get(source.turnId) || 0) + 1;
+    promptAttempts.set(source.turnId, attempt);
+    const bad = source.user.includes("PROMPT_BAD_FIRST") && attempt === 1;
+    const body = bad ? "参考图1的人物，保留原来的姿势。" : completePrompt;
+    const event = source.tools?.find((e) => e.parameters.prompt === completePrompt);
+    const excerpts = event ? [{ turnId: source.turnId, role: "tool", eventId: event.eventId, field: "prompt", quote: completePrompt }]
+      : [{ turnId: source.turnId, role: "user", quote: source.user }];
+    if (source.user.includes("PROMPT_REREAD_IMAGES")) {
+      for (let i = 0; i < 2; i++) for (const s of material.sources.filter((s) => s.attachment)) {
+        const read = await tool(["elements", "get", String(s.id)]);
+        if (!read.success || read.contentItems.some((item) => item.type === "inputImage")) throw new Error("Attached images should be reread without spending the image budget");
+      }
+    }
+    let conflict = source.user.includes("PROMPT_SOURCE_CHANGE") && (attempt === 1 || source.user.includes("ALWAYS"));
+    if (conflict) {
+      await writeFile(path.join(process.cwd(), `prompt-ready-${attempt}`), "ready");
+      let continued = false;
+      for (let i = 0; i < 500 && current === run; i++) {
+        const signal = await readFile(path.join(process.cwd(), `prompt-continue-${attempt}`)).catch(() => null);
+        if (signal) { continued = true; conflict = signal.toString() !== "stable"; break; }
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      if (current !== run) return;
+      if (!continued) throw new Error("Source-change fixture timed out");
+    }
+    const payload = { kind: "create_text", body, tags: ["提示词"], sourceIds: material.sources.map((s) => s.id), reason: "结合会话和图片整理为独立提示词", excerpts };
+    const missingTurn = source.user.includes("PROMPT_MISSING_TURN") && (attempt === 1 || !source.user.includes("FIRST"));
+    if (missingTurn) delete excerpts[0].turnId;
+    let result = await tool(["chat", "propose", "--input", "-"], JSON.stringify(payload));
+    if (missingTurn) {
+      if (result.success) throw new Error("Missing turn ID should be rejected");
+      complete(); return;
+    }
+    if (conflict) {
+      if (result.success || !result.contentItems[0].text.includes("已有修改")) throw new Error("Stale proposal must fail before saving");
+      if (!source.user.includes("REREAD")) { complete(); return; }
+      for (const id of payload.sourceIds) {
+        const read = await tool(["elements", "get", String(id)]);
+        if (!read.success) throw new Error(`Rereading changed source failed: ${JSON.stringify(read)}`);
+      }
+      result = await tool(["chat", "propose", "--input", "-"], JSON.stringify(payload));
+    }
+    if (bad) {
+      if (result.success) throw new Error("Dependent prompt should have been rejected");
+      complete("failed", { message: "fixture 提示词仍依赖参考图" }); return;
+    }
+    if (!result.success || JSON.parse(result.contentItems[0].text).data.state !== "accepted") throw new Error(`Failed to save independent prompt: ${JSON.stringify(result)}`);
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: "提示词已保存" }); complete(); return;
+  }
+  if (text.startsWith("PROMPT_FINAL")) {
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: completePrompt }); complete(); return;
+  }
+  if (text.startsWith("请围绕第 ")) {
+    const history = JSON.parse(text.split("\n")[1]);
+    const source = history.findLast((entry) => entry.assistant.startsWith("完整提示词：") || entry.tools?.some((tool) => tool.prompt === completePrompt));
+    if (source) {
+      const event = source.tools?.find((tool) => tool.prompt === completePrompt), body = event?.prompt || source.assistant;
+      const excerpt = { turnId: source.turnId, role: event ? "tool" : "assistant", quote: body, ...(event ? { eventId: event.eventId, field: "prompt" } : {}) };
+      const result = await tool(["chat", "propose", "--input", "-"], JSON.stringify({ kind: "create_text", body, tags: ["提示词"], sourceIds: [], reason: "提取已形成的完整提示词，可复用于下一次创作", excerpts: [excerpt] }));
+      if (!result.success) throw new Error("Failed to submit verified extraction");
+    }
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: source ? "已提出一份完整提示词候选。" : "这些零散调整保留在会话中，暂无值得独立保存的完整成果。" }); complete(); return;
+  }
+  if (text.startsWith("EDIT_IMAGE")) {
+    const expected = text.includes("EXPECT_REGION") ? 2 : 1;
+    if (run.images.length !== expected || run.images.some((image) => image.type !== "localImage")) throw new Error("Editing must attach original image files");
+    const original = await readFile(run.images[0].path);
+    if (original.toString("ascii", 1, 4) !== "PNG" || !text.includes(JSON.stringify(run.images[0].path))) throw new Error("Original PNG and path must be passed to Codex");
+    if (expected === 2 && (await readFile(run.images[1].path)).equals(original)) throw new Error("Selection guide must mark the selected region");
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: JSON.stringify({ originalHash: createHash("sha256").update(original).digest("hex"), images: run.images.length }) });
+    if (text.includes("FAIL")) { complete("failed", { message: "fixture 编辑失败，请重试" }); return; }
+    if (text.includes("SLOW")) { run.timer = setTimeout(() => complete(), 20000); return; }
+  }
+  if (text.startsWith("GENERATE_IMAGE_ORDER")) {
+    const message = (id, value) => notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { type: "agentMessage", id, text: value } });
+    const image = (id) => notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { type: "imageGeneration", id, status: "completed", result: "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWP4z8CAFWEXHbQSACj/P8FTKqelAAAAAElFTkSuQmCC" } });
+    message("before", "开始生成第一张图片。");
+    image("first-image");
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "between", delta: "第一张已完成，" });
+    run.timer = setTimeout(() => {
+      if (current !== run) return;
+      message("between", "第一张已完成，继续生成第二张。");
+      image("second-image");
+      message("after", "两张图片都已生成。");
+      complete();
+    }, 1500);
+    return;
+  }
+  if (text.startsWith("GENERATE_IMAGE") || text.startsWith("EDIT_IMAGE")) {
+    const item = { type: "imageGeneration", id: "generated-1", status: "inProgress", result: "" };
+    if (text.startsWith("GENERATE_IMAGE_PROMPT")) Object.assign(item, { prompt: completePrompt, model: "fixture-image", size: "1024x1536", seed: 42 });
+    notify("item/started", { threadId: run.threadId, turnId: run.id, item });
+    if (text.startsWith("GENERATE_IMAGE_PROGRESS")) setTimeout(() => {
+      if (current === run) notify("item/reasoning/textDelta", { threadId: run.threadId, turnId: run.id, itemId: "reasoning", delta: "检查生成结果" });
+    }, 1000);
+    run.timer = setTimeout(() => {
+      if (current !== run) return;
+      notify("item/completed", { threadId: run.threadId, turnId: run.id, item: { ...item, status: "completed", result: "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEklEQVQImWP4z8CAFWEXHbQSACj/P8FTKqelAAAAAElFTkSuQmCC" } });
+      if (text.startsWith("GENERATE_IMAGE_LARGE")) {
+        notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: "图片已生成。".repeat(12000) });
+        run.late = true;
+        run.timer = setTimeout(() => complete(), 20000); return;
+      }
+      complete();
+    }, text.startsWith("GENERATE_IMAGE_PROGRESS") ? 3000 : 700);
+    return;
+  }
+  if (text.startsWith("EFFORT_CHECK")) {
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: JSON.stringify({ model: run.model, effort: run.effort }) }); complete(); return;
+  }
+  if (text.startsWith("MODEL_CHECK")) {
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: JSON.stringify({ model: run.model, threadModel: threadModels.get(run.threadId) }) }); complete(); return;
+  }
+  if (text.startsWith("\n\n用户引用的材料，")) {
+    if (run.images.length !== 1) throw new Error("Image-only message must carry its image");
+    const image = run.images[0];
+    const bytes = image.type === "localImage" ? await readFile(image.path) : Buffer.from(image.url.split(",")[1], "base64");
+    if (bytes.toString("ascii", 1, 4) !== "PNG") throw new Error("Image-only message has no valid image bytes");
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: "仅图片消息通过" }); complete(); return;
+  }
+  if (text.startsWith("PASTED_IMAGE")) {
+    if (run.images.length !== 1 || run.images[0].type !== "localImage") throw new Error("Pasted image must be attached as a local image");
+    const bytes = await readFile(run.images[0].path);
+    if (bytes.toString("ascii", 1, 4) !== "PNG") throw new Error("Pasted image bytes are missing");
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: "聊天图片附件通过" }); complete(); return;
+  }
+  if (text.startsWith("IMAGE:")) {
+    const isImage = (url) => typeof url === "string" && (url.startsWith("data:image/webp;base64,") && Buffer.from(url.split(",")[1], "base64").toString("ascii", 8, 12) === "WEBP" || url.startsWith("data:image/png;base64,") && Buffer.from(url.split(",")[1], "base64").toString("ascii", 1, 4) === "PNG");
+    if (run.images.length !== 1 || !isImage(run.images[0].url)) throw new Error("Selected image was not attached");
+    const result = await tool(["read", text.match(/^IMAGE:(\d+)/)[1]]);
+    if (!result.success || result.contentItems.some((item) => item.type === "inputImage") || !result.contentItems.some((item) => item.text?.includes("已在本轮附件中提供"))) throw new Error("CLI should reuse the already attached image");
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: "图片附件和 CLI 图片读取通过" }); complete(); return;
+  }
+  if (text.startsWith("IMAGE_READ_BUDGET")) {
+    const listing = await tool(["elements", "list", "--kind", "image", "--page-size", "12"]);
+    const images = JSON.parse(listing.contentItems[0].text).data.elements;
+    for (const source of images.slice(0, 8)) {
+      const first = await tool(["elements", "get", String(source.id)]);
+      const again = await tool(["elements", "get", String(source.id)]);
+      if (!first.success || first.contentItems.filter((i) => i.type === "inputImage").length !== 1 || !again.success || again.contentItems.some((i) => i.type === "inputImage")) throw new Error("Each distinct image should consume exactly one slot");
+    }
+    const ninth = await tool(["elements", "get", String(images[8].id)]);
+    if (ninth.success || !ninth.contentItems[0].text.includes("最多读取 8 张图片")) throw new Error("Ninth distinct image should exceed the budget");
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: "八张图片及重复读取通过，第九张已限制" }); complete(); return;
+  }
+  if (text.startsWith("CRASH")) { process.exit(2); }
+  if (text.startsWith("HISTORY_ACTIVITY")) {
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: "正在执行会话状态测试" });
+    while (current === run && !await readFile(path.join(process.cwd(), "activity-continue")).catch(() => null)) await new Promise((resolve) => setTimeout(resolve, 20));
+    if (current !== run) return;
+    complete(); return;
+  }
+  if (text.startsWith("FAIL")) { complete("failed", { message: "fixture 模型不可用" }); return; }
+  if (text.startsWith("SLOW") || text.startsWith("NO_INTERRUPT_EVENT")) {
+    run.late = text.includes("NO_INTERRUPT_EVENT");
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: "正在读取资料，等待中…" });
+    run.timer = setTimeout(() => complete(), 20000); return;
+  }
+  if (text.includes("FORBIDDEN")) {
+    const result = await tool(["elements", "create", "--body", "不应保存"]);
+    notify("item/agentMessage/delta", { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: result.success ? "错误地允许了写入" : "直接写入已拒绝" }); complete(); return;
+  }
+  const listing = await tool(["elements", "list", "--q", "资料甲", "--page-size", "4"]);
+  if (current !== run) return;
+  const source = JSON.parse(listing.contentItems[0].text).data.elements[0];
+  if (source) await tool(["read", String(source.id), "--page-size", "4"]);
+  if (current !== run) return;
+  if (source && !text.includes("CONTINUE")) {
+    await tool(["chat", "propose", "--input", "-"], JSON.stringify({ kind: "create_text", body: "整理后的新笔记", tags: ["生成"], sourceIds: [source.id], reason: "结合已读取的资料甲" }));
+    await tool(["chat", "propose", "--input", "-"], JSON.stringify({ kind: "add_tags", elementId: source.id, tags: ["主题"], sourceIds: [], reason: "资料主题明确" }));
+  }
+  if (current !== run) return;
+  const response = `${resumed ? "继续会话。" : "已阅读资料。"}这是根据[资料甲](wiki:${source?.id || 1})生成的总结。`;
+  const encoded = Buffer.from(JSON.stringify({ method: "item/agentMessage/delta", params: { threadId: run.threadId, turnId: run.id, itemId: "answer", delta: response } }) + "\n");
+  const split = encoded.indexOf(Buffer.from("资料")) + 1;
+  process.stdout.write(encoded.subarray(0, split));
+  setTimeout(() => { if (current !== run) return; process.stdout.write(encoded.subarray(split)); complete(); }, 30);
+}
+readline.createInterface({ input: process.stdin }).on("line", async (line) => {
+  const m = JSON.parse(line);
+  if (!m.method) { const callback = calls.get(m.id); calls.delete(m.id); callback?.(m.result); return; }
+  if (m.id === undefined) return;
+  let result = {};
+  if (m.method === "initialize") result = { userAgent: "fixture app-server" };
+  else if (m.method === "account/read") result = { account: { type: "apiKey" }, requiresOpenaiAuth: true };
+  else if (m.method === "config/read") result = { config: { model: "fixture-default", mcp_servers: { inherited: { enabled: true } } } };
+  else if (m.method === "model/list") {
+    if (m.params.includeHidden !== false) { send({ id: m.id, error: { message: "Hidden models should be excluded" } }); return; }
+    result = m.params.cursor === "page-2" ? { data: [{ id: "picker-deep", model: "fixture-deep", displayName: "深度模型", isDefault: false, defaultReasoningEffort: "high", supportedReasoningEfforts: [{ reasoningEffort: "high", description: "high" }] }], nextCursor: null }
+      : { data: [{ id: "picker-fast", model: "fixture-fast", displayName: "快速模型", isDefault: true, defaultReasoningEffort: "medium", supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"].map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })) }, { id: "hidden", model: "fixture-hidden", hidden: true }], nextCursor: "page-2" };
+  }
+  else if (m.method === "thread/start") {
+    if (m.params.dynamicTools?.[0]?.name !== "wiki_cli" || m.params.config?.mcp_servers || m.params.sandbox !== "workspace-write" || m.params.config?.["sandbox_workspace_write.network_access"] !== true) { send({ id: m.id, error: { message: "Invalid wiki tool configuration" } }); return; }
+    for (const name of ["list_files", "read_file", "search_files"]) if (!m.params.dynamicTools.some((tool) => tool.name === name)) { send({ id: m.id, error: { message: `Missing file tool: ${name}` } }); return; }
+    const id = `fixture-thread-${++n}`;
+    // A real new thread can return its rollout path before creating the file.
+    result = { thread: { id, path: logPath(id) }, model: m.params.model || "fixture-default" };
+    threadModels.set(result.thread.id, result.model);
+    threadRequests.set(result.thread.id, m.params);
+  } else if (m.method === "thread/resume") {
+    if (m.params.dynamicTools) { send({ id: m.id, error: { message: "Installed CLI cannot register tools on resume" } }); return; }
+    resumed = true; result = { thread: { id: m.params.threadId, path: logPath(m.params.threadId) }, model: m.params.model || threadModels.get(m.params.threadId) || "fixture-default" };
+    threadModels.set(result.thread.id, result.model);
+    threadRequests.set(result.thread.id, m.params);
+  }
+  else if (m.method === "turn/start") {
+    if (current) { send({ id: m.id, error: { message: "Previous turn is still running" } }); return; }
+    current = { id: `turn-${++n}`, threadId: m.params.threadId, model: m.params.model, effort: m.params.effort, request: m.params, images: m.params.input.filter((item) => item.type === "image" || item.type === "localImage") };
+    if (m.params.input[0].text.startsWith("START_FAILURE")) {
+      current.timer = setTimeout(() => complete(), 20000);
+      send({ id: m.id, error: { message: "fixture 请求确认失败" } }); return;
+    }
+    const acknowledgement = { id: m.id, result: { turn: { id: current.id } } };
+    if (m.params.input[0].text.startsWith("BRANCH_CONTEXT DELAY_ACK")) setTimeout(() => send(acknowledgement), 500);
+    else send(acknowledgement);
+    notify("turn/started", { threadId: current.threadId, turn: { id: current.id } });
+    void answer(m.params.input[0].text).catch((e) => complete("failed", { message: e.message })); return;
+  } else if (m.method === "turn/interrupt") {
+    send({ id: m.id, result: {} }); if (!current?.late) complete("interrupted"); return;
+  }
+  send({ id: m.id, result });
+}).on("close", () => process.exit(0));

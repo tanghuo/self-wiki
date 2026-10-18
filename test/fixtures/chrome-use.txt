@@ -1,0 +1,48 @@
+// Fake only the browser process boundary; the real vendored Python backend runs.
+import { appendFile, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { spawn } from "node:child_process";
+const rawArgs = process.argv.slice(2), args = rawArgs.filter((arg) => arg !== "--json");
+const root = path.dirname(process.argv[1]);
+const mode = await readFile(path.join(root, "browser-mode"), "utf8").catch(() => "normal");
+await appendFile(path.join(root, "browser-commands.jsonl"), JSON.stringify({ args: rawArgs, cwd: process.cwd() }) + "\n");
+const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+if (args[0] === "--version") console.log("chrome-use 1.5.123");
+else if (args[0] === "daemon") console.log(JSON.stringify({ data: { relay: mode !== "disconnected" } }));
+else if (args[0] === "upload") {
+  const refs = args.slice(2, args.indexOf("--session"));
+  for (const ref of refs) if (!(await readFile(ref)).length) throw new Error("Empty reference");
+  await writeFile(path.join(root, "browser-uploads.json"), JSON.stringify(refs));
+  console.log(JSON.stringify({ success: true, data: {} }));
+} else if (args[0] === "eval") {
+  const js = args[1]; let value;
+  if (js.includes("conversationGuard")) {
+    const url = await readFile(path.join(root, "browser-url"), "utf8").catch(() => "https://chatgpt.com/");
+    value = { url: mode === "missing-conversation" ? "https://chatgpt.com/" : url, users: url.includes("/c/") ? 1 : 0, busy: mode === "busy-conversation", draft: "" };
+  }
+  else if (js === "JSON.stringify(location.href)") value = await readFile(path.join(root, "browser-url"), "utf8");
+  else if (js.includes("composer:")) value = { composer: true, limited: mode === "limited" };
+  else if (js.includes("aria-haspopup")) value = { text: "Instant", x: 1, y: 1 };
+  else if (js.includes("imgs.length")) value = mode === "partial" ? 1 : JSON.parse(await readFile(path.join(root, "browser-uploads.json"), "utf8")).length;
+  else if (js.includes("new Set(")) value = mode === "page-error" ? { pageFailure: true, pageUrl: "https://chatgpt.com/c/fixture" }
+    : mode === "wait" ? { stop: true } : { last: "https://chatgpt.com/backend-api/estuary/content?id=fixture", assistant: true, pageUrl: await readFile(path.join(root, "browser-url"), "utf8") };
+  else if (js.includes("const expected = normalize(")) value = mode !== "unsent";
+  else if (js.includes("b64")) value = { ok: true, type: "image/png", b64: png };
+  else if (js.includes("main img")) value = [];
+  else throw new Error("Unexpected browser eval: " + js.slice(0, 100));
+  if (mode === "legacy") console.log(JSON.stringify(JSON.stringify(value)));
+  else if (rawArgs.includes("--json")) console.log(JSON.stringify({ success: true, data: { origin: "https://chatgpt.com/", result: JSON.stringify(value) }, error: null }));
+  else console.log(`eval @ ${JSON.stringify(JSON.stringify(value))}\nhttps://chatgpt.com/`);
+} else {
+  if (!["open", "close", "click", "keyboard", "press"].includes(args[0])) throw new Error("Unexpected browser command " + args[0]);
+  if (args[0] === "open") await writeFile(path.join(root, "browser-url"), args[1]);
+  if (args[0] === "press" && args[1] === "Enter" && mode !== "unsent") {
+    const url = await readFile(path.join(root, "browser-url"), "utf8");
+    if (!url.includes("/c/")) await writeFile(path.join(root, "browser-url"), "https://chatgpt.com/c/fixture");
+  }
+  if (args[0] === "open" && mode === "inherited") {
+    const daemon = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: ["ignore", "inherit", "inherit"], windowsHide: true, detached: true });
+    await writeFile(path.join(root, "daemon-pid"), String(daemon.pid)); daemon.unref();
+  }
+  console.log(JSON.stringify({ success: mode !== "command-error", data: {}, error: mode === "command-error" ? "fixture browser failed" : null }));
+}

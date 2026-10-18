@@ -1,0 +1,25 @@
+.chat-process { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.chat-request-trace { min-width: 0; max-width: 100%; }
+.chat-request-trace[open] { flex-basis: 100%; }
+.chat-request-trace > summary, .chat-trace-content summary { cursor: pointer; }
+.chat-tool-heading { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.chat-tool-heading code { min-width: 0; overflow-wrap: anywhere; }
+.chat-tool-heading > span { flex-shrink: 0; }
+.chat-tool-heading .chat-tool-trace-toggle { flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; width: 24px; min-height: 24px; padding: 0; border-radius: 4px; color: var(--muted); }
+.chat-tool-trace-toggle:hover, .chat-tool-trace-toggle[aria-expanded="true"] { color: var(--ink); background: var(--accent-soft); }
+.chat-tool-trace-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.chat-tool-trace > small { display: block; padding-bottom: 5px; }
+.chat-trace-content { min-width: 0; margin-top: 12px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.chat-tools .chat-trace-content p { display: block; padding: 0; margin: 8px 0; }
+.chat-trace-field { min-width: 0; margin: 10px 0 14px; }
+.chat-trace-field > header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.chat-trace-field button { font-size: 13px; flex-shrink: 0; }
+.chat-trace-content pre { max-width: 100%; max-height: 320px; overflow: auto; margin: 6px 0 0; padding: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: var(--ink); }
+.chat-trace-content > details { margin-top: 12px; }
+.chat-trace-comparison > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.chat-trace-comparison section { min-width: 0; }
+.chat-trace-comparison del { background: #d9565625; text-decoration: none; }
+.chat-trace-comparison ins { background: #438e5425; text-decoration: none; }
+.chat-trace-omissions ul { padding-left: 20px; }
+.chat-trace-unavailable { font-size: 13px; }
+@media (max-width: 620px) { .chat-trace-comparison > div { grid-template-columns: minmax(0, 1fr); } }

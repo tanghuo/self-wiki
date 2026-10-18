@@ -1,0 +1,17 @@
+{
+  "enabled": false,
+  "applyMode": "suggest",
+  "ffmpeg": "ffmpeg",
+  "ffprobe": "ffprobe",
+  "frameIntervalMs": 2000,
+  "maxFrames": 120,
+  "maxBatches": 20,
+  "timeoutMs": 120000,
+  "visual": {
+    "enabled": false,
+    "baseUrl": "http://127.0.0.1:8767",
+    "model": "google/siglip2-base-patch16-224",
+    "revision": "1",
+    "timeoutMs": 60000
+  }
+}

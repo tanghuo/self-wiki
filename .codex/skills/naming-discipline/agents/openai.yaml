@@ -1,0 +1,7 @@
+interface:
+  display_name: "Naming Discipline"
+  short_description: "Keep naming consistent and semantic"
+  default_prompt: "Use $naming-discipline to review or refactor naming so code identifiers, Redis keys, and wire-level terms follow one consistent semantic shape, keep domain and action separated when needed, and match nearby conventions."
+
+policy:
+  allow_implicit_invocation: true
