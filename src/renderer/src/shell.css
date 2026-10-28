@@ -1,0 +1,54 @@
+/* App shell: one sidebar (Agent 对话 · 我的内容 · 工具 · bottom 回收站 / 设置) and one page skeleton. */
+:root { --sidebar-w: 208px; }
+@media (max-width: 1050px) { :root { --sidebar-w: 184px; } }
+.wiki-shell, .app-layout.agent-home { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
+.wiki-sidebar { position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; height: 100dvh; padding: 20px var(--sp-3) var(--sp-4); overflow-y: auto; border-right: 1px solid var(--sidebar-line); background: var(--sidebar); }
+.workspace-brand { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) var(--sp-2) var(--sp-4); color: var(--ink); }
+.workspace-brand strong { font-size: var(--fs-section); font-weight: 650; letter-spacing: -.01em; }
+.workspace-brand-mark { display: block; flex: 0 0 auto; width: 28px; height: 28px; object-fit: contain; }
+.wiki-sidebar > .wiki-utilities-toggle { display: none; }
+.wiki-sidebar-nav { display: flex; flex: 1; flex-direction: column; gap: 2px; min-height: 0; }
+.wiki-sidebar-heading { margin: 0; padding: var(--sp-4) var(--sp-3) 6px; color: var(--subtle); font-size: var(--fs-caption); font-weight: 500; letter-spacing: .02em; }
+.wiki-sidebar-bottom { display: grid; gap: 2px; margin-top: auto; padding-top: var(--sp-4); }
+.nav-item, .wiki-sidebar-nav > button.nav-item, .workspace-footer .nav-item { display: flex; align-items: center; justify-content: flex-start; gap: var(--sp-3); width: 100%; min-height: var(--h-md); padding: 0 var(--sp-3); border: 0; border-radius: var(--r-md); background: transparent; color: var(--muted); font-size: var(--fs-body); font-weight: 500; text-decoration: none; white-space: nowrap; box-shadow: none; }
+.nav-item > svg { flex-shrink: 0; }
+.nav-item:hover:not(:disabled):not(.active), .wiki-sidebar-nav > button.nav-item:hover:not(:disabled):not(.active) { background: var(--hover); color: var(--ink); }
+.nav-item.active, .nav-item[aria-current="page"] { background: var(--panel); color: var(--ink); box-shadow: var(--e-1); }
+.nav-item[aria-disabled="true"] { opacity: .42; cursor: wait; }
+.workspace-footer { display: grid; gap: 2px; padding-top: 2px; }
+.workspace-footer-links { display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--sp-1); padding: var(--sp-1) 0 0; }
+.workspace-footer-links > button { color: var(--subtle); }
+.workspace-tools-more { position: relative; }
+.workspace-tools-more > summary { display: inline-flex; align-items: center; min-height: var(--h-sm); padding: 0 var(--sp-3); border-radius: var(--r-sm); color: var(--subtle); font-size: var(--fs-small); font-weight: 500; list-style: none; cursor: pointer; }
+.workspace-tools-more > summary::-webkit-details-marker { display: none; }
+.workspace-tools-more > summary:hover, .workspace-tools-more[open] > summary { background: var(--hover); color: var(--ink); }
+.workspace-tools-more-body { position: absolute; bottom: calc(100% + var(--sp-1)); left: 0; z-index: var(--z-menu); display: grid; gap: 2px; min-width: 168px; padding: var(--sp-2); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--e-2); }
+.workspace-tools-more-body > button { justify-content: flex-start; width: 100%; }
+.workspace-local { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3) 0; color: var(--muted); font-size: var(--fs-caption); }
+.workspace-local i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
+
+/* Page skeleton: same top/left edge and the same 24px title on every page. */
+.wiki-main { --wiki-padding: var(--page-pad-x); width: 100%; max-width: calc(var(--page-max) + 2 * var(--page-pad-x)); min-width: 0; margin: 0 auto; padding: var(--page-pad-top) var(--wiki-padding) var(--sp-12); }
+.wiki-main.is-detail, .wiki-main.is-masonry, .wiki-main.is-canvas { max-width: none; }
+
+@media (max-width: 720px) {
+  .wiki-shell { display: block; }
+  .app-layout.agent-home { display: flex; flex-direction: column; }
+  .wiki-sidebar { position: static; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--sp-1); height: auto; padding: var(--sp-3) var(--sp-4); overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
+  .workspace-brand { flex: 1 1 auto; padding: 0; }
+  .wiki-sidebar > .wiki-utilities-toggle { display: inline-flex; }
+  .wiki-sidebar-heading { display: none; }
+  .wiki-sidebar-nav { order: 2; flex: 1 0 100%; flex-direction: row; gap: var(--sp-1); min-width: 0; margin: 0 calc(-1 * var(--sp-4)); padding: 0 var(--sp-4) 2px; overflow-x: auto; scrollbar-width: none; scroll-padding-inline: 16px; }
+  .wiki-sidebar-nav::-webkit-scrollbar { display: none; }
+  .wiki-sidebar-nav > .nav-item, .wiki-sidebar-bottom { flex: 0 0 auto; width: auto; }
+  .wiki-sidebar-bottom { display: flex; margin: 0; padding: 0; }
+  .nav-item, .wiki-sidebar-nav > button.nav-item, .workspace-footer .nav-item { width: auto; min-height: var(--h-lg); gap: 6px; padding: 0 var(--sp-3); font-size: var(--fs-small); }
+  .wiki-sidebar .workspace-footer { order: 1; display: flex; flex: 1 0 100%; flex-wrap: wrap; gap: var(--sp-2); }
+  .wiki-sidebar[data-utilities-open="false"] .workspace-footer { display: none; }
+  .workspace-footer .nav-item { width: auto; }
+  .workspace-local { display: none; }
+}
+@media (max-width: 720px) {
+  .wiki-detail > .wiki-detail-sticky-navigation { flex-wrap: wrap; row-gap: var(--sp-1); }
+  .wiki-detail-nav-actions { padding-left: 0; }
+}

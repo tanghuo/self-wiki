@@ -42,8 +42,8 @@ async function setup(t) {
 test("closing unsaved content asks before discarding and preserves failed batch drafts", options, async (t) => {
   const { page, app } = await setup(t);
   await page.goto(`${app.url}#wiki`);
-  await page.locator(".wiki-page-header").getByRole("button", { name: "新增内容", exact: true }).click();
-  const composer = page.getByRole("dialog", { name: "新增内容", exact: true });
+  await page.locator(".wiki-page-header").getByRole("button", { name: "添加内容", exact: true }).click();
+  const composer = page.getByRole("dialog", { name: "添加内容", exact: true });
   await composer.getByRole("textbox", { name: "文字", exact: true }).fill("不能误丢的长篇草稿");
   await page.keyboard.press("Escape");
   const confirmation = page.getByRole("dialog", { name: "放弃未保存内容？", exact: true });
@@ -62,7 +62,7 @@ test("closing unsaved content asks before discarding and preserves failed batch 
   await composer.getByRole("button", { name: "关闭", exact: true }).click();
   await confirmation.getByRole("button", { name: "继续编辑", exact: true }).click();
   assert.equal(await composer.getByRole("textbox", { name: "文字", exact: true }).nth(1).inputValue(), "模拟保存失败的草稿");
-  await composer.getByRole("button", { name: "关闭新增内容", exact: true }).click();
+  await composer.getByRole("button", { name: "关闭添加内容", exact: true }).click();
   await confirmation.getByRole("button", { name: "放弃未保存内容", exact: true }).click();
   await composer.waitFor({ state: "hidden" });
   const saved = await (await fetch(new URL("api/elements", app.url))).json();
@@ -107,7 +107,7 @@ test("inactive Wiki does not intercept paste in the Agent workspace", options, a
     const data = new DataTransfer(); data.items.add(new File(["test"], "paste.png", { type: "image/png" }));
     window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
   });
-  assert.equal(await page.getByRole("dialog", { name: "新增内容", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("dialog", { name: "添加内容", exact: true }).count(), 0);
 });
 
 test("canvas selection remains when returning from the Agent workspace", options, async (t) => {

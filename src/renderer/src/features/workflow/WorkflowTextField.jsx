@@ -1,21 +1,21 @@
 import { useRef } from 'react';
 import { outputVariables, outputVariableName, downstreamClosure } from '../../../../shared/domain/workflow/contracts.js';
-import { variableLabel } from './workflowLabels.js';
+import { variableLabel, nodeDisplayName } from './workflowLabels.js';
 
 import { editableTextParts } from './workflowText.js';
 
 export default function WorkflowTextField({ label, parts, nodes, selected, parent, onChange, allowReferences = true }) {
   const inputs = useRef(new Map()), selection = useRef(null);
   const unavailable = downstreamClosure(nodes, [selected]);
-  const choices = nodes.filter((n) => !unavailable.has(n.id)).flatMap((n) => outputVariables(n).filter((v) => v.type === 'text').map((v) => ({ label: `${n.name || n.id}${n.type === 'model' || v.path.length ? ' / ' + variableLabel(v) : ''}`, ref: { kind: 'output', nodeId: n.id, port: v.port, path: v.path } })));
-  if (parent?.config.itemsType === 'list<text>') choices.push({ label: '当前循环项', ref: { kind: 'item' } });
+  const choices = nodes.filter((n) => !unavailable.has(n.id)).flatMap((n) => outputVariables(n).filter((v) => v.type === 'text').map((v) => ({ label: `${nodeDisplayName(n)}${n.type === 'model' || v.path.length ? ' / ' + variableLabel(v) : ''}`, ref: { kind: 'output', nodeId: n.id, port: v.port, path: v.path } })));
+  if (parent?.config.itemsType === 'list<text>') choices.push({ label: '这一项', ref: { kind: 'item' } });
   for (const [key, type] of Object.entries(parent?.config.captureTypes || {})) if (type === 'text') choices.push({ label: `循环外：${parent.captureLabels?.[key] || key}`, ref: { kind: 'capture', name: key } });
   const name = (ref) => {
     if (ref.kind === 'output') {
       const node = nodes.find((n) => n.id === ref.nodeId);
-      return `${node?.name || ref.nodeId}${node && (node.type === 'model' || ref.path?.length) ? ' / ' + variableLabel(outputVariableName(node, ref)) : ''}`;
+      return `${node ? nodeDisplayName(node) : '已删除的步骤'}${node && (node.type === 'model' || ref.path?.length) ? ' / ' + variableLabel(outputVariableName(node, ref)) : ''}`;
     }
-    return ref.kind === 'capture' ? `循环外：${parent?.captureLabels?.[ref.name] || ref.name}` : ref.kind === 'item' ? '当前循环项' : ref.kind === 'itemId' ? '项 ID' : ref.kind === 'constant' ? String(ref.value) : '引用';
+    return ref.kind === 'capture' ? `循环外：${parent?.captureLabels?.[ref.name] || ref.name}` : ref.kind === 'item' ? '这一项' : ref.kind === 'itemId' ? '这一项的编号' : ref.kind === 'constant' ? String(ref.value) : '引用';
   };
   const segments = editableTextParts(parts), hasReferences = segments.length > 1;
   function insert(index) {

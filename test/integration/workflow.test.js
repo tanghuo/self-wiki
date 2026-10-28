@@ -35,6 +35,47 @@ async function until(fn, predicate, timeout = 7000) {
 function create(service, d) { return service.create({ requestKey: key(), name: 'test', definition: d }); }
 async function run(service, w, inputs = {}) { return service.createRun(w.id, { requestKey: key(), revision: w.revision, inputs }); }
 
+test('temporary generation settings are validated and frozen without saving; changed image settings reuse the model output', async (t) => {
+  let modelCalls = 0;
+  const submitted = [];
+  const fx = await fixture(t, {
+    executionConfig: () => ({ ...config(), imageGeneration: { comfyui: { baseUrl: 'http://127.0.0.1:8188' } } }),
+    model: async (_snapshot, options) => { modelCalls++; options.onRequest(); return { text: 'frozen model answer' }; },
+    generate: async (snapshot, value, options) => { options.onDispatch(); submitted.push({ width: snapshot.settings.workflow['1'].inputs.width, prompt: value.prompt, images: value.images.length }); return { bytes: fx.png }; },
+  });
+  const mapping = { workflowName: 'sizes.json', workflow: { '1': { class_type: 'Render', inputs: { text: '', width: 512, height: 512 } }, '2': { class_type: 'SaveImage', inputs: { images: ['1', 0] } } }, outputNodeId: '2', prompt: { nodeId: '1', input: 'text' }, imageInputs: [], promptMode: 'input' };
+  // No remote ComfyUI is contacted: only submission data and scheduler reuse are under test.
+  const w = create(fx.service, definition([
+    n('photo', 'element', { source: 'runtime', parameter: 'photo', valueType: 'list<image>' }),
+    n('model', 'model', { adapterId: 'grok-text', outputType: 'text' }, { prompt: c('describe'), images: o('photo') }),
+    n('image', 'image.generate', { adapterId: 'comfyui', adapterConfig: mapping }, { prompt: o('model'), images: c([]) }),
+  ]));
+  const override = structuredClone(w.definition);
+  override.nodes.find((node) => node.id === 'image').config.adapterConfig.workflow['1'].inputs.width = 768;
+  const request = { requestKey: key(), revision: w.revision, definition: override, inputs: { photo: [{ elementId: 1 }] } };
+  const started = await fx.service.createRun(w.id, request);
+  const first = await until(() => fx.service.run(started.id), (r) => r.state === 'succeeded');
+  assert.equal((await fx.service.createRun(w.id, request)).id, first.id, 'retrying the same creation is idempotent');
+  assert.equal(modelCalls, 1); assert.equal(fx.imageReads(), 1);
+  assert.deepEqual(submitted, [{ width: 768, prompt: 'frozen model answer', images: 0 }]);
+  assert.deepEqual(fx.service.get(w.id).definition, w.definition);
+  assert.equal(fx.service.get(w.id).revision, w.revision);
+  const next = structuredClone(first.definition);
+  next.nodes.find((node) => node.id === 'image').config.adapterConfig.workflow['1'].inputs.width = 1024;
+  const derived = await fx.service.derive(first.id, { requestKey: key(), definition: next, regenerate: ['image'] });
+  const second = await until(() => fx.service.run(derived.id), (r) => r.state === 'succeeded');
+  assert.equal(modelCalls, 1, 'changing image settings never calls the text model again');
+  assert.equal(fx.imageReads(), 1, 'parent input images are reused without rereading library files');
+  assert.deepEqual(submitted[1], { width: 1024, prompt: 'frozen model answer', images: 0 });
+  assert.ok(second.rootInstances.find((i) => i.nodeId === 'model').data.reusedFrom);
+  assert.deepEqual(fx.service.run(first.id).definition, first.definition);
+  assert.deepEqual(fx.service.get(w.id).definition, w.definition);
+  const invalid = structuredClone(override); invalid.nodes.find((node) => node.id === 'image').config.adapterConfig.outputNodeId = 'missing';
+  await assert.rejects(fx.service.createRun(w.id, { ...request, requestKey: key(), definition: invalid }), /输出|连接/);
+  await assert.rejects(fx.service.createRun(w.id, { ...request, requestKey: key(), revision: w.revision + 1 }), /草稿已改变/);
+  assert.equal(submitted.length, 2, 'invalid requests never dispatch');
+});
+
 test('uploaded workflow attachments persist outside the library and enter it only through a save node', async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-attachments-'));
   let app = await createServer({ port: 0, dataDir: dir });

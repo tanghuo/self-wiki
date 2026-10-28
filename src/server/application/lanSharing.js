@@ -45,6 +45,7 @@ export async function createLanSharing({ dataDir, listAddresses, createHandler }
   // Keep a generated pairing code stable across restarts for existing configurations.
   if (persistToken) await save(config).catch(() => {});
   let server;
+  let pairingExpiresAt = 0;
   let closed = false;
   let queue = Promise.resolve();
   const requests = new Set();
@@ -57,6 +58,7 @@ export async function createLanSharing({ dataDir, listAddresses, createHandler }
     if (view === "local") {
       result.token = token;
       result.pairingCode = pairingCode;
+      result.pairingExpiresAt = pairingExpiresAt;
       result.pairUrls = urls.map((url) => config.requireToken ? `${url}?pair=${encodeURIComponent(token)}` : url);
     }
     return result;
@@ -96,7 +98,22 @@ export async function createLanSharing({ dataDir, listAddresses, createHandler }
   }
   const sharing = {
     status,
-    policy() { return { allowWrite: config.allowWrite, requireToken: config.requireToken, token: config.token, pairingCode: config.pairingCode }; },
+    policy() { return { allowWrite: config.allowWrite, requireToken: config.requireToken, token: config.token, pairingCode: pairingExpiresAt > Date.now() ? config.pairingCode : null }; },
+    beginPairing() {
+      return serial(() => {
+        if (closed) throw Object.assign(new Error("应用正在退出"), { statusCode: 503 });
+        let code;
+        do { code = newPairingCode(); } while (code === config.pairingCode);
+        config = { ...config, pairingCode: code };
+        pairingExpiresAt = Date.now() + 10 * 60_000;
+        return status();
+      });
+    },
+    consumePairingCode(code) {
+      if (pairingExpiresAt <= Date.now() || code !== config.pairingCode) return false;
+      pairingExpiresAt = 0;
+      return true;
+    },
     regenerateToken() {
       return serial(async () => {
         if (closed) throw Object.assign(new Error("应用正在退出"), { statusCode: 503 });
@@ -105,6 +122,7 @@ export async function createLanSharing({ dataDir, listAddresses, createHandler }
         const next = { ...config, token: newToken(), pairingCode };
         await save(next);
         config = next;
+        pairingExpiresAt = 0;
         // Drop connections that were authorised with the previous code.
         if (server) server.closeAllConnections();
         return status();
@@ -125,7 +143,7 @@ export async function createLanSharing({ dataDir, listAddresses, createHandler }
       return serial(async () => {
         if (closed) throw Object.assign(new Error("应用正在退出"), { statusCode: 503 });
         if (typeof enabled !== "boolean") throw Object.assign(new Error("无效的开关状态"), { statusCode: 400 });
-        try { if (enabled) await start(); else await stop(response); error = ""; }
+        try { if (enabled) await start(); else { pairingExpiresAt = 0; await stop(response); } error = ""; }
         catch (failure) {
           error = failure.code === "EADDRINUSE" ? `端口 ${config.port} 已被占用，请更换端口` : `局域网服务无法启动：${failure.message}`;
           throw Object.assign(new Error(error), { statusCode: 409 });

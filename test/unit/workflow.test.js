@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateDefinition, safePath, matchesType, downstreamClosure, summarizeRun } from '../../src/shared/domain/workflow/contracts.js';
-import { workflowNode as n, constant as c, output as o, describeImagesExample } from '../../src/shared/domain/workflow/examples.js';
+import { workflowNode as n, constant as c, output as o, describeImagesExample, workflowTemplates, captionAndSaveExample } from '../../src/shared/domain/workflow/examples.js';
 import { checkJsonSchema } from '../../src/shared/domain/workflow/jsonSchema.js';
 import { executionNode, editableDefinition, isRuntimeElement } from '../../src/shared/domain/workflow/contracts.js';
 import { inferGraphTypes, setNodeBinding } from '../../src/renderer/src/features/workflow/workflowBindings.js';
 import { editableTextParts } from '../../src/renderer/src/features/workflow/workflowText.js';
+import { planFromPrompt } from '../../src/renderer/src/features/workflow/workflowPlanner.js';
 import { bindings, bindingHandle, preparedElements, outputVariables, outputBindingType } from '../../src/shared/domain/workflow/contracts.js';
 
 test('workflow attachments are image input references, never managed artifacts or text references', () => {
@@ -198,4 +199,26 @@ test('display-only edits do not change a loop execution signature', () => {
   d.nodes[2].config.body.nodes[0].name = 'new child label';
   d.nodes[2].config.body.nodes[0].position = { x: 200, y: 300 };
   assert.deepEqual(executionNode(d.nodes[2]), before);
+});
+
+
+test('planFromPrompt matches Chinese one-liners to templates and marks resultSteps', () => {
+  const plan = planFromPrompt('把选中的图片逐张写一段描述，我确认后存进资料库', { textAdapter: 'grok-text', imageAdapter: 'grok-build' });
+  assert.equal(plan.template.id, 'caption-save');
+  assert.equal(plan.valid, true);
+  assert.ok(plan.maxCalls >= 1);
+  assert.ok(plan.definition.resultSteps?.length >= 1);
+  assert.ok(plan.steps.some((s) => /描述|存进|图片/.test(s.name)));
+});
+
+test('workflow templates expose five starters with resultSteps', () => {
+  const list = workflowTemplates();
+  assert.equal(list.length, 5);
+  for (const tpl of list) {
+    const report = validateDefinition(tpl.definition);
+    assert.equal(report.valid, true, tpl.id);
+    assert.ok(Array.isArray(tpl.definition.resultSteps) && tpl.definition.resultSteps.length >= 1, tpl.id);
+  }
+  const caption = captionAndSaveExample();
+  assert.deepEqual(caption.resultSteps, ['describe', 'save']);
 });

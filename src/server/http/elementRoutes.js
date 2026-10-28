@@ -56,6 +56,12 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
     else throw httpError(405, "Method not allowed");
     return true;
   }
+  const embeddedPrompt = route.match(/^\/api\/elements\/([1-9]\d*)\/embedded-prompt$/);
+  if (embeddedPrompt) {
+    if (method !== "GET") throw httpError(405, "Method not allowed");
+    json(res, 200, await wiki.embeddedPrompt(elementId(embeddedPrompt[1])));
+    return true;
+  }
   if (route === "/api/vocabulary") {
     if (method !== "GET") throw httpError(405, "Method not allowed");
     json(res, 200, wiki.vocabulary());

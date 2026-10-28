@@ -176,6 +176,41 @@ try {
   if (error.status !== 1) throw error;
 }
 
+// Design-system rules (docs/design-system.md): colours live only in themes.css as tokens, there is one
+// primary button class, and control heights come from the 28 / 36 / 44 tokens.
+const rendererRoot = path.join(sourceRoot, "renderer", "src");
+async function collectStyleFiles(dir) {
+  const found = [];
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...await collectStyleFiles(full));
+    else if (entry.name.endsWith(".css")) found.push(full);
+  }
+  return found;
+}
+const designViolations = [];
+for (const file of await collectStyleFiles(rendererRoot)) {
+  if (path.basename(file) === "themes.css") continue;
+  const css = (await readFile(file, "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const match of css.matchAll(/(?<![\w-])(#[0-9a-fA-F]{3,8}\b|rgba?\((?!var\()|hsla?\()/g)) designViolations.push(`${toRepoPath(file)} uses a raw colour "${match[0]}"; use a token from themes.css`);
+  for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/\b(button|summary)\b|\.button\b/.test(rule[1])) continue;
+    for (const height of rule[2].matchAll(/(?:^|;|\s)(?:min-)?height\s*:\s*(\d+)px/g)) {
+      const value = Number(height[1]);
+      if (value >= 22 && value <= 48) designViolations.push(`${toRepoPath(file)} sets a ${value}px control height on "${rule[1].trim().slice(0, 60)}"; use var(--h-sm|md|lg)`);
+    }
+  }
+}
+for (const file of files) {
+  if (!toRepoPath(file).startsWith("src/renderer/")) continue;
+  if ((await readFile(file, "utf8")).includes("workflow-primary")) designViolations.push(`${toRepoPath(file)} uses workflow-primary; use the shared "primary" class`);
+}
+if (designViolations.length) {
+  console.error("Design-system violations:");
+  for (const violation of designViolations) console.error(`- ${violation}`);
+  process.exitCode = 1;
+}
+
 if (violations.length) {
   console.error("Architecture boundary violations:");
   for (const violation of violations) {

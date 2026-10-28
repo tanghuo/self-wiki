@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { withExternalResource } from './resourceGate.js';
 import sharp from "sharp";
+import { terminateProcessTree } from './processTree.js';
 import { grokAspectRatios, grokBuildConfig } from "../../shared/domain/imageGeneration.js";
 
 const maxBytes = 25 * 1024 * 1024;
@@ -38,18 +39,12 @@ async function executable(config) {
 function runCli(command, args, { cwd, signal, onEvent, timeout = 1800000 }) {
   signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const child = spawn(command.program, [...command.prefix, ...args], { cwd, shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command.program, [...command.prefix, ...args], { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ["ignore", "pipe", "pipe"] });
     const decoder = new StringDecoder("utf8");
-    let buffer = "", output = "", failure, total = 0, killer, killFallback;
+    let buffer = "", output = "", failure, total = 0, stopping, settled = false;
     function stop(error) {
       failure ||= error;
-      if (!child.pid || child.exitCode !== null || killer) return;
-      if (process.platform === "win32") {
-        killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { shell: false, windowsHide: true, stdio: "ignore" });
-        killer.on("error", () => child.kill());
-        killer.on("exit", (code) => { if (code) child.kill(); });
-        killFallback = setTimeout(() => child.kill(), 1500);
-      } else child.kill("SIGTERM");
+      stopping ||= terminateProcessTree(child).then(() => finish(null));
     }
     function abort() { stop(new Error("Grok 生图已停止；已提交的远端任务可能继续完成，请勿自动重发")); }
     function line(value) {
@@ -72,13 +67,15 @@ function runCli(command, args, { cwd, signal, onEvent, timeout = 1800000 }) {
     // CLI diagnostics may contain account data; return structured errors only.
     child.stderr.resume();
     child.once("error", () => { failure ||= new Error("无法启动 Grok Build，请检查程序路径；Windows 请使用 grok.exe"); });
-    child.once("close", (code) => {
-      clearTimeout(timer); clearTimeout(killFallback); signal?.removeEventListener("abort", abort);
+    function finish(code) {
+      if (settled) return; settled = true;
+      clearTimeout(timer); signal?.removeEventListener("abort", abort);
       if (onEvent) line(buffer + decoder.end());
       if (failure) reject(failure);
       else if (code !== 0) reject(new Error(`Grok Build 退出（${code}），请检查终端中的登录、网络与账号额度；不会自动重发`));
       else resolve(output);
-    });
+    }
+    child.once("close", (code) => { if (!stopping) finish(code); });
     if (signal?.aborted) abort();
   });
 }

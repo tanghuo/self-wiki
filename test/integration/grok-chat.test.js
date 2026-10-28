@@ -44,6 +44,29 @@ test("chat engine defaults preserve old configurations and validate local Grok s
   for (const executable of ["\\\\host\\share\\grok.exe", "grok.cmd", "grok.bat"]) {
     assert.throws(() => organizationConfig({ ...config, chat: { engine: "grok-build", grokBuild: { executable, model: "grok-4.6" } } }));
   }
+  assert.throws(() => organizationConfig({ ...config, chat: { engine: 'grok-build', grokBuild: { executable: 'grok', model: '--yolo' } } }));
+});
+
+test('Grok queued turns show a notice, can be stopped and release their waiting slot', { timeout: 10000 }, async (t) => {
+  const f = await fixture(t), first = await f.start('HANG');
+  for (let i = 0; i < 100; i++) {
+    const data = await f.api(`chat/sessions/${first.session.id}`);
+    if (data.turns.at(-1).turnId) break;
+    await sleep(10);
+  }
+  const second = await f.start('hello');
+  let queued;
+  for (let i = 0; i < 100; i++) {
+    queued = await f.api(`chat/sessions/${second.session.id}`);
+    if (queued.progressNotice.includes('等待 Grok')) break;
+    await sleep(10);
+  }
+  assert.match(queued.progressNotice, /等待 Grok/);
+  const stopped = await f.api(`chat/sessions/${second.session.id}/stop`, {});
+  assert.equal(stopped.turns.at(-1).state, 'interrupted');
+  await f.api(`chat/sessions/${first.session.id}/stop`, {});
+  const third = await f.start('hello again');
+  assert.equal((await f.wait(third.session.id)).turns.at(-1).state, 'completed');
 });
 
 test("Grok MCP bearer is scoped to active tools and never grants arbitrary tool calls", async (t) => {

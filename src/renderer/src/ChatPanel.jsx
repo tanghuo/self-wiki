@@ -95,20 +95,20 @@ export default function ChatPanel({ selection, onSelectionConsumed, currentIds, 
   async function probe() { setChecking(true); try { setStatus(await post("probe")); await refreshModels(); } catch (e) { setError(e.message); } finally { setChecking(false); } }
   return <section className={`chat-panel ${isPage ? "chat-page" : ""}`} role={isPage ? "main" : "complementary"} aria-label={isPage ? "Agent 对话" : "对话"} hidden={!visible}>
     <nav className="chat-history" aria-label="会话列表" hidden={!isPage}>
-      <button className="chat-history-new" aria-label="新会话" disabled={id === undefined || newDraft.sending} onClick={create}><Plus size={17} />发起新会话</button>
+      <button className="chat-history-new" aria-label="新会话" disabled={id === undefined || newDraft.sending} onClick={create}><Plus size={16} />新建对话</button>
       <p>会话记录</p><div className="chat-history-items">{sessions.map((s) => <div className="chat-history-item" key={s.id}><button title={s.title} disabled={newDraft.sending} aria-current={id === s.id ? "true" : undefined} onClick={() => openSession(s)}><MessageCircle size={14} /><span className="chat-history-title">{s.title}</span>
         {activity[s.id]?.running ? <span className="chat-history-status" role="img" aria-label="正在执行" title="正在执行"><LoaderCircle size={14} className="chat-history-spinner" aria-hidden="true" /></span>
           : activity[s.id]?.unread ? <span className="chat-history-status" role="img" aria-label="已完成，未查看" title="已完成，未查看"><span className="chat-history-unread" /></span> : null}
       </button></div>)}</div>
       {hasMore && <button className="text-button" onClick={() => load(true).catch((e) => setError(e.message))}>更多会话</button>}
     </nav>
-    <header className="chat-header"><div><MessageCircle size={isPage ? 22 : 19} />{isPage ? <div><h1>Agent 对话</h1><p className="wiki-muted">从内容库选好资料后再问</p></div> : <strong>对话</strong>}</div><div>
+    <header className="chat-header">{isPage ? <div className="page-header-text"><h1 className="page-title">Agent 对话</h1><p className="page-header-sub">从内容库选好资料后再问，回答会标出引用的内容。</p></div> : <div><MessageCircle size={19} /><strong>对话</strong></div>}<div>
       <button className="icon-only chat-header-new" title="新会话" aria-label="新会话" disabled={id === undefined || newDraft.sending} onClick={create}><Plus size={18} /></button>
       {!isPage && <><button className="icon-only" title="进入 Agent 工作区" aria-label="进入 Agent 工作区" onClick={onExpand}><Maximize2 size={17} /></button><button className="icon-only" aria-label="关闭对话" onClick={onClose}><X size={18} /></button></>}
     </div></header>
     <div className="chat-session-bar"><span className="chat-session-title">{sessions.find((s) => s.id === id)?.title || "新会话"}</span><Select className="chat-session-select" aria-label="历史会话" value={id || ""} disabled={newDraft.sending} onChange={(next) => next ? openSession(sessions.find((s) => s.id === Number(next))) : create()} options={[{ value: "", label: "新会话" }, ...sessions.map((s) => ({ value: s.id, label: s.title }))]} />{hasMore && <button className="text-button chat-session-more" onClick={() => load(true).catch((e) => setError(e.message))}>更多</button>}<div className="chat-connection-actions">
     {status && <details className="chat-connection" data-available={status.available ? "true" : "false"}><summary><i aria-hidden="true" />{chatEngineLabel(status.engine)} {status.available ? "已连接" : "未连接 · 查看原因"}</summary><div className="chat-connection-info"><p>{status.message}</p><p>聊天引擎和程序沿用「设置 → Agent 连接」。可在输入框旁单独选择本会话的模型。</p></div></details>}
-    <button className="text-button" disabled={checking} onClick={probe}>{checking ? "检测中…" : "检测连接"}</button></div></div>
+    {status?.available !== false && <button className="text-button button-sm" disabled={checking} onClick={probe}>{checking ? "检测中…" : "检测连接"}</button>}</div></div>
     {error && <p className="wiki-error" role="alert">{error}</p>}
     {id === undefined && newDraft.error && <p className="wiki-error" role="alert">{newDraft.error}<button onClick={newDraft.retry}>重试恢复草稿</button></p>}
     {id !== undefined && <Conversation key={id || "new"} id={id} newDraft={newDraft}

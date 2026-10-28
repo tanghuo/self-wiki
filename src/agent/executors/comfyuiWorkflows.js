@@ -66,7 +66,7 @@ function bypassInputSlot(node, outputSlot, targetType, info) {
     ?? fieldType(info?.input?.required?.[input.name] ?? info?.input?.optional?.[input.name])
     ?? (info?.input?.required?.[input.name] ?? info?.input?.optional?.[input.name])?.[0]);
   if (outputType == null || targetType == null || types.some((type) => type == null)) {
-    throw elementError(`旁路节点 ${node.id} 缺少插槽类型，请导出 API 格式工作流`);
+    throw elementError(`当前无法读取 ComfyUI 工作流：旁路节点 ${node.id} 缺少插槽类型`);
   }
   // Follow ComfyUI's slot preference, including an unconnected matching input.
   if (targetType === "*" || targetType === "") return types.length > outputSlot ? outputSlot : 0;
@@ -111,13 +111,13 @@ export function convertComfyuiWorkflow(value, infos) {
       if (source.inputs?.[0]?.link == null) throw elementError(`转接节点 ${link.origin} 缺少输入`);
       return connection(source.inputs[0].link, link.origin, 0, type, seen);
     }
-    if (source.type === "PrimitiveNode") throw elementError(`节点 ${link.origin} 使用前端 PrimitiveNode，请改用普通节点输入或导出 API 格式`);
+    if (source.type === "PrimitiveNode") throw elementError(`当前无法读取 ComfyUI 工作流：节点 ${link.origin} 使用了尚不支持的前端 PrimitiveNode`);
     if (!infos[source.type] || !Array.isArray(infos[source.type].output) || link.slot >= infos[source.type].output.length) throw elementError(`节点 ${link.origin} 的输出插槽无效`);
     return [link.origin, link.slot];
   }
   for (const [id, node] of nodes) {
     if (["Note", "MarkdownNote", "Reroute", "PrimitiveNode"].includes(node.type) || node.mode === 2 || node.mode === 4) continue;
-    const fail = (message) => { throw elementError(`ComfyUI 节点 ${id}（${node.type}）：${message}；可在会话中导入 API 格式作为备用`); };
+    const fail = (message) => { throw elementError(`当前无法读取 ComfyUI 节点 ${id}（${node.type}）：${message}`); };
     const info = infos[node.type];
     if (!info) fail("服务缺少此节点，或节点使用了子图/前端扩展");
     const widgets = node.widgets_values || [], named = node.widgets_values_named;
@@ -176,18 +176,27 @@ export function describeComfyuiWorkflow(workflow, infos) {
       fields.push({ nodeId, input, label: `${label} → ${input}`, type, value,
         ...(type === "COMBO" && { options: options.filter((option) => ["string", "number", "boolean"].includes(typeof option)) }),
         ...Object.fromEntries(["min", "max", "step", "multiline"].filter((key) => spec[1]?.[key] !== undefined).map((key) => [key, spec[1][key]])) });
+      if (type === 'COMBO' && spec[1]?.sizes_by_ratio) {
+        const values = spec[1].sizes_by_ratio, ratios = Object.keys(values);
+        const selectors = [...schemaInputs(info, node, (name) => node.inputs[name])].filter(([name, schema]) => name !== input && Array.isArray(schema[0]) && ratios.every((ratio) => schema[0].includes(ratio)));
+        if (selectors.length === 1 && Object.values(values).every((entries) => Array.isArray(entries) && entries.every((entry) => options.includes(entry)))) fields.at(-1).optionsByInput = { input: selectors[0][0], values };
+      }
     }
   }
-  const candidates = fields.filter((field) => field.type === "STRING" && ["text", "prompt", "positive"].includes(field.input));
+  const saves = outputs.filter((output) => ['SaveImage', 'SaveImageAdvanced'].includes(workflow[output.nodeId].class_type));
+  const outputNodeId = saves.length === 1 ? saves[0].nodeId : outputs.length === 1 ? outputs[0].nodeId : '';
+  const reachable = outputNodeId ? configuredComfyuiWorkflow({ workflow, outputNodeId }, { requirePrompt: false }) : workflow;
+  const candidates = fields.filter((field) => reachable[field.nodeId] && field.type === "STRING" && ["text", "prompt", "positive", "value"].includes(field.input));
   const positive = candidates.filter((field) => /positive|正向|正面/i.test(field.label) && !/negative|负/i.test(field.label));
   const selected = positive.length === 1 ? positive[0] : candidates.length === 1 ? candidates[0] : null;
-  return { fields, outputs, prompt: selected && { nodeId: selected.nodeId, input: selected.input }, outputNodeId: outputs.length === 1 ? outputs[0].nodeId : "" };
+  return { fields, outputs, prompt: selected && { nodeId: selected.nodeId, input: selected.input }, outputNodeId };
 }
 
-export async function loadComfyuiWorkflow(settings, { path, workflow, name }) {
+export async function loadComfyuiWorkflow(settings, payload = {}) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || Object.keys(payload).some((key) => key !== 'path')) throw elementError('仅支持选择 ComfyUI 中已保存的工作流');
+  const remotePath = workflowPath(payload.path);
   const config = comfyuiConfig(settings), signal = AbortSignal.timeout(45000);
-  const remotePath = path === undefined ? "" : workflowPath(path);
-  const value = remotePath ? await comfyuiJson(config, `/userdata/${encodeURIComponent(`workflows/${remotePath}`)}`, { signal, maxBytes: maxComfyWorkflowBytes }) : comfyuiWorkflow(workflow);
+  const value = await comfyuiJson(config, `/userdata/${encodeURIComponent(`workflows/${remotePath}`)}`, { signal, maxBytes: maxComfyWorkflowBytes });
   if (Buffer.byteLength(JSON.stringify(value)) > maxComfyWorkflowBytes) throw elementError("工作流最多 512 KiB");
   const expanded = expandComfyuiSubgraphs(value).value;
   const classes = [...new Set(Array.isArray(expanded.nodes) ? expanded.nodes.filter((node) => !["Note", "MarkdownNote", "Reroute", "PrimitiveNode"].includes(node.type) && node.mode !== 2 && node.mode !== 4).map((node) => node.type) : Object.values(expanded).map((node) => node.class_type))];
@@ -196,11 +205,11 @@ export async function loadComfyuiWorkflow(settings, { path, workflow, name }) {
   for (let index = 0; index < classes.length; index += 4) {
     const batch = await Promise.all(classes.slice(index, index + 4).map(async (type) => {
       const response = await comfyuiJson(config, `/object_info/${encodeURIComponent(type)}`, { signal });
-      if (!Object.hasOwn(response, type)) throw elementError(`ComfyUI 缺少节点：${type}`);
+      if (!Object.hasOwn(response, type)) throw elementError(`当前无法读取 ComfyUI 工作流：服务未提供节点类型 ${type} 的定义，可能是子图、前端扩展或未安装的节点`);
       return [type, response[type]];
     }));
     for (const [type, info] of batch) Object.defineProperty(infos, type, { value: info, enumerable: true });
   }
   const converted = convertComfyuiWorkflow(value, infos), description = describeComfyuiWorkflow(converted, infos);
-  return { baseUrl: config.baseUrl, path: remotePath, name: remotePath || (typeof name === "string" ? name.slice(0, 240) : "导入的工作流"), workflow: converted, ...description };
+  return { baseUrl: config.baseUrl, path: remotePath, name: remotePath, workflow: converted, ...description };
 }

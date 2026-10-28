@@ -8,6 +8,8 @@ export async function* shareZip(entries, signal) {
   const central = [];
   for (const entry of entries) {
     signal.throwIfAborted();
+    // Backslashes are legal POSIX filename characters but separators on Windows.
+    if (entry.name.includes('\\') || entry.name.startsWith('/') || entry.name.split('/').some((part) => part === '..' || part === '.' || part.includes(':'))) throw new Error('目录包含不安全的 ZIP 文件名，请重命名后再分享');
     const name = Buffer.from(entry.name);
     if (name.length > 65535 || central.length >= 65535) throw new Error("目录文件数量或文件名超出 ZIP 限制");
     const start = offset;

@@ -165,6 +165,12 @@ export function safePath(value, path = []) {
 export function validateDefinition(definition, { limits = workflowLimits } = {}) {
   const errors = [], orders = {}, add = (nodeId, field, message) => errors.push({ nodeId, field, message });
   if (!definition || definition.schemaVersion !== 1 || !Array.isArray(definition.nodes)) return { valid: false, errors: [{ field: 'schemaVersion', message: '需要 schemaVersion: 1 和 nodes 数组' }], orders, maxCalls: 0 };
+  // P3: optional list of node ids to highlight as the run's "final results".
+  if (definition.resultSteps !== undefined) {
+    if (!Array.isArray(definition.resultSteps) || definition.resultSteps.length > 64 || definition.resultSteps.some((id) => typeof id !== 'string' || id.length > 80)) {
+      return { valid: false, errors: [{ field: 'resultSteps', message: 'resultSteps 须为节点 ID 字符串数组' }], orders, maxCalls: 0 };
+    }
+  }
   let total = 0, maxCalls = 0, maxInstances = 0;
   function scope(graph, name, parent = null, multiplier = 1) {
     if (!graph || !Array.isArray(graph.nodes)) { add(parent?.id, 'body', '缺少循环子图'); return; }
@@ -250,6 +256,11 @@ export function validateDefinition(definition, { limits = workflowLimits } = {})
   scope(definition, 'root');
   if (total > limits.nodes) add('', 'nodes', '整个定义最多 300 个节点');
   if (maxInstances > limits.instances) add('', 'nodes', '预计实例超过 20000，请降低循环 maxItems');
+  if (Array.isArray(definition.resultSteps)) {
+    const allIds = new Set();
+    (function walk(nodes) { for (const n of nodes || []) { allIds.add(n.id); if (n.type === 'foreach') walk(n.config.body?.nodes); } })(definition.nodes);
+    for (const id of definition.resultSteps) if (!allIds.has(id)) add(id, 'resultSteps', '结果步骤必须是流程里已有的节点');
+  }
   return { valid: errors.length === 0, errors, orders, maxCalls, maxInstances };
 }
 export function downstreamClosure(nodes, changed) {

@@ -10,7 +10,7 @@ export function defaultComfyuiConfig() {
 
 export function comfyuiWorkflow(value) {
   if (!value || typeof value !== "object" || Array.isArray(value) || !Object.keys(value).length || Array.isArray(value.nodes)) {
-    throw elementError("请导入 ComfyUI 的 API 格式工作流（Export Workflow (API)），普通画布 JSON 不能执行");
+    throw elementError("ComfyUI 执行图无效，请重新选择 ComfyUI 中已保存的工作流");
   }
   if (new TextEncoder().encode(JSON.stringify(value)).length > maxComfyWorkflowBytes || Object.keys(value).length > 1000) {
     throw elementError("ComfyUI 工作流最多 512 KiB、1000 个节点");

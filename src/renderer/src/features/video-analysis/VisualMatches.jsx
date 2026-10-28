@@ -34,7 +34,7 @@ export default function VisualMatches({ elementId, frameRequest, revision, onOpe
     <header><h2><ScanEye size={18} />相似画面</h2><button className="text-button" aria-label="刷新相似画面" disabled={response.loading || disabled} onClick={() => setRetry((value) => value + 1)}><RefreshCw size={14} />刷新</button></header>
     {visualOff ? <div className="wiki-video-setup" role="status">
       <p>画面相似需要启用视觉索引；仍可用文字搜索已有片段说明。</p>
-      {!readOnly && <button type="button" className="primary" disabled={disabled} onClick={() => openSettings("video")}>去设置 · 视频与画面检索</button>}
+      {!readOnly && <button type="button" disabled={disabled} onClick={() => openSettings("video")}>去设置 · 视频与画面检索</button>}
     </div> : <p className="wiki-muted">根据画面寻找图片与视频片段，点击视频结果可跳转到对应时间。</p>}
     {frameId && !submitted && <div className="wiki-visual-source"><img src={apiUrl(`/api/video-analysis/frames/${encodeURIComponent(frameId)}`)} alt="当前查询的证据画面" /><span>以这张画面查找</span><button className="text-button" disabled={disabled} onClick={onClearFrame}><X size={14} />使用整份内容</button></div>}
     <form className="wiki-visual-query" onSubmit={(event) => { event.preventDefault(); setSubmitted(query.trim()); }}><label className="wiki-search"><Search size={15} /><input aria-label="用文字搜索画面" placeholder="也可以描述要找的画面" value={query} onChange={(event) => setQuery(event.target.value)} /></label><button disabled={disabled}>搜索</button></form>

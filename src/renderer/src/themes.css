@@ -1,25 +1,35 @@
-/* Design tokens. Colors are per theme below; scale tokens are shared by every theme.
-   Components use these instead of raw values so spacing, type and depth stay consistent. */
+/* Design tokens (see docs/design-system.md). Colors are per theme below; scale tokens are shared by every theme.
+   Components use these instead of raw values so spacing, type, height and depth stay consistent. */
 :root {
   --font-sans: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Noto Sans Mono CJK SC", monospace;
-  --text-2xs: 11px; --text-xs: 11px; --text-sm: 12px; --text-base: 14px; --text-md: 14px; --text-lg: 16px; --text-xl: 18px; --text-2xl: 22px; --text-3xl: 26px;
-  --title-page: 30px; --title-detail: 24px; --title-section: 17px; --text-card: 14px;
+  /* Type: six sizes only. caption 12 · small 13 · body 14 · section 16 · dialog 18 · page 24 */
+  --fs-caption: 12px; --fs-small: 13px; --fs-body: 14px; --fs-section: 16px; --fs-dialog: 18px; --fs-page: 24px;
   --leading-tight: 1.35; --leading-normal: 1.5; --leading-relaxed: 1.75;
-  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
-  --radius-xs: 5px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 12px; --radius-2xl: 16px; --radius-full: 999px;
-  --control-sm: 30px; --control-md: 36px; --control-lg: 40px;
+  /* Spacing: 4px grid; these are the named steps. */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-6: 24px; --sp-8: 32px; --sp-12: 48px;
+  /* Radius: small 6 · control 8 · card 12 · dialog 16 · round */
+  --r-sm: 6px; --r-md: 8px; --r-lg: 12px; --r-xl: 16px; --r-full: 999px;
+  /* Control heights: three only. */
+  --h-sm: 28px; --h-md: 36px; --h-lg: 44px;
+  /* Elevation: card · menu/hover · dialog/toast */
   --shadow-color: 40 49 65;
-  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.06), 0 1px 1px rgb(var(--shadow-color) / 0.04);
-  --shadow-md: 0 4px 14px rgb(var(--shadow-color) / 0.08), 0 1px 3px rgb(var(--shadow-color) / 0.06);
-  --shadow-lg: 0 14px 40px rgb(var(--shadow-color) / 0.16), 0 3px 10px rgb(var(--shadow-color) / 0.08);
+  --e-1: 0 1px 2px rgb(var(--shadow-color) / 0.06), 0 1px 1px rgb(var(--shadow-color) / 0.04);
+  --e-2: 0 6px 20px rgb(var(--shadow-color) / 0.10), 0 1px 3px rgb(var(--shadow-color) / 0.06);
+  --e-3: 0 18px 48px rgb(var(--shadow-color) / 0.18), 0 3px 10px rgb(var(--shadow-color) / 0.08);
   --overlay: rgb(var(--shadow-color) / 0.41);
+  /* Media surfaces stay dark in every theme. */
+  --media-dark: #111; --on-media: #fff; --media-scrim: rgb(0 0 0 / .55); --media-scrim-strong: rgb(0 0 0 / .78); --qr-bg: #fff;
+  --hover: color-mix(in srgb, var(--ink) 6%, transparent); --press: color-mix(in srgb, var(--ink) 10%, transparent);
+  --on-bad: #fff;
   --ease-out: cubic-bezier(.2, .7, .2, 1); --duration-fast: 120ms; --duration: 180ms;
   --z-sticky: 5; --z-menu: 20; --z-toast: 40;
 }
 /* Color tokens per theme. 暖纸 (paper) is the light default and 夜幕 (night) the dark one;
    "auto" follows the operating system between the two. The same tokens paint the theme previews. */
 :root, [data-theme="paper"], [data-theme="auto"] {
+  --subtle: #8a7f6e;
+  --bad-solid: #a33a35;
   color-scheme: light;
   --bg: #f3eee4;
   --panel: #fffdf8;
@@ -51,6 +61,8 @@
   --sidebar-line: #d8cbb4;
 }
 [data-theme="sage"] {
+  --subtle: #6f8273;
+  --bad-solid: #a33f3b;
   color-scheme: light;
   --bg: #e3eae2;
   --panel: #edf2eb;
@@ -81,6 +93,8 @@
   --sidebar-line: var(--line);
 }
 [data-theme="light"] {
+  --subtle: #7c8693;
+  --bad-solid: #b64040;
   color-scheme: light;
   --bg: #fafafa;
   --panel: #fff;
@@ -111,6 +125,8 @@
   --sidebar-line: var(--line);
 }
 [data-theme="night"] {
+  --subtle: #7c828c;
+  --bad-solid: #d93f45;
   color-scheme: dark;
   --bg: #141518;
   --panel: #1f2126;
@@ -144,6 +160,8 @@
 @media (prefers-color-scheme: dark) {
   [data-theme="auto"] {
     color-scheme: dark;
+    --subtle: #7c828c;
+    --bad-solid: #d93f45;
     --bg: #141518;
     --panel: #1f2126;
     --panel-2: #282b31;

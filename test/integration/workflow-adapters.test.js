@@ -8,6 +8,7 @@ import { recoverComfyuiImage } from '../../src/agent/executors/comfyui.js';
 import { acquireExternalResource } from '../../src/agent/executors/resourceGate.js';
 import { modelAdapters } from '../../src/server/application/modelAdapters/index.js';
 import { createWorkflowNodes } from '../../src/server/application/workflow/nodes.js';
+import sharp from 'sharp';
 
 test('adapter-owned compatibility reads legacy configuration and frozen snapshots without rewriting them', async () => {
   const legacy = { id: 'image', type: 'image.generate', version: 1, config: { executor: 'comfyui', comfyui: {
@@ -53,6 +54,17 @@ test('workflow Grok text adapter uses isolated sessions and blocks shell, image 
   assert.equal(requests.length, 4);
   assert.equal(new Set(requests.map((r) => r.thread)).size, 4);
   assert.ok(requests.every((r) => r.method === 'session/new'));
+  for (const format of ['jpeg', 'webp']) {
+    const file = path.join(root, `reference.${format}`);
+    await sharp({ create: { width: 2, height: 2, channels: 3, background: 'red' } }).toFormat(format).toFile(file);
+    await modelAdapters.model(snapshot, { prompt: 'describe', images: [file], workspace: root, signal: AbortSignal.timeout(5000), onRequest() {} });
+  }
+  const inputs = (await readFile(path.join(root, 'acp-inputs.ndjson'), 'utf8')).trim().split('\n').map(JSON.parse);
+  for (const [index, format] of ['jpeg', 'webp'].entries()) {
+    const image = inputs.at(index - 2).prompt.find((entry) => entry.type === 'image');
+    assert.equal(image.mimeType, `image/${format}`);
+    assert.equal((await sharp(Buffer.from(image.data, 'base64')).metadata()).format, format);
+  }
 });
 
 test('external resource gate shares two total slots and one per key; queued cancellation never acquires a slot', async () => {

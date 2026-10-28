@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ScanEye } from "lucide-react";
 import { request } from "../../api.js";
 
-export default function VideoAnalysisSettings({ onBusyChange, onDirtyChange, onChanged }) {
+export default function VideoAnalysisSettings({ onBusyChange, onDirtyChange, onChanged, registerSave }) {
   const [status, setStatus] = useState(null), [config, setConfig] = useState(null), [saved, setSaved] = useState(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");
   const locked = useRef(false), mounted = useRef(false);
@@ -17,6 +17,8 @@ export default function VideoAnalysisSettings({ onBusyChange, onDirtyChange, onC
   }, []);
   useEffect(() => { onBusyChange?.(busy); return () => onBusyChange?.(false); }, [busy, onBusyChange]);
   useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false); }, [dirty, onDirtyChange]);
+  useEffect(() => { registerSave?.(dirty ? { save: () => mutate("/api/video-analysis/config", config, "PUT"), discard: () => setConfig(saved) } : null); });
+  useEffect(() => () => registerSave?.(null), [registerSave]);
   useEffect(() => {
     if (!dirty) return;
     const warn = (event) => { event.preventDefault(); event.returnValue = ""; };
@@ -64,8 +66,8 @@ export default function VideoAnalysisSettings({ onBusyChange, onDirtyChange, onC
           <div className="wiki-video-settings-grid"><label>模型修订<input aria-label="视觉模型修订" required value={config.visual.revision} disabled={busy} onChange={(event) => visualField("revision", event.target.value)} /></label><label>视觉请求超时（毫秒）<input type="number" required min="1000" max="1800000" step="1000" value={config.visual.timeoutMs} disabled={busy} onChange={(event) => visualField("timeoutMs", Number(event.target.value))} /></label></div>
           <p className="wiki-muted">切换模型或修订后会重新建立视觉索引。相似推荐提供画面参考，需要保存关联时可使用内容详情的关联功能。</p>
         </fieldset>
-        <div className="wiki-actions"><button className="primary" disabled={busy || !dirty}>保存视频配置</button><button type="button" disabled={busy || dirty} onClick={() => mutate("/api/video-analysis/probe")}>检测视频依赖</button><button type="button" disabled={busy || dirty || !saved?.visual.enabled} onClick={() => mutate("/api/visual-index/rebuild", { mode: "missing" })}>建立 / 更新视觉索引</button></div>
-        {dirty && <p className="wiki-muted">修改后先保存，再检测依赖或更新索引。</p>}
+        <div className="wiki-actions">{!registerSave && <button className="primary" disabled={busy || !dirty}>保存视频配置</button>}<button type="button" disabled={busy || dirty} title={dirty ? "先保存改动，再检测依赖" : undefined} onClick={() => mutate("/api/video-analysis/probe")}>检测视频依赖</button><button type="button" disabled={busy || dirty || !saved?.visual.enabled} title={dirty ? "先保存改动，再更新索引" : !saved?.visual.enabled ? "先开启画面检索并保存" : undefined} onClick={() => mutate("/api/visual-index/rebuild", { mode: "missing" })}>建立 / 更新视觉索引</button></div>
+        {dirty && <p className="wiki-muted">改完后先点底部「保存」，再检测依赖或更新索引。</p>}
       </div>
     </form>}
     {status?.diagnostic && <p className="wiki-muted">{status.diagnostic}</p>}

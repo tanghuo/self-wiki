@@ -39,6 +39,7 @@ test("Grok options migrate old configs and keep per-session ratio snapshots", ()
   assert.deepEqual(chatImageOptions({ executor: "grok-build", direct: true }), { executor: "grok-build", direct: true, aspectRatio: "auto" });
   assert.equal(chatImageOptions({ executor: "grok-build", direct: false, aspectRatio: "4:3" }).aspectRatio, "4:3");
   assert.throws(() => chatImageOptions({ executor: "grok-build", direct: false, aspectRatio: "5:7" }));
+  assert.throws(() => imageGenerationConfig({ ...defaultImageGenerationConfig(), grokBuild: { executable: 'grok', model: '--yolo', aspectRatio: 'auto' } }));
   const settings = createChatImageSettings({}, {});
   const current = defaultImageGenerationConfig();
   const snapshot = settings.configuration(current, { executor: "grok-build", direct: false, aspectRatio: "9:16" });

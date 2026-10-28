@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
-export default function Dialog({ open, onClose, label, className = "", children }) {
+export default function Dialog({ open, onClose, label, className = "", children, onKeyDown }) {
   const dialogRef = useRef(null);
   const backdropPress = useRef(false);
 
@@ -32,6 +32,7 @@ export default function Dialog({ open, onClose, label, className = "", children 
       ref={dialogRef}
       className={`dialog ${className}`.trim()}
       aria-label={label}
+      onKeyDown={onKeyDown}
       onCancel={(event) => {
         event.preventDefault();
         onClose();

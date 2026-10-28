@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { mergeEdits } from "./settingsMerge.js";
 import { request } from "./api.js";
 import OrganizationHistory from "./OrganizationHistory.jsx";
 import SemanticSettings from "./SemanticSettings.jsx";
@@ -7,7 +8,7 @@ import ChatEngineSettings from "./ChatEngineSettings.jsx";
 
 const labels = { queued: "待整理", running: "整理中", succeeded: "整理完成", failed: "整理失败", cancelled: "已取消" };
 
-export default function OrganizationPanel({ elementId, mode = elementId ? "content" : "settings", focus = "all", initialResultId = null, onChanged, onBusyChange, onDirtyChange, onOpen, disabled = false }) {
+export default function OrganizationPanel({ elementId, mode = elementId ? "content" : "settings", focus = "all", initialResultId = null, onChanged, onBusyChange, onDirtyChange, onOpen, disabled = false, registerSave }) {
   const settings = mode === "settings";
   const [pages, setPages] = useState([]), [focused, setFocused] = useState(initialResultId);
   const [status, setStatus] = useState(null), [config, setConfig] = useState(null);
@@ -49,6 +50,14 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
   useEffect(() => { onBusyChange?.(busy); return () => onBusyChange?.(false); }, [busy, onBusyChange]);
   const dirty = Boolean(settings && config && savedConfig && JSON.stringify(config) !== JSON.stringify(savedConfig));
   useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false); }, [dirty, onDirtyChange]);
+  // Settings saves through the dialog's single save bar. Two panels (连接 / 整理) edit the same config,
+  // so only the fields edited here are applied on top of the latest saved config.
+  async function saveConfig() {
+    const latest = (await request("/api/organization/status").catch(() => null))?.config || savedConfig;
+    return mutate("config", mergeEdits(latest, savedConfig, config), "PUT");
+  }
+  useEffect(() => { registerSave?.(dirty ? { save: saveConfig, discard: () => setConfig(savedConfig) } : null); });
+  useEffect(() => () => registerSave?.(null), [registerSave]);
   async function mutate(route, body = {}, method = "POST") {
     if (busy || disabled) return;
     setBusy(true); setError(""); setMessage("");
@@ -106,7 +115,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         {focus === "connection" && <header className="settings-section-header"><h3>Agent 连接</h3></header>}
         {focus === "connection" && <p className="wiki-muted">聊天引擎可选择 Codex 或 Grok Build。自动整理继续使用本机 Codex。</p>}
         <ChatEngineSettings value={config.chat} locked={locked} onChange={(chat) => setConfig((current) => ({ ...current, chat }))} />
-        <button type="button" disabled={locked || dirty} onClick={probeChat}>检测聊天连接</button>
+        <button type="button" disabled={locked || dirty} title={dirty ? "先保存改动，再检测连接" : undefined} onClick={probeChat}>检测聊天连接</button>
         <div className="wiki-actions"><button disabled={locked} onClick={() => mutate("probe")}>检测并启动执行器</button></div>
         <fieldset className="settings-group"><legend>连接参数</legend>
         <label>执行器<select value={config.executor.type} disabled><option value="codex-cli">本机 Codex CLI</option></select></label>
@@ -115,7 +124,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         <label>Codex 数据目录（可选）<input value={config.executor.codexCli.codexHome || ""} disabled={locked} onChange={(e) => executorField("codexHome", e.target.value)} placeholder={status.defaultCodexHome || "留空则使用独立目录"} /></label>
         <p className="wiki-muted">留空时与 Codex 桌面端分开保存，并使用本机当前登录。修改后请先保存再检测连接。</p>
         </fieldset>
-        {focus === "connection" && <div className="wiki-actions organization-save"><button className="primary" disabled={locked} onClick={() => mutate("config", config, "PUT")}>保存连接配置</button></div>}
+        {focus === "connection" && !registerSave && <div className="wiki-actions organization-save"><button className="primary" disabled={locked} onClick={() => mutate("config", config, "PUT")}>保存连接配置</button></div>}
         </>}
         {(focus === "all" || focus === "organization") && <>
         {focus === "organization" && <header className="settings-section-header"><h3>自动整理与检索</h3></header>}
@@ -124,7 +133,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         <label><input type="checkbox" checked={config.enabled} disabled={locked} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} />导入后自动整理</label>
         <label>处理方式<select value={config.applyMode} disabled={locked} onChange={(e) => setConfig({ ...config, applyMode: e.target.value })}><option value="suggest">先生成建议</option><option value="auto">自动添加</option></select></label>
         <p className="wiki-muted">自动模式会添加标签、图片识别结果及推断关联，并标记 AI 来源。可从侧栏「整理历史」查看或修正。</p>
-        <button type="button" disabled={locked || dirty || Boolean(status.configError)} onClick={() => mutate("enqueue-texts")}>检查已有文字相似关系</button>
+        <button type="button" disabled={locked || dirty || Boolean(status.configError)} title={dirty ? "先保存改动" : status.configError ? "整理配置有误，先修正" : undefined} onClick={() => mutate("enqueue-texts")}>检查已有文字相似关系</button>
         </fieldset>
         <ImageGenerationSettings config={config.imageGeneration} locked={locked} saved={JSON.stringify(config.imageGeneration) === JSON.stringify(savedConfig?.imageGeneration)} onChange={(imageGeneration) => setConfig((c) => ({ ...c, imageGeneration }))} onProbe={probeImages} />
         <details className="settings-advanced" open={focus === "organization" ? undefined : undefined}>
@@ -143,7 +152,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         <p className="wiki-muted organization-config-path">配置文件：{status.configPath}</p>
         </div>
         </details>
-        <div className="wiki-actions organization-save"><button className="primary" disabled={locked} onClick={() => mutate("config", config, "PUT")}>保存整理配置</button></div>
+        {!registerSave && <div className="wiki-actions organization-save"><button className="primary" disabled={locked} onClick={() => mutate("config", config, "PUT")}>保存整理配置</button></div>}
         <p className="wiki-muted">待整理 {status.counts.queued || 0} · 处理中 {status.counts.running || 0} · 失败 {status.counts.failed || 0}</p>
         </>}
       </div>}

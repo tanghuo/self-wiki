@@ -15,6 +15,7 @@ import TemporaryShares from "./TemporaryShares.jsx";
 import { request } from "./api.js";
 import "./wiki.css";
 import "./surfaces.css";
+import "./shell.css";
 
 const access = document.querySelector('meta[name="wiki-access"]')?.content;
 const readOnly = access === "read-only";
@@ -166,7 +167,7 @@ export default function App() {
   }
   function selectForAgent(element) { setAgentSelection({ element }); setChatMounted(true); setDocked(true); }
   function askAgent() { setChatMounted(true); setDocked((value) => !value); }
-  function closeDock() { setDocked(false); requestAnimationFrame(() => document.querySelector("[data-agent-trigger]")?.focus()); }
+  function closeDock() { setDocked(false); requestAnimationFrame(() => [...document.querySelectorAll("[data-agent-trigger]")].find((trigger) => trigger.offsetParent)?.focus()); }
   function openSource(id) {
     if (section === "wiki") { setOpenRequest({ id }); if (window.innerWidth <= 1050) closeDock(); }
     else setSourcePreview(id);
@@ -182,15 +183,17 @@ export default function App() {
   }, []);
   const workspaceNavigation = <>
       <div className="workspace-footer">
-        <button className="text-button workspace-settings workspace-shortcuts" aria-keyshortcuts="Shift+?" onClick={() => setShortcutsOpen(true)}><Keyboard size={17} />快捷键</button>
-        {!lanGuest && <button className="text-button workspace-settings" onClick={() => { setSettingsSection("general"); setSettingsOpen(true); }}><Settings size={17} />设置</button>}
-        {!lanGuest && <details className="workspace-tools-more">
-          <summary>用量与整理</summary>
-          <div className="workspace-tools-more-body">
-            <button className="text-button workspace-settings" disabled={uploading} onClick={() => setOrganizationOpen(true)}><History size={17} />整理历史</button>
-            <button className="text-button workspace-settings" onClick={() => setUsageOpen(true)}>Token 用量</button>
-          </div>
-        </details>}
+        {!lanGuest && <button className="nav-item workspace-settings" onClick={() => { setSettingsSection("general"); setSettingsOpen(true); }}><Settings size={18} />设置</button>}
+        <div className="workspace-footer-links">
+          <button className="text-button button-sm workspace-shortcuts" aria-keyshortcuts="Shift+?" onClick={() => setShortcutsOpen(true)}><Keyboard size={14} />快捷键</button>
+          {!lanGuest && <details className="workspace-tools-more">
+            <summary>用量与整理</summary>
+            <div className="workspace-tools-more-body">
+              <button className="text-button button-sm" disabled={uploading} onClick={() => setOrganizationOpen(true)}><History size={14} />整理历史</button>
+              <button className="text-button button-sm" onClick={() => setUsageOpen(true)}>Token 用量</button>
+            </div>
+          </details>}
+        </div>
         {lanGuest && <span className="workspace-local"><i />{readOnly ? "局域网 · 只读浏览" : "局域网 · 可编辑"}</span>}
       </div>
     </>;

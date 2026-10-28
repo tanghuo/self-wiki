@@ -19,6 +19,7 @@ import { generateComfyui, probeComfyui } from "../../src/agent/executors/comfyui
 import { createServer } from "../../src/server/server.js";
 import { convertComfyuiWorkflow, describeComfyuiWorkflow, loadComfyuiWorkflow } from "../../src/agent/executors/comfyuiWorkflows.js";
 import { chooseOption, selectedValue } from "../ui-select.js";
+import { workflowNode as n, constant as c, output as o } from '../../src/shared/domain/workflow/examples.js';
 
 const template = JSON.parse(await readFile(new URL("../fixtures/comfyui-workflow.json", import.meta.url), "utf8"));
 const nodeInfo = JSON.parse(await readFile(new URL("../fixtures/comfyui-nodes.json", import.meta.url), "utf8"));
@@ -47,7 +48,7 @@ test("ComfyUI config upgrades old settings, validates mappings and isolates the 
   for (const baseUrl of ["file:///tmp", "http://user:pass@host", "http://host/?token=secret", "http://host/#path", "localhost:8188"]) {
     assert.throws(() => comfyuiConfig({ ...config, baseUrl }), /ComfyUI/);
   }
-  assert.throws(() => comfyuiWorkflow({ nodes: [], links: [] }), /API/);
+  assert.throws(() => comfyuiWorkflow({ nodes: [], links: [] }), /执行图无效/);
   assert.throws(() => comfyuiWorkflow({ a: { inputs: {} } }), /API/);
   assert.throws(() => comfyuiWorkflow({ 1: { class_type: "Test", inputs: { text: "字".repeat(180000) } } }), /512 KiB/);
   assert.throws(() => comfyuiConfig({ ...config, prompt: { nodeId: "6", input: "clip" } }), /文本字段/);
@@ -131,7 +132,41 @@ test("ComfyUI connection probe needs only an address; workflow loading checks no
   assert.equal(f.state.submissions.length, 0);
   assert.ok(!f.state.requests.some((r) => r.path.includes("object_info")));
   f.state.mode = "missing-node";
-  await assert.rejects(loadComfyuiWorkflow(f.config, { path: "文生图/水彩.json" }), /缺少节点：KSampler/);
+  await assert.rejects(loadComfyuiWorkflow(f.config, { path: "文生图/水彩.json" }), /未提供节点类型 KSampler 的定义/);
+});
+
+test("ComfyUI workflow loading accepts only saved remote paths and never imports or modifies workflows", async (t) => {
+  const f = await fixture(t);
+  for (const payload of [{ workflow: template, name: 'import.json' }, { path: f.state.path, workflow: template }, {}, { path: '../secret.json' }]) {
+    await assert.rejects(loadComfyuiWorkflow(f.config, payload), /已保存的工作流|无效的远端工作流路径/);
+  }
+  assert.equal(f.state.requests.length, 0);
+  const result = await loadComfyuiWorkflow(f.config, { path: f.state.path });
+  assert.equal(result.path, f.state.path);
+  assert.equal(result.name, f.state.path);
+  assert.ok(f.state.requests.every((entry) => entry.method === 'GET'));
+  assert.equal(f.state.submissions.length, 0);
+});
+
+test('saved ComfyUI subgraphs load by path and map their inner prompt through to generation', async (t) => {
+  const f = await fixture(t), inner = structuredClone(canvas);
+  inner.nodes = inner.nodes.filter((node) => node.id !== 9);
+  inner.nodes.find((node) => node.id === 6).inputs.push({ name: 'text', type: 'STRING', widget: { name: 'text' }, link: 10 });
+  inner.links.find((link) => link[0] === 9)[3] = -20;
+  inner.links.push([10, -10, 0, 6, 1, 'STRING']);
+  Object.assign(inner, { id: 'fixture-subgraph', inputNode: { id: -10 }, outputNode: { id: -20 }, inputs: [{ name: 'prompt' }], outputs: [{ name: 'image' }] });
+  f.state.canvas = { nodes: [{ id: 100, type: inner.id, inputs: [{ name: 'prompt', type: 'STRING', widget: { name: 'prompt' }, link: null }], widgets_values: ['saved subgraph prompt'] }, structuredClone(canvas.nodes.find((node) => node.id === 9))],
+    links: [[9, 100, 0, 9, 0, 'IMAGE']], definitions: { subgraphs: [inner] } };
+  const before = structuredClone(f.state.canvas);
+  const loaded = await loadComfyuiWorkflow(f.config, { path: f.state.path });
+  assert.deepEqual(loaded.prompt, { nodeId: '100:6', input: 'text' });
+  assert.equal(loaded.workflow['100:6'].inputs.text, 'saved subgraph prompt');
+  assert.ok(!f.state.requests.some((request) => request.path.includes('fixture-subgraph')));
+  assert.ok(f.state.requests.every((request) => request.method === 'GET'));
+  await generateComfyui({ prompt: 'Wiki prompt' }, { config: { ...f.config, workflow: loaded.workflow, prompt: loaded.prompt, outputNodeId: loaded.outputNodeId }, workspace: f.root });
+  assert.equal(f.state.submissions[0].prompt['100:6'].inputs.text, 'Wiki prompt');
+  assert.deepEqual(f.state.submissions[0].prompt['9'].inputs.images, ['100:8', 0]);
+  assert.deepEqual(f.state.canvas, before);
 });
 
 test('random seed controls survive import and consecutive generations submit distinct recorded seeds', async (t) => {
@@ -310,6 +345,138 @@ test("organization config preserves legacy templates and accepts address-only se
 
 const browserPath = resolveBrowserPath();
 
+test('runtime resolution choices follow aspect ratio and submit the matching preset', { timeout: 30000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const f = await fixture(t);
+  const groups = { '16:9': ['1280×720', '1920×1080'], '9:16': ['720×1280', '1080×1920'], '1:1': ['1024×1024', '1536×1536'] };
+  nodeInfo.CharacterVideoImageSize = { input: { required: {
+    '画幅比例': [Object.keys(groups)], '分辨率档位': [[...Object.values(groups).flat(), '自定义'], { sizes_by_ratio: groups }],
+    '自定义宽': ['INT', { min: 64, max: 8192 }], '自定义高': ['INT', { min: 64, max: 8192 }],
+  } }, output: ['INT', 'INT', 'STRING'] };
+  t.after(() => { delete nodeInfo.CharacterVideoImageSize; });
+  f.state.canvas.nodes.push({ id: 13, type: 'CharacterVideoImageSize', inputs: [], widgets_values: ['9:16', '1920×1080', 1280, 720] });
+  f.state.canvas.nodes.find((node) => node.id === 5).inputs = [{ name: 'width', link: 20 }, { name: 'height', link: 21 }];
+  f.state.canvas.links.push([20, 13, 0, 5, 0, 'INT'], [21, 13, 1, 5, 1, 'INT']);
+  const w = await wikiFixture(t, f), record = await w.api('workflows/adapters/comfyui/load', { path: f.state.path });
+  assert.deepEqual(record.fields.find((field) => field.input === '分辨率档位').optionsByInput, { input: '画幅比例', values: groups });
+  const config = { workflow: record.workflow, workflowName: f.state.path, prompt: record.prompt, outputNodeId: record.outputNodeId, imageInputs: [] };
+  const created = await w.api('workflows', { name: '分辨率联动测试', definition: { schemaVersion: 1, nodes: [n('generate', 'image.generate', { adapterId: 'comfyui', adapterConfig: config }, { prompt: c('same prompt'), images: c([]) })], outputs: {} }, requestKey: randomUUID() });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true }); f.cleanup.push(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } }); page.setDefaultTimeout(10000);
+  await page.goto(`${w.app.url}#workflow`);
+  await page.locator('.workflow-home-card').filter({ hasText: '分辨率联动测试' }).getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '调整本次生图参数', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '本次生图参数', exact: true });
+  const ratio = dialog.getByLabel(/^工作流参数 .*→ 画幅比例$/), size = dialog.getByLabel(/^工作流参数 .*→ 分辨率档位$/);
+  await page.waitForFunction(() => [...document.querySelectorAll('select')].some((select) => select.getAttribute('aria-label')?.endsWith('→ 分辨率档位') && select.value === JSON.stringify('1080×1920')));
+  assert.deepEqual(await size.locator('option').allTextContents(), ['720×1280', '1080×1920', '自定义']);
+  await ratio.selectOption(JSON.stringify('16:9'));
+  assert.equal(await size.inputValue(), JSON.stringify('1920×1080'));
+  await size.selectOption(JSON.stringify('1280×720'));
+  await ratio.selectOption(JSON.stringify('9:16'));
+  assert.equal(await size.inputValue(), JSON.stringify('720×1280'));
+  await size.selectOption(JSON.stringify('自定义'));
+  await ratio.selectOption(JSON.stringify('1:1'));
+  assert.equal(await size.inputValue(), JSON.stringify('自定义'));
+  await ratio.selectOption(JSON.stringify('9:16'));
+  await size.selectOption(JSON.stringify('1080×1920'));
+  await dialog.getByRole('button', { name: '应用到本次运行', exact: true }).click();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  assert.equal(f.state.submissions[0].prompt['13'].inputs['画幅比例'], '9:16');
+  assert.equal(f.state.submissions[0].prompt['13'].inputs['分辨率档位'], '1080×1920');
+  assert.deepEqual((await w.api(`workflows/${created.id}`)).definition, created.definition);
+});
+
+test('run-time ComfyUI parameters stay local to the run and regeneration reuses upstream results', { timeout: 45000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const f = await fixture(t), w = await wikiFixture(t, f);
+  const record = await w.api('workflows/adapters/comfyui/load', { path: f.state.path });
+  const adapterConfig = { workflow: record.workflow, workflowName: f.state.path, prompt: record.prompt, outputNodeId: record.outputNodeId, promptMode: 'input', imageInputs: [] };
+  const nodes = [n('text', 'element', { source: 'fixed', parameter: 'text', valueType: 'text', default: '沿用这段提示词' }),
+    n('generate', 'image.generate', { adapterId: 'comfyui', adapterConfig }, { prompt: o('text'), images: c([]) })];
+  const created = await w.api('workflows', { name: '本次参数测试', definition: { schemaVersion: 1, nodes, outputs: {} }, requestKey: randomUUID() });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true }); f.cleanup.push(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } }); page.setDefaultTimeout(10000);
+  const errors = []; page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto(`${w.app.url}#workflow`);
+  await page.locator('.workflow-home-card').filter({ hasText: '本次参数测试' }).getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '调整本次生图参数', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '本次生图参数', exact: true });
+  const parameter = (key) => dialog.getByLabel(new RegExp(`^工作流参数 .*→ ${key}$`));
+  await parameter('seed').fill('123');
+  await parameter('width').fill('768');
+  assert.equal(await dialog.getByLabel('ComfyUI 工作流', { exact: true }).count(), 0, 'runtime editing cannot switch the workflow or bindings');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  assert.equal(f.state.submissions.length, 0, 'opening and cancelling parameters never submits a task');
+  await page.getByRole('button', { name: '调整本次生图参数', exact: true }).click();
+  assert.notEqual(await parameter('seed').inputValue(), '123', 'cancel discards edits');
+  await parameter('seed').fill('123'); await parameter('width').fill('768');
+  await dialog.getByLabel(/^种子模式 /).selectOption('fixed');
+  await parameter('width').fill('0');
+  await dialog.getByRole('button', { name: '应用到本次运行', exact: true }).click();
+  await dialog.getByRole('alert').filter({ hasText: '请修正' }).waitFor();
+  await parameter('width').fill('768');
+  await page.screenshot({ path: '.local/workflow-runtime-parameters.png', fullPage: true });
+  await dialog.getByRole('button', { name: '应用到本次运行', exact: true }).click();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  assert.equal(f.state.submissions.length, 1);
+  assert.equal(f.state.submissions[0].prompt['3'].inputs.seed, 123);
+  assert.equal(f.state.submissions[0].prompt['5'].inputs.width, 768);
+  assert.equal(f.state.submissions[0].prompt['6'].inputs.text, '沿用这段提示词');
+  const saved = await w.api(`workflows/${created.id}`), parentId = saved.runs[0].id;
+  const parent = await w.api(`workflow-runs/${parentId}`);
+  assert.equal(saved.revision, created.revision);
+  assert.deepEqual(saved.definition, created.definition, 'temporary parameters never change the saved draft');
+  const result = page.locator('.workflow-run-results .workflow-node-result[data-node-id="generate"]');
+  await result.locator('.workflow-result-heading').click();
+  await result.getByRole('button', { name: '调整参数', exact: true }).click();
+  assert.equal(await parameter('seed').inputValue(), '123', 'regeneration starts from the executed parameters');
+  await parameter('seed').fill('456'); await parameter('width').fill('1024');
+  await dialog.getByRole('button', { name: '保存参数', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  assert.equal(f.state.submissions.length, 1, 'saving parameters does not generate');
+  assert.equal((await w.api(`workflows/${created.id}`)).runs.length, 1, 'saving parameters does not create a run');
+  await result.getByText('参数已调整，点击“重新生成”后生效。', { exact: false }).waitFor();
+  await result.getByRole('button', { name: '调整参数', exact: true }).click();
+  assert.equal(await parameter('seed').inputValue(), '456', 'saved pending parameters reopen for editing');
+  await parameter('seed').fill('789');
+  await dialog.getByRole('button', { name: '取消', exact: true }).click();
+  await result.getByRole('button', { name: '重新生成', exact: true }).click();
+  await page.waitForFunction((id) => !document.querySelector('.workflow-run h2')?.textContent.includes(`#${id} `), parentId);
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  assert.equal(f.state.submissions.length, 2);
+  assert.equal(f.state.submissions[1].prompt['3'].inputs.seed, 456);
+  assert.equal(f.state.submissions[1].prompt['5'].inputs.width, 1024);
+  assert.equal(f.state.submissions[1].prompt['6'].inputs.text, '沿用这段提示词');
+  const latest = await w.api(`workflows/${created.id}`), child = await w.api(`workflow-runs/${latest.runs[0].id}`);
+  assert.equal(child.parentId, parentId);
+  assert.deepEqual(child.rootInstances.find((i) => i.nodeId === 'text').outputs, parent.rootInstances.find((i) => i.nodeId === 'text').outputs, 'upstream text is reused');
+  assert.deepEqual(latest.definition, created.definition);
+  assert.deepEqual((await w.api(`workflow-runs/${parentId}`)).definition, parent.definition, 'parent parameters and output remain immutable');
+  await page.locator('.workflow-run-results .workflow-node-result[data-node-id="generate"] .workflow-result-heading').click();
+  await page.getByRole('button', { name: '调整参数', exact: true }).click();
+  await dialog.getByLabel(/^种子模式 /).selectOption('randomize');
+  await dialog.getByRole('button', { name: '保存参数', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  assert.equal(f.state.submissions.length, 2, 'saving random mode still does not generate');
+  await page.getByRole('button', { name: '恢复本次原参数', exact: true }).click();
+  await page.getByRole('button', { name: '调整参数', exact: true }).click();
+  assert.equal(await dialog.getByLabel(/^种子模式 /).inputValue(), 'fixed', 'reset restores the executed parameters');
+  await dialog.getByLabel(/^种子模式 /).selectOption('randomize');
+  await dialog.getByRole('button', { name: '保存参数', exact: true }).click();
+  await page.getByRole('button', { name: '重新生成', exact: true }).click();
+  await page.waitForFunction((id) => !document.querySelector('.workflow-run h2')?.textContent.includes(`#${id} `), child.id);
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  const randomRun = (await w.api(`workflows/${created.id}`)).runs[0].id;
+  await page.locator('.workflow-run-results .workflow-node-result[data-node-id="generate"] .workflow-result-heading').click();
+  await page.getByRole('button', { name: '重新生成', exact: true }).click();
+  await page.waitForFunction((id) => !document.querySelector('.workflow-run h2')?.textContent.includes(`#${id} `), randomRun);
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  assert.equal(f.state.submissions.length, 4);
+  assert.notEqual(f.state.submissions[2].prompt['3'].inputs.seed, f.state.submissions[3].prompt['3'].inputs.seed, 'plain redo honors the random mode');
+  assert.deepEqual(errors, []);
+});
+
 test('workflow image nodes select saved ComfyUI workflows and explicitly map prompt, image input and output', { timeout: 30000, skip: !browserPath && 'Browser required' }, async (t) => {
   const f = await fixture(t); f.state.canvas = imageCanvas();
   const w = await wikiFixture(t, f), browser = await chromium.launch({ executablePath: browserPath, headless: true }); f.cleanup.push(() => browser.close());
@@ -317,32 +484,48 @@ test('workflow image nodes select saved ComfyUI workflows and explicitly map pro
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${w.app.url}#workflow`);
   await page.getByRole('button', { name: '新建空白', exact: true }).click();
-  await page.locator('.workflow-palette').getByRole('button', { name: /^图片生成/ }).click();
+  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-palette').getByRole('button', { name: /^AI 生成图片/ }).click();
   await page.locator('.workflow-inspector select').first().waitFor();
-  await page.getByLabel('模型适配器', { exact: true }).selectOption('comfyui');
+  await page.getByLabel('使用的 AI', { exact: true }).selectOption('comfyui');
+  assert.equal(await page.getByLabel('ComfyUI 工作流', { exact: true }).count(), 0, 'the sidebar contains only the summary and dialog trigger');
+  await page.getByRole('button', { name: '配置 ComfyUI', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '配置 ComfyUI', exact: true });
+  await dialog.waitFor();
   const chooser = page.getByLabel('ComfyUI 工作流', { exact: true });
+  assert.equal(await page.locator('.workflow-binding input[type="file"]').count(), 0);
+  await page.getByRole('button', { name: '刷新工作流列表', exact: true }).click();
   await chooser.locator('option[value="文生图/水彩.json"]').waitFor({ state: 'attached' });
   await chooser.selectOption('文生图/水彩.json');
-  await page.getByText('当前工作流：文生图/水彩.json', { exact: true }).waitFor();
-  assert.equal(await page.getByLabel('ComfyUI 提示词字段', { exact: true }).inputValue(), '', 'do not guess the positive text field');
+  await page.getByLabel('ComfyUI 图片输出节点', { exact: true }).waitFor();
+  assert.equal(await page.getByLabel('ComfyUI 提示词字段', { exact: true }).inputValue(), JSON.stringify({ nodeId: '6', input: 'text' }), 'the explicitly titled positive field is detected');
   assert.equal(await page.getByLabel('ComfyUI 图片输出节点', { exact: true }).inputValue(), '9', 'unique output needs no extra choice');
   await page.getByLabel('ComfyUI 提示词字段', { exact: true }).selectOption(JSON.stringify({ nodeId: '6', input: 'text' }));
   assert.equal(await page.getByLabel('第 1 张参考图入口', { exact: true }).inputValue(), '72', 'unique image input needs no extra choice');
   assert.equal(await page.getByRole('button', { name: '添加参考图映射', exact: true }).isDisabled(), true);
-  await page.getByText(/^工作流参数（/).click();
   const parameter = (name) => page.getByLabel(new RegExp(`^工作流参数 .*#3 → ${name}$`));
   await parameter('seed').fill('777'); await parameter('seed').blur();
-  await page.getByLabel(/^种子模式 /).selectOption('fixed');
+  await dialog.getByLabel(/^种子模式 /).selectOption('fixed');
   await parameter('steps').fill('12'); await parameter('steps').blur();
   await parameter('cfg').fill('4.5'); await parameter('cfg').blur();
   await parameter('sampler_name').selectOption(JSON.stringify('dpmpp_2m'));
   await parameter('steps').fill('0'); await parameter('steps').blur();
-  assert.equal(await parameter('steps').inputValue(), '12', 'reject out-of-range values');
+  assert.equal(await parameter('steps').inputValue(), '0', 'invalid edits remain visible');
+  assert.equal(await parameter('steps').getAttribute('aria-invalid'), 'true');
+  await page.getByRole('alert').filter({ hasText: '不能小于 1' }).waitFor();
+  await page.getByRole('button', { name: '应用到节点', exact: true }).click();
+  await page.getByRole('alert').filter({ hasText: '请修正' }).waitFor();
+  assert.equal(f.state.submissions.length, 0);
+  await parameter('steps').fill('12');
+  assert.equal(await parameter('steps').getAttribute('aria-invalid'), 'false');
   assert.equal(await page.getByLabel(/^工作流参数 .*#6 → text$/).count(), 0, 'mapped prompt is edited only in its binding');
-  await page.getByLabel('提示词', { exact: true }).fill('指定字段的文字');
   assert.equal(f.state.submissions.length, 0, 'choosing mappings must not submit a job');
   await page.screenshot({ path: '.local/workflow-comfyui-mappings.png' });
+  await page.getByRole('button', { name: '应用到节点', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  await page.getByLabel('提示词', { exact: true }).fill('指定字段的文字');
   await page.getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   assert.equal(f.state.submissions[0].prompt['6'].inputs.text, '指定字段的文字');
   assert.equal(f.state.submissions[0].prompt['7'].inputs.text, 'original negative');
@@ -352,15 +535,28 @@ test('workflow image nodes select saved ComfyUI workflows and explicitly map pro
   assert.equal(f.state.submissions[0].prompt['3'].inputs.cfg, 4.5);
   assert.equal(f.state.submissions[0].prompt['3'].inputs.sampler_name, 'dpmpp_2m');
   assert.deepEqual(f.state.submissions[0].prompt['3'].inputs.positive, ['6', 0], 'parameter editing preserves graph links');
-  await page.getByRole('button', { name: '编辑草稿', exact: true }).click();
+  await page.getByRole('button', { name: '修改流程', exact: true }).click();
   await page.locator('.react-flow__node').click();
-  await page.getByText(/^工作流参数（/).click();
+  await page.getByRole('button', { name: '配置 ComfyUI', exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll('input')].some((input) => input.getAttribute('aria-label')?.endsWith('#3 → seed')));
   assert.equal(await parameter('seed').inputValue(), '777', 'reopening preserves parameters and refreshes definitions');
+  await parameter('seed').fill('888');
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await page.getByRole('button', { name: '配置 ComfyUI', exact: true }).click();
+  await parameter('seed').waitFor();
+  assert.equal(await parameter('seed').inputValue(), '777', 'cancel discards dialog edits');
+  await page.getByRole('button', { name: '取消', exact: true }).focus();
+  await page.keyboard.press('Control+z');
+  assert.equal(await page.locator('.react-flow__node').count(), 1, 'modal shortcuts do not undo the underlying workflow');
+  await page.keyboard.press('Escape');
+  assert.equal(await page.getByRole('button', { name: '配置 ComfyUI', exact: true }).evaluate((node) => node === document.activeElement), true, 'Escape closes the modal and restores focus');
+  await page.getByRole('button', { name: '配置 ComfyUI', exact: true }).click();
   assert.equal(await page.getByLabel('第 1 张参考图入口', { exact: true }).inputValue(), '72');
   await page.getByLabel('ComfyUI 提示词来源', { exact: true }).selectOption('workflow');
+  await page.getByRole('button', { name: '应用到节点', exact: true }).click();
   assert.equal(await page.getByLabel('提示词', { exact: true }).count(), 0);
   await page.getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   assert.equal(f.state.submissions[1].prompt['6'].inputs.text, 'original positive');
   assert.equal(f.state.submissions[1].prompt['7'].inputs.text, 'original negative');
@@ -671,7 +867,7 @@ test("settings only connect; the conversation discovers workflows, adjusts param
   assert.equal(await settings.locator('input[type="file"]').count(), 0);
   await settings.getByLabel("ComfyUI 服务地址", { exact: true }).fill(f.config.baseUrl);
   assert.equal(await probe.isDisabled(), true);
-  await page.getByRole("button", { name: "保存整理配置", exact: true }).click();
+  await page.getByRole("region", { name: "保存设置" }).getByRole("button", { name: "保存", exact: true }).click();
   await page.waitForFunction(() => [...document.querySelectorAll("button")].some((button) => button.textContent === "检测 ComfyUI 连接" && !button.disabled));
   await probe.click(); await page.getByRole("status").filter({ hasText: /ComfyUI 已连接/ }).waitFor();
   assert.equal(f.state.submissions.length, 0);
@@ -680,6 +876,7 @@ test("settings only connect; the conversation discovers workflows, adjusts param
   await chooseOption(page, "生图方式", "comfyui");
   await page.getByRole("button", { name: "工作流与参数", exact: true }).click();
   const picker = page.getByLabel("ComfyUI 工作流", { exact: true });
+  assert.equal(await page.locator('.chat-workflow-panel input[type="file"]').count(), 0);
   await picker.selectOption("文生图/水彩.json");
   const width = page.getByLabel("EmptyLatentImage · #5 → width", { exact: true }), seed = page.getByLabel("KSampler · #3 → seed", { exact: true });
   await width.fill("64"); await seed.fill("777");

@@ -34,7 +34,8 @@ async function setup(t) {
 test("LAN sharing persists configuration, requires pairing, keeps local-only features local and stops immediately", async (t) => {
   const { dataDir, app, request, port, lan } = await setup(t);
   const initial = await (await request("/api/lan-sharing")).json();
-  const { token, pairingCode, pairUrls, ...settings } = initial;
+  const { token, pairingCode, pairingExpiresAt, pairUrls, ...settings } = initial;
+  assert.equal(pairingExpiresAt, 0);
   assert.match(pairingCode, /^\d{6}$/);
   assert.match(token, /^[A-Za-z0-9_-]{32}$/);
   assert.deepEqual({ ...settings, urls: [] }, { autoStart: false, port: 8766, allowWrite: false, requireToken: true, enabled: false, error: "", urls: [] });
@@ -184,19 +185,24 @@ test("LAN pairing can be disabled locally and older configuration files gain a s
   } finally { await upgraded.close(); }
 });
 
-test("six-digit pairing preserves strong cookies, throttles guesses and rotates both credentials", async (t) => {
+test("six-digit pairing requires a local window, is single-use, and preserves strong cookies", async (t) => {
   const { request, port, lan } = await setup(t);
   await request("/api/lan-sharing", "PUT", { autoStart: false, port });
-  const { token, pairingCode } = await (await request("/api/lan-sharing")).json();
+  const initial = await (await request("/api/lan-sharing")).json(), token = initial.token;
   await request("/api/lan-sharing", "POST", { enabled: true });
   const pair = (code) => fetch(`${lan}/?pair=${code}`, { redirect: "manual" });
+  assert.equal((await pair(initial.pairingCode)).status, 401);
+  const { pairingCode, pairingExpiresAt } = await (await request('/api/lan-sharing/pairing', 'POST', {})).json();
+  assert.ok(pairingExpiresAt > Date.now());
   const paired = await pair(pairingCode);
   assert.equal(paired.status, 303);
   const cookie = paired.headers.get("set-cookie").split(";")[0];
   assert.equal(cookie, `self_wiki_lan_token=${token}`);
   assert.equal((await fetch(`${lan}/api/elements`, { headers: { cookie } })).status, 200);
+  assert.equal((await pair(pairingCode)).status, 401, 'short code is single-use');
   assert.equal((await fetch(`${lan}/api/elements`, { headers: { "x-self-wiki-lan-token": pairingCode } })).status, 401);
-  const wrong = pairingCode === "000000" ? "000001" : "000000";
+  const activeCode = await (await request('/api/lan-sharing/pairing', 'POST', {})).json();
+  const wrong = activeCode.pairingCode === "000000" ? "000001" : "000000";
   for (let i = 0; i < 10; i++) assert.equal((await pair(wrong)).status, 401);
   const limited = await pair(pairingCode);
   assert.equal(limited.status, 429);
@@ -208,8 +214,27 @@ test("six-digit pairing preserves strong cookies, throttles guesses and rotates 
   assert.match(rotated.pairingCode, /^\d{6}$/);
   assert.notEqual(rotated.pairingCode, pairingCode);
   assert.equal((await pair(pairingCode)).status, 401);
-  assert.equal((await pair(rotated.pairingCode)).status, 303);
+  assert.equal((await pair(rotated.pairingCode)).status, 401);
+  const nextCode = await (await request('/api/lan-sharing/pairing', 'POST', {})).json();
+  assert.equal((await pair(nextCode.pairingCode)).status, 303);
   assert.equal((await fetch(`${lan}/api/elements`, { headers: { cookie } })).status, 401);
+});
+
+test("short codes expire, rotate locally and cannot be opened from LAN", async (t) => {
+  const { request, port, lan } = await setup(t);
+  await request('/api/lan-sharing', 'PUT', { autoStart: false, port });
+  const status = await (await request('/api/lan-sharing', 'POST', { enabled: true })).json();
+  const first = await (await request('/api/lan-sharing/pairing', 'POST', {})).json();
+  const second = await (await request('/api/lan-sharing/pairing', 'POST', {})).json();
+  assert.notEqual(first.pairingCode, second.pairingCode);
+  assert.equal((await fetch(`${lan}/?pair=${first.pairingCode}`, { redirect: 'manual' })).status, 401);
+  assert.equal((await fetch(`${lan}/api/lan-sharing/pairing`, { method: 'POST', headers: { 'x-self-wiki-lan-token': status.token } })).status, 403);
+  const now = Date.now;
+  try {
+    Date.now = () => second.pairingExpiresAt + 1;
+    assert.equal((await fetch(`${lan}/?pair=${second.pairingCode}`, { redirect: 'manual' })).status, 401);
+    assert.equal((await fetch(`${lan}/?pair=${status.token}`, { redirect: 'manual' })).status, 303);
+  } finally { Date.now = now; }
 });
 
 test("existing long-token configuration gains a short code without revoking paired devices", async (t) => {
@@ -223,7 +248,7 @@ test("existing long-token configuration gains a short code without revoking pair
     assert.equal(saved.token, token);
     assert.match(saved.pairingCode, /^\d{6}$/);
     assert.equal((await fetch(`${lan}/api/elements`, { headers: { cookie: `self_wiki_lan_token=${token}` } })).status, 200);
-    assert.equal((await fetch(`${lan}/?pair=${saved.pairingCode}`, { redirect: "manual" })).status, 303);
+    assert.equal((await fetch(`${lan}/?pair=${saved.pairingCode}`, { redirect: "manual" })).status, 401, 'persisted short codes do not open a pairing window');
   } finally { await upgraded.close(); }
 });
 
@@ -324,8 +349,7 @@ test("App sharing controls pair a mobile page that can edit content but not use 
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "clipboard", { value: { writeText: async (text) => { window.copiedAddress = text; } } });
   });
-  await page.route("**/api/lan-sharing", async (route) => {
-    if (route.request().method() !== "GET") return route.continue();
+  await page.route("**/api/lan-sharing**", async (route) => {
     const response = await route.fetch();
     const status = await response.json();
     await route.fulfill({ response, json: { ...status, urls: [`http://192.168.1.25:${status.port}/`], pairUrls: [`http://192.168.1.25:${status.port}/?pair=${status.token}`] } });
@@ -339,6 +363,7 @@ test("App sharing controls pair a mobile page that can edit content but not use 
   await dialog.getByRole("heading", { name: "局域网共享", level: 3 }).waitFor();
   const addresses = dialog.getByRole("region", { name: "局域网访问地址", exact: true });
   await addresses.getByRole("button", { name: "复制地址", exact: true }).click();
+  await dialog.getByRole('button', { name: '生成 10 分钟配对码', exact: true }).click();
   const { token, pairingCode } = await (await request("/api/lan-sharing")).json();
   assert.equal(await page.evaluate(() => window.copiedAddress), "http://192.168.1.25:8766/");
   assert.equal(await addresses.getByRole("textbox").inputValue(), "http://192.168.1.25:8766/");
@@ -348,7 +373,7 @@ test("App sharing controls pair a mobile page that can edit content but not use 
   await page.locator("#settings-sharing summary").click();
   await dialog.getByLabel("访问端口", { exact: true }).fill(String(port));
   await dialog.getByLabel("启动 App 时自动开启共享").check();
-  await dialog.getByLabel("允许局域网设备编辑内容（新增、修改、删除、回收站）").check();
+  await dialog.getByLabel("允许局域网设备编辑内容（添加、修改、删除、回收站）").check();
   await dialog.getByRole("switch").click();
   await dialog.getByText("共享已开启", { exact: true }).waitFor();
   assert.equal(await dialog.getByRole("switch").getAttribute("aria-checked"), "true");
@@ -370,14 +395,14 @@ test("App sharing controls pair a mobile page that can edit content but not use 
   assert.equal(new URL(guest.url()).search, "");
   assert.equal(await guest.getByLabel("会话消息").count(), 0);
   await guest.getByRole("button", { name: "更多工具", exact: true }).click();
-  for (const label of ["新增内容", "回收站"]) assert.equal(await guest.getByRole("button", { name: label, exact: true }).count(), 1);
+  for (const label of ["添加内容", "回收站"]) assert.equal(await guest.getByRole("button", { name: label, exact: true }).count(), 1);
   for (const label of ["设置", "问 Agent"]) assert.equal(await guest.getByRole("button", { name: label, exact: true }).count(), 0);
-  await guest.getByRole("button", { name: "新增内容", exact: true }).click();
-  const creation = guest.getByRole("dialog", { name: "新增内容", exact: true });
-  await creation.getByLabel("文字", { exact: true }).fill("手机新增内容");
+  await guest.getByRole("button", { name: "添加内容", exact: true }).click();
+  const creation = guest.getByRole("dialog", { name: "添加内容", exact: true });
+  await creation.getByLabel("文字", { exact: true }).fill("手机添加内容");
   await creation.getByRole("button", { name: "保存全部", exact: true }).click();
   await creation.waitFor({ state: "hidden" });
-  assert.equal((await (await request("/api/elements?q=手机新增内容")).json()).elements.length, 1);
+  assert.equal((await (await request("/api/elements?q=手机添加内容")).json()).elements.length, 1);
   await guest.getByRole("region", { name: "内容详情", exact: true }).getByRole("button", { name: "返回", exact: true }).click();
   await guest.getByRole("button", { name: "按标签筛选", exact: true }).click();
   await guest.getByRole("checkbox", { name: "手机", exact: true }).check();

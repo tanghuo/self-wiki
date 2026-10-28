@@ -39,7 +39,7 @@ test("video imports keep original bytes, play and seek, support tags, relations,
   page.on("request", (request) => { if (/\/api\/elements\/\d+\/video(?:\?|$)/.test(request.url())) videoRequests.push(request.url()); });
   const input = page.getByLabel("导入图片或视频文件");
   await input.setInputFiles({ name: "本地动画.webm", mimeType: "video/webm", buffer: bytes });
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByLabel("视频内容 1", { exact: true }).waitFor();
   await dialog.getByLabel("本次标签", { exact: true }).fill("动画");
   await dialog.getByLabel("文字", { exact: true }).fill("这段动画的关联说明");
@@ -149,7 +149,7 @@ test("pasted videos offer first-frame organization while staying unavailable as 
     clipboard.items.add(new File([new Uint8Array(bytes)], "粘贴视频.webm", { type: "video/webm" }));
     document.body.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true, cancelable: true }));
   }, [...bytes]);
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByLabel("视频内容 1", { exact: true }).waitFor();
   await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
@@ -177,7 +177,7 @@ test("dropped video remains labeled in the canvas and its inspector can play it"
     transfer.items.add(new File([new Uint8Array(bytes)], "画布视频.webm", { type: "video/webm" }));
     document.querySelector(".wiki-shell").dispatchEvent(new DragEvent("drop", { dataTransfer: transfer, bubbles: true, cancelable: true }));
   }, [...bytes]);
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByLabel("视频内容 1", { exact: true }).waitFor();
   await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
   await dialog.waitFor({ state: "hidden" });

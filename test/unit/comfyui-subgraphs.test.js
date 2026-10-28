@@ -128,3 +128,11 @@ test('scalar boundary inputs pass through reroutes and direct subgraph outputs',
   definition.nodes[0].inputs[0].link = 5;
   assert.equal(convertComfyuiWorkflow(graph, infos)['2:1'].inputs.prompt, 'host prompt');
 });
+
+test('a unique image saver is selected ahead of comparison outputs while multiple savers remain explicit', () => {
+  const graph = { '1': { class_type: 'SaveImageAdvanced', inputs: {} }, '2': { class_type: 'ImageCompare', inputs: {} } };
+  const schemas = { SaveImageAdvanced: { input: {}, output_node: true }, ImageCompare: { input: {}, output_node: true } };
+  assert.equal(describeComfyuiWorkflow(graph, schemas).outputNodeId, '1');
+  graph['3'] = { class_type: 'SaveImageAdvanced', inputs: {} };
+  assert.equal(describeComfyuiWorkflow(graph, schemas).outputNodeId, '');
+});

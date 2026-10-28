@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { imageExecutors, grokAspectRatios } from "../../shared/domain/imageGeneration.js";
-import { maxComfyWorkflowBytes } from "../../shared/domain/comfyui.js";
 import { request } from "./api.js";
 import "./chatImagePicker.css";
 import Select from "./Select.jsx";
@@ -66,16 +65,6 @@ export default function ChatImagePicker({ options, chatEngine, disabled, onChang
     } catch (failure) { if (operation.current === sequence) setError(failure.message); }
     finally { if (operation.current === sequence) setBusy(false); }
   }
-  async function importFile(event) {
-    const file = event.target.files?.[0]; event.target.value = "";
-    if (!file) return;
-    setError("");
-    try {
-      if (file.size > maxComfyWorkflowBytes) throw new Error("工作流文件最多 512 KiB");
-      const workflow = JSON.parse(await file.text());
-      await load({ workflow, name: file.name });
-    } catch (failure) { setError(failure.message); }
-  }
   async function apply() {
     setBusy(true); setError("");
     try { if (await onChange(draft)) { setStored(record); setOpen(false); trigger.current?.focus(); } }
@@ -135,7 +124,6 @@ export default function ChatImagePicker({ options, chatEngine, disabled, onChang
         <p className="wiki-muted">选项保存在本会话中。种子沿用工作流的随机或固定模式；手动修改种子后使用固定值，恢复工作流参数可恢复原模式。更新工作流后需重新检查映射。每次应输出一张图片。</p>
         <div className="chat-workflow-actions"><button type="button" disabled={locked} onClick={() => setDraft((current) => ({ ...current, parameters: [] }))}>恢复工作流参数</button><button type="button" className="primary" disabled={locked || !draft.prompt || !draft.outputNodeId} onClick={apply}>应用到本会话</button></div>
       </>}
-      <details className="chat-workflow-import"><summary>备用：导入 API 工作流</summary><p className="wiki-muted">用于不支持自动转换的工作流。在 ComfyUI 导出 API 格式，再选取文件。</p><label>API 工作流文件<input type="file" accept=".json,application/json" disabled={locked} onChange={importFile} /></label></details>
     </section>}
   </div>;
 }

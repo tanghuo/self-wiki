@@ -12,7 +12,7 @@ export default function ModelAdapterFields({ node, adapters, onChange }) {
   const config = node.config, editor = configurationEditors[adapter?.configurationEditor];
   const Component = editor?.Component;
   return <div className="workflow-adapter-fields">
-    <label>模型适配器<select aria-label="模型适配器" value={selectedId} onChange={(event) => { const next = available.find((entry) => entry.id === event.target.value); if (next) onChange(newAdapterConfig(next)); }}>
+    <label>使用的 AI<select aria-label="使用的 AI" value={selectedId} onChange={(event) => { const next = available.find((entry) => entry.id === event.target.value); if (next) onChange(newAdapterConfig(next)); }}>
       {!adapter && <option value={selectedId}>{selectedId ? '适配器不可用，请重新选择' : '选择适配器…'}</option>}
       {available.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
     </select></label>

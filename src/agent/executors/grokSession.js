@@ -5,6 +5,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { startGrokAcp } from "./grokProcess.js";
 import { createGrokTools } from "./grokTools.js";
 import { acquireExternalResource } from './resourceGate.js';
+import sharp from 'sharp';
 
 const inside = (root, file) => { const rel = path.relative(root, file); return rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel); };
 
@@ -59,8 +60,12 @@ export async function openGrokSession(config, { cwd, signal, onEvent, onToolCall
   }
   async function close() {
     if (closePromise) return closePromise;
-    current?.release?.(); current = undefined; bridge?.end();
-    closePromise = (async () => { await client?.close(); await bridge?.close(); })();
+    const turn = current;
+    current = undefined; bridge?.end();
+    closePromise = (async () => {
+      try { await client?.close(); await bridge?.close(); }
+      finally { turn?.release?.(); }
+    })();
     return closePromise;
   }
   try {
@@ -137,14 +142,19 @@ export async function openGrokSession(config, { cwd, signal, onEvent, onToolCall
             const file = await realpath(attachment.path), root = await realpath(cwd);
             if (!inside(root, file) || (await stat(file)).size > 25 * 1024 * 1024) throw new Error("Grok 图片附件不在当前会话目录内或超过限制");
             const bytes = await readFile(file);
-            url = `data:image/png;base64,${bytes.toString("base64")}`;
+            const info = await sharp(bytes, { limitInputPixels: 40_000_000 }).metadata();
+            if (!['png', 'jpeg', 'webp'].includes(info.format)) throw new Error('Grok 图片附件仅支持 PNG、JPEG、WebP');
+            url = `data:image/${info.format};base64,${bytes.toString("base64")}`;
           }
           const match = /^data:(image\/[\w.+-]+);base64,([A-Za-z0-9+/=\r\n]+)$/.exec(url || "");
           if (!match) throw new Error("无效的 Grok 图片附件");
           prompt.push({ type: "image", mimeType: match[1], data: match[2] });
         }
         const tools = bridgeTools;
+        await onEvent({ type: 'resource-queued', threadId, message: '正在等待 Grok 执行名额；其他 Grok 对话或图片任务完成后继续。', progress: true });
         const release = await acquireExternalResource('grok', signal);
+        try { await onEvent({ type: 'resource-acquired', threadId, progress: true }); }
+        catch (error) { release(); throw error; }
         if (closePromise) { release(); throw new Error('Grok 会话已关闭'); }
         current = { id, tools, release, hookCalls: 0, messageId: `grok-message-${id}`, nativeImages: !restrictedText && ["grok-build", "codex-cli"].includes(config.imageGeneration?.executor) };
         calls.clear(); bridge.begin(thread, id);

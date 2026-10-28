@@ -8,7 +8,7 @@ export function chatEngineConfig(value = defaultChatEngineConfig()) {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !["engine", "grokBuild"].includes(key))
       || !chatEngines.some((entry) => entry.id === value.engine) || !grok || typeof grok !== "object" || Array.isArray(grok)
       || Object.keys(grok).some((key) => !["executable", "model"].includes(key)) || !validExecutable(grok.executable)
-      || /\.(?:cmd|bat)$/i.test(grok.executable.trim()) || typeof grok.model !== "string" || !/^[\w.-]{1,100}$/.test(grok.model)) throw elementError("无效的聊天引擎或 Grok 程序、模型配置");
+      || /\.(?:cmd|bat)$/i.test(grok.executable.trim()) || typeof grok.model !== "string" || !/^[a-zA-Z0-9][\w.-]{0,99}$/.test(grok.model)) throw elementError("无效的聊天引擎或 Grok 程序、模型配置");
   return { engine: value.engine, grokBuild: { executable: grok.executable.trim(), model: grok.model } };
 }
 

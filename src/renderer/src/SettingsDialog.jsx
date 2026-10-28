@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Bot, Palette, ScanEye, Tags, Wifi, X, Sparkles } from "lucide-react";
 import Dialog from "./Dialog.jsx";
 import LanSharingSettings from "./LanSharingSettings.jsx";
@@ -6,6 +6,7 @@ import OrganizationPanel from "./OrganizationPanel.jsx";
 import VocabularySettings from "./VocabularySettings.jsx";
 import VideoAnalysisSettings from "./VideoAnalysisSettings.jsx";
 import ElementUsagePanel from "./ElementUsagePanel.jsx";
+import { ConfirmDialog, SaveBar } from "./ui/index.js";
 
 const themes = [
   { id: "auto", name: "跟随系统", description: "浅色暖纸，深色夜幕" },
@@ -43,19 +44,32 @@ export default function SettingsDialog({ theme, onThemeChange, cardTagDisplay, o
   const [vocabularyBusy, setVocabularyBusy] = useState(false);
   const [videoBusy, setVideoBusy] = useState(false), [videoDirty, setVideoDirty] = useState(false);
   const [videoOpened, setVideoOpened] = useState(initialSection === "video");
-  const [sharingDirty, setSharingDirty] = useState(false), [organizationDirty, setOrganizationDirty] = useState(false);
-  const [confirmClose, setConfirmClose] = useState(false);
-  const busy = sharingBusy || organizationBusy || vocabularyBusy || videoBusy;
-  const dirtySections = [
-    sharingDirty && "局域网共享",
-    organizationDirty && (activeSection === "agent-connect" || activeSection === "agent-org" ? "Agent 设置" : "Agent 设置"),
-    videoDirty && "视频与画面检索",
+  const [sharingDirty, setSharingDirty] = useState(false), [connectDirty, setConnectDirty] = useState(false), [organizationDirty, setOrganizationDirty] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false), [saving, setSaving] = useState(false);
+  // Connection and service sections register {save, discard} here; one save bar at the bottom saves them all.
+  // Appearance and browsing preferences apply (and persist) immediately, so they never appear in the bar.
+  const savers = useRef({});
+  const registerSharing = useCallback((entry) => { savers.current.sharing = entry; }, []);
+  const registerConnect = useCallback((entry) => { savers.current["agent-connect"] = entry; }, []);
+  const registerOrganization = useCallback((entry) => { savers.current["agent-org"] = entry; }, []);
+  const registerVideo = useCallback((entry) => { savers.current.video = entry; }, []);
+  const busy = sharingBusy || organizationBusy || vocabularyBusy || videoBusy || saving;
+  const dirty = [
+    sharingDirty && { id: "sharing", label: "局域网共享" },
+    connectDirty && { id: "agent-connect", label: "Agent 连接" },
+    organizationDirty && { id: "agent-org", label: "自动整理与检索" },
+    videoDirty && { id: "video", label: "视频与画面检索" },
   ].filter(Boolean);
-  // Deduplicate Agent dirty label when both connect/org share same dirty flag
-  const dirtyLabel = [...new Set(dirtySections)];
+  const dirtyLabel = dirty.map((entry) => entry.label);
+  async function saveAll() {
+    setSaving(true);
+    try { for (const { id } of dirty) await savers.current[id]?.save(); }
+    finally { setSaving(false); }
+  }
+  function discardAll() { for (const { id } of dirty) savers.current[id]?.discard(); }
   function close() {
     if (busy) return;
-    if (dirtyLabel.length) setConfirmClose(true);
+    if (dirty.length) setConfirmClose(true);
     else onClose();
   }
   function go(id) {
@@ -64,7 +78,7 @@ export default function SettingsDialog({ theme, onThemeChange, cardTagDisplay, o
     contentRef.current?.scrollTo(0, 0);
   }
   return <><Dialog open label="设置" className="wiki-dialog settings-dialog" onClose={close}>
-    <header className="wiki-dialog-header"><div><h2>设置</h2></div><button className="icon-only" aria-label="关闭设置" onClick={close} disabled={busy}><X size={18} /></button></header>
+    <header className="wiki-dialog-header"><div><h2>设置</h2><p>外观改动立即生效；连接和服务类设置改完后在底部统一保存。</p></div><button className="icon-only" aria-label="关闭设置" onClick={close} disabled={busy}><X size={18} /></button></header>
     <div className="settings-layout">
       <nav className="settings-nav" aria-label="设置分类">
         {navGroups.map((group) => <div key={group.label} className="settings-nav-group">
@@ -102,23 +116,24 @@ export default function SettingsDialog({ theme, onThemeChange, cardTagDisplay, o
       </section>
       </div>
       {activeSection === "general" && <details className="element-usage-entry wiki-muted"><summary>本地记录</summary><button className="text-button" onClick={() => setElementUsageOpen(true)}>查看内容使用统计</button></details>}
-      <div id="settings-sharing" hidden={activeSection !== "sharing"}><LanSharingSettings onBusyChange={setSharingBusy} onDirtyChange={setSharingDirty} /></div>
-      <div id="settings-agent-connect" hidden={activeSection !== "agent-connect"}><OrganizationPanel mode="settings" focus="connection" onBusyChange={setOrganizationBusy} onDirtyChange={setOrganizationDirty} /></div>
-      <div id="settings-agent-org" hidden={activeSection !== "agent-org"}><OrganizationPanel mode="settings" focus="organization" onBusyChange={setOrganizationBusy} onDirtyChange={setOrganizationDirty} onChanged={onChanged} /></div>
-      <div id="settings-video" hidden={activeSection !== "video"}>{videoOpened && <VideoAnalysisSettings onBusyChange={setVideoBusy} onDirtyChange={setVideoDirty} onChanged={onChanged} />}</div>
+      <div id="settings-sharing" hidden={activeSection !== "sharing"}><LanSharingSettings onBusyChange={setSharingBusy} onDirtyChange={setSharingDirty} registerSave={registerSharing} /></div>
+      <div id="settings-agent-connect" hidden={activeSection !== "agent-connect"}><OrganizationPanel mode="settings" focus="connection" onBusyChange={setOrganizationBusy} onDirtyChange={setConnectDirty} registerSave={registerConnect} /></div>
+      <div id="settings-agent-org" hidden={activeSection !== "agent-org"}><OrganizationPanel mode="settings" focus="organization" onBusyChange={setOrganizationBusy} onDirtyChange={setOrganizationDirty} registerSave={registerOrganization} onChanged={onChanged} /></div>
+      <div id="settings-video" hidden={activeSection !== "video"}>{videoOpened && <VideoAnalysisSettings onBusyChange={setVideoBusy} onDirtyChange={setVideoDirty} registerSave={registerVideo} onChanged={onChanged} />}</div>
       {activeSection === "vocabulary" && <div id="settings-vocabulary"><VocabularySettings onChanged={onChanged} onBusyChange={setVocabularyBusy} /></div>}
       </div>
     </div>
-    <footer className="wiki-dialog-footer">
-      {dirtyLabel.length > 0 && <span className="wiki-muted" role="status">尚有未保存：{dirtyLabel.join("、")}（请在对应分区点保存）</span>}
-      <button onClick={close} disabled={busy}>关闭</button>
-    </footer>
+    <SaveBar dirtyCount={dirty.length} dirtyLabels={dirtyLabel} busy={busy} onSave={saveAll} onDiscard={discardAll}>
+      <button type="button" onClick={close} disabled={busy}>关闭</button>
+    </SaveBar>
   </Dialog>
   {elementUsageOpen && <ElementUsagePanel onClose={() => setElementUsageOpen(false)} />}
-  {confirmClose && <Dialog open label="未保存的设置" className="wiki-dialog" onClose={() => setConfirmClose(false)}>
-    <header className="wiki-dialog-header"><h2>还有设置未保存</h2></header>
-    <div className="wiki-form-fields"><p>{dirtyLabel.join("、")}中的修改尚未保存。请返回对应分类点击保存，或放弃这些修改。外观等已自动保存的项会保留。</p></div>
-    <footer className="wiki-dialog-footer"><button autoFocus onClick={() => { setConfirmClose(false); setActiveSection(sharingDirty ? "sharing" : organizationDirty ? (activeSection === "agent-connect" || activeSection === "agent-org" ? activeSection : "agent-org") : "video"); }}>继续编辑</button><button className="danger-quiet" onClick={onClose}>放弃未保存修改</button></footer>
-  </Dialog>}
+  {confirmClose && <ConfirmDialog label="未保存的设置" title="还有改动没保存" tone="neutral" cancelLabel="继续编辑"
+    confirmLabel="保存改动" busy={busy} busyLabel="正在保存…"
+    onCancel={() => { setConfirmClose(false); go(dirty[0]?.id || activeSection); }}
+    onConfirm={async () => { await saveAll(); setConfirmClose(false); }}
+    extra={<button type="button" className="danger-quiet" disabled={busy} onClick={onClose}>放弃改动并关闭</button>}>
+    <p>{dirtyLabel.join("、")}里的改动还没保存。外观和浏览偏好已经自动保存，不受影响。</p>
+  </ConfirmDialog>}
   </>;
 }

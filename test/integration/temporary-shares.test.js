@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, writeFile, readdir, rm, symlink } from "node:fs/promises";
-import { createServer as httpServer } from "node:http";
+import { createServer as httpServer, request as httpRequest } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { crc32 } from "node:zlib";
@@ -89,7 +89,7 @@ test("directory ZIP preserves nested UTF-8 names, empty folders, and content", a
   assert.equal((await request("/api/temporary-shares", "POST", { sourcePath: path.join(dir, "missing") })).status, 400);
 });
 
-test("paired LAN guests can download but cannot create or revoke even with editing enabled", async (t) => {
+test("paired LAN guests still need the dedicated share link even with editing enabled", async (t) => {
   const { dir, request } = await fixture(t);
   const sourcePath = path.join(dir, "file.bin");
   await writeFile(sourcePath, "LAN bytes");
@@ -103,11 +103,12 @@ test("paired LAN guests can download but cannot create or revoke even with editi
   const lan = `http://127.0.0.1:${port}`;
   assert.equal((await fetch(lan + item.downloadUrl)).status, 401);
   const headers = { "x-self-wiki-lan-token": status.token, "content-type": "application/json" };
-  assert.equal(await (await fetch(lan + item.downloadUrl, { headers })).text(), "LAN bytes");
+  assert.equal((await fetch(lan + item.downloadUrl, { headers })).status, 403);
+  assert.equal(await (await fetch(lan + `/share/${item.id}/download?token=${item.shareToken}`, { headers })).text(), "LAN bytes");
   assert.equal((await fetch(lan + "/api/temporary-shares", { method: "POST", headers, body: JSON.stringify({ sourcePath }) })).status, 403);
   assert.equal((await fetch(lan + `/api/temporary-shares/${item.id}`, { method: "DELETE", headers })).status, 403);
   await request("/api/lan-sharing", "PUT", { autoStart: false, port, allowWrite: false });
-  assert.equal(await (await fetch(lan + item.downloadUrl, { headers })).text(), "LAN bytes");
+  assert.equal((await fetch(lan + item.downloadUrl, { headers })).status, 403);
 });
 
 test("expiry revokes downloads and crash leftovers are removed without touching other files", async (t) => {
@@ -122,13 +123,87 @@ test("expiry revokes downloads and crash leftovers are removed without touching 
     const sourcePath = path.join(dir, "expire.txt");
     await writeFile(sourcePath, "source");
     const item = await shares.create({ sourcePath, hours: 1 });
+    assert.equal(shares.sharedDownload(item.id, item.shareToken).id, item.id);
     const now = Date.now;
     try {
       Date.now = () => item.expiresAt + 1;
       assert.deepEqual(shares.list(), []);
       assert.throws(() => shares.download(item.id), /到期/);
+      assert.throws(() => shares.sharedDownload(item.id, item.shareToken), /到期/);
     } finally { Date.now = now; }
   } finally { await shares.close(); }
+});
+
+test("share links grant only one live download without pairing or exposing other share tokens", async (t) => {
+  const { dir, request } = await fixture(t);
+  const sourcePath = path.join(dir, "文件 & private.txt");
+  await writeFile(sourcePath, "private share bytes");
+  const create = async () => (await request("/api/temporary-shares", "POST", { sourcePath, hours: 1 })).json();
+  const item = await create(), other = await create();
+  assert.match(item.shareToken, /^[A-Za-z0-9_-]{32}$/);
+  assert.notEqual(item.shareToken, other.shareToken);
+  const localList = (await (await request("/api/temporary-shares")).json()).shares;
+  assert.equal(localList.find((share) => share.id === item.id).shareToken, item.shareToken);
+  const blocker = httpServer();
+  await new Promise((resolve) => blocker.listen(0, "127.0.0.1", resolve));
+  const port = blocker.address().port;
+  await new Promise((resolve) => blocker.close(resolve));
+  await request("/api/lan-sharing", "PUT", { autoStart: false, port, allowWrite: true });
+  const status = await (await request("/api/lan-sharing", "POST", { enabled: true })).json();
+  assert.notEqual(item.shareToken, status.token);
+  const lan = `http://127.0.0.1:${port}`;
+  const route = `/share/${item.id}`, query = `?token=${item.shareToken}`;
+  const page = await fetch(lan + route + query);
+  assert.equal(page.status, 200);
+  assert.equal(page.headers.get("set-cookie"), null);
+  assert.equal(page.headers.get("cache-control"), "no-store");
+  assert.equal(page.headers.get("referrer-policy"), "no-referrer");
+  const html = await page.text();
+  assert.ok(html.includes("文件 &amp; private.txt"));
+  assert.ok(!html.includes(status.token));
+  assert.ok(!html.includes(other.shareToken));
+  const downloadUrl = lan + route + "/download" + query;
+  assert.equal((await fetch(downloadUrl, { headers: { origin: "http://untrusted.example" } })).status, 403);
+  const invalidHostStatus = await new Promise((resolve, reject) => {
+    const req = httpRequest(downloadUrl, { headers: { host: `untrusted.example:${port}` } }, (res) => {
+      res.resume(); resolve(res.statusCode);
+    });
+    req.on("error", reject); req.end();
+  });
+  assert.equal(invalidHostStatus, 403);
+  const downloaded = await fetch(downloadUrl);
+  assert.equal(await downloaded.text(), "private share bytes");
+  assert.equal(downloaded.headers.get("set-cookie"), null);
+  assert.equal((await fetch(downloadUrl, { method: "HEAD" })).status, 200);
+  for (const invalidQuery of ["", "?token=wrong", `?token=${other.shareToken}`, `?token=${status.token}`]) {
+    assert.equal((await fetch(lan + route + invalidQuery)).status, 404);
+    assert.equal((await fetch(lan + route + "/download" + invalidQuery)).status, 404);
+  }
+  assert.equal((await fetch(lan + `/share/${other.id}/download` + query)).status, 404);
+  assert.equal((await fetch(downloadUrl, { method: "POST" })).status, 405);
+  const shareHeaders = { "x-self-wiki-lan-token": item.shareToken, "content-type": "application/json" };
+  for (const endpoint of ["/api/elements", "/api/temporary-shares", item.downloadUrl]) {
+    assert.equal((await fetch(lan + endpoint + query, { headers: shareHeaders })).status, 401);
+  }
+  assert.equal((await fetch(lan + "/api/elements", { method: "POST", headers: shareHeaders, body: "{}" })).status, 401);
+  assert.equal((await fetch(lan + `/?pair=${item.shareToken}`, { redirect: "manual" })).status, 401);
+  assert.equal((await fetch(lan + "/api/temporary-shares", { headers: { "x-self-wiki-lan-token": status.token } })).status, 403);
+  await request(`/api/temporary-shares/${item.id}`, "DELETE");
+  assert.equal((await fetch(lan + route + query)).status, 404);
+  assert.equal((await fetch(downloadUrl)).status, 404);
+  assert.equal((await fetch(lan + `/share/${other.id}/download?token=${other.shareToken}`)).status, 200);
+  // Dedicated share credentials remain required even with general LAN pairing disabled.
+  await request("/api/lan-sharing", "PUT", { autoStart: false, port, allowWrite: true, requireToken: false });
+  assert.equal((await fetch(lan + '/api/temporary-shares')).status, 403);
+  assert.equal((await fetch(lan + other.downloadUrl)).status, 403);
+  assert.equal((await fetch(lan + `/share/${other.id}/download`)).status, 404);
+  assert.equal((await fetch(lan + `/share/${other.id}/download?token=${other.shareToken}`)).status, 200);
+  const now = Date.now;
+  try {
+    Date.now = () => other.expiresAt + 1;
+    assert.equal((await fetch(lan + `/share/${other.id}?token=${other.shareToken}`)).status, 404);
+    assert.equal((await fetch(lan + `/share/${other.id}/download?token=${other.shareToken}`)).status, 404);
+  } finally { Date.now = now; }
 });
 
 test("directory junctions are rejected and failed jobs leave no share or temporary file", async (t) => {

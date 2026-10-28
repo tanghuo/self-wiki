@@ -42,7 +42,7 @@ export default function VocabularySettings({ onChanged, onBusyChange }) {
     <header className="vocabulary-heading"><h3 id="vocabulary-heading">名称与别名</h3>
       <p className="wiki-muted">把同义叫法统一为一个主名称，原有别名仍可输入和检索。</p>
     </header>
-    <div className="vocabulary-tabs" role="group" aria-label="词表类别">{[["tag", "标签"], ["relation", "关联名称"]].map(([key, label]) =>
+    <div className="vocabulary-tabs ui-segmented" role="group" aria-label="词表类别">{[["tag", "标签"], ["relation", "关联名称"]].map(([key, label]) =>
       <button type="button" key={key} aria-pressed={kind === key} disabled={busy} onClick={() => { setKind(key); change(empty); setSearch(""); }}>{label}</button>)}</div>
     {data.error && <p role="alert" className="wiki-error">{data.error}<button onClick={() => setRevision((n) => n + 1)}>重试</button></p>}
     {data.loading && <p className="wiki-muted">正在读取名称…</p>}

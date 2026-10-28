@@ -1,13 +1,15 @@
-// Closing the desktop app discards unsaved drafts without a confirmation.
 // Stop the backend after the window closes, including during startup.
-export function createQuitController({ app, getWindow, waitForStartup, closeBackend, onShutdown = () => {}, onError = console.error }) {
+export function createQuitController({ app, dialog, getWindow, waitForStartup, closeBackend, onShutdown = () => {}, onError = console.error }) {
   let allowed = false, stopping = false, requested = false;
   const registered = new WeakSet();
   function registerWindow(window) {
     if (registered.has(window)) return;
     registered.add(window);
     window.webContents.on('will-prevent-unload', (event) => {
-      event.preventDefault(); // Electron: ignore the renderer's unload veto.
+      const response = dialog.showMessageBoxSync(window, { type: 'warning', title: '尚有未保存的修改',
+        message: '放弃未保存的修改并关闭？', buttons: ['取消', '放弃并关闭'], defaultId: 0, cancelId: 0, noLink: true });
+      if (response === 1) event.preventDefault(); // Electron: explicitly accept discarding the draft.
+      else requested = false;
     });
     window.on('closed', () => { if (requested) app.quit(); });
   }

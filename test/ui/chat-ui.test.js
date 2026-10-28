@@ -262,7 +262,7 @@ test("composer pastes chat-only images into new and docked conversations without
   const dock = page.getByRole("complementary", { name: "对话", exact: true });
   await copyImage(); await dock.getByLabel("会话消息").press("Control+V");
   await dock.getByLabel("本轮图片附件").locator("img").waitFor();
-  assert.equal(await page.getByRole("dialog", { name: "新增内容", exact: true }).count(), 0, "The Wiki paste listener must not handle composer images");
+  assert.equal(await page.getByRole("dialog", { name: "添加内容", exact: true }).count(), 0, "The Wiki paste listener must not handle composer images");
   const pendingId = Number(await dock.getByLabel("本轮图片附件").locator("[data-attachment-id]").getAttribute("data-attachment-id"));
   await page.reload();
   await page.getByRole("button", { name: "问 Agent", exact: true }).click();

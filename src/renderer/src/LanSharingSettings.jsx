@@ -3,7 +3,7 @@ import { Copy, Wifi } from "lucide-react";
 import { request } from "./api.js";
 import QrCode from "./QrCode.jsx";
 
-export default function LanSharingSettings({ onBusyChange, onDirtyChange }) {
+export default function LanSharingSettings({ onBusyChange, onDirtyChange, registerSave }) {
   const [status, setStatus] = useState(null);
   const [port, setPort] = useState(8766);
   const [autoStart, setAutoStart] = useState(false);
@@ -12,15 +12,19 @@ export default function LanSharingSettings({ onBusyChange, onDirtyChange }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [now, setNow] = useState(Date.now());
   function apply(value) { setStatus(value); setPort(value.port); setAutoStart(value.autoStart); setAllowWrite(value.allowWrite); setRequireToken(value.requireToken); }
   async function load() {
     try { apply(await request("/api/lan-sharing")); setError(""); }
     catch (failure) { setError(failure.message); }
   }
   useEffect(() => { void load(); }, []);
+  useEffect(() => { const timer = setInterval(() => { setNow(Date.now()); }, 1000); return () => clearInterval(timer); }, []);
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
   const dirty = Boolean(status && (Number(port) !== status.port || autoStart !== status.autoStart || allowWrite !== status.allowWrite || requireToken !== status.requireToken));
   useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false); }, [dirty, onDirtyChange]);
+  useEffect(() => { registerSave?.(dirty ? { save: () => update(false), discard: () => apply(status) } : null); });
+  useEffect(() => () => registerSave?.(null), [registerSave]);
   async function update(toggle) {
     if (busy) return;
     setBusy(true); setError(""); setMessage("");
@@ -39,6 +43,13 @@ export default function LanSharingSettings({ onBusyChange, onDirtyChange }) {
     if (busy) return;
     setBusy(true); setError(""); setMessage("");
     try { apply(await request("/api/lan-sharing/token", { method: "POST", body: "{}" })); setMessage("已更换配对码，已配对的设备需要重新配对"); }
+    catch (failure) { setError(failure.message); }
+    finally { setBusy(false); }
+  }
+  async function beginPairing() {
+    if (busy) return;
+    setBusy(true); setError(''); setMessage('');
+    try { apply(await request('/api/lan-sharing/pairing', { method: 'POST', body: '{}' })); setNow(Date.now()); }
     catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
@@ -65,7 +76,7 @@ export default function LanSharingSettings({ onBusyChange, onDirtyChange }) {
             <QrCode value={(status.pairUrls || status.urls)[0]} label="局域网配对二维码" />
             <p className="wiki-muted">手机需与电脑在同一 Wi-Fi；扫码后浏览器会记住本机。</p>
           </div>}
-          {status.requireToken && <p className="wiki-muted">6 位配对码：<code>{status.pairingCode}</code>（在 Mac 或其他电脑打开上方地址后输入，浏览器会记住此设备）<button disabled={busy} onClick={regenerate}>更换配对码</button></p>}
+          {status.requireToken && <div className="wiki-muted">{status.pairingExpiresAt > now ? <p>6 位配对码：<code>{status.pairingCode}</code>（{Math.ceil((status.pairingExpiresAt - now) / 60000)} 分钟内有效，仅可使用一次）</p> : <p>短码配对未开启或已到期，请先生成配对码。扫码仍可直接配对。</p>}<button disabled={busy} onClick={beginPairing}>生成 10 分钟配对码</button><button disabled={busy} onClick={regenerate}>更换配对码</button><p>“更换配对码”会撤销所有已配对设备的访问权限。</p></div>}
           {!status.urls.length && <p>未发现局域网 IPv4 地址，请连接 Wi-Fi 或有线网络后重新打开设置。</p>}
           <p className="wiki-muted">{status.enabled ? "也可复制地址到同一网络的其他设备浏览器中打开。" : "共享尚未开启；可以先扫码或复制地址，开启共享后才能访问。"}</p>
           {Number(port) !== status.port && <p className="wiki-muted">以上为已保存端口的地址，保存共享配置后更新。</p>}
@@ -74,11 +85,11 @@ export default function LanSharingSettings({ onBusyChange, onDirtyChange }) {
         <summary>高级设置<span>端口、编辑权限与启动选项</span></summary>
         <div className="settings-advanced-content">
         <label>访问端口<input type="number" min="1" max="65535" value={port} onChange={(event) => setPort(event.target.value)} disabled={busy || status.enabled} /></label>
-        <label className="lan-sharing-checkbox"><input type="checkbox" checked={allowWrite} onChange={(event) => setAllowWrite(event.target.checked)} disabled={busy} />允许局域网设备编辑内容（新增、修改、删除、回收站）</label>
+        <label className="lan-sharing-checkbox"><input type="checkbox" checked={allowWrite} onChange={(event) => setAllowWrite(event.target.checked)} disabled={busy} />允许局域网设备编辑内容（添加、修改、删除、回收站）</label>
         <label className="lan-sharing-checkbox"><input type="checkbox" checked={!requireToken} onChange={(event) => setRequireToken(!event.target.checked)} disabled={busy} />不要求配对码（同一网络的任何设备都能访问，不推荐）</label>
         <label className="lan-sharing-checkbox"><input type="checkbox" checked={autoStart} onChange={(event) => setAutoStart(event.target.checked)} disabled={busy} />启动 App 时自动开启共享</label>
-        <p className="wiki-muted">即时开关只控制本次运行；自动开启选项需保存后生效。修改端口前请先关闭共享。</p>
-        <button className="primary" disabled={busy} onClick={() => update(false)}>{busy ? "正在处理…" : "保存共享配置"}</button>
+        <p className="wiki-muted">上方开关立即生效，只控制本次运行；这里的选项改完后点底部「保存」生效。修改端口前请先关闭共享。</p>
+        {!registerSave && <button className="primary" disabled={busy} onClick={() => update(false)}>{busy ? "正在处理…" : "保存共享配置"}</button>}
         </div>
         </details>
         {status.enabled && <p className="wiki-muted">设备需连接同一网络；Windows 防火墙需允许此端口的专用网络入站访问。</p>}

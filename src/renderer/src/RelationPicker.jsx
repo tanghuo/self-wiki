@@ -90,7 +90,7 @@ export default function RelationPicker({ sourceId, targetId, onClose, onChanged 
   return <><Dialog open label="添加关联" className={`wiki-dialog wiki-relation-dialog ${choosing ? "is-choosing" : ""}`} onClose={() => !busy && onClose()}>
     <header className="wiki-dialog-header"><div><h2>添加关联</h2>{choosing && <p className="wiki-muted">勾选需要关联的内容，选好后一次保存。</p>}</div><button className="icon-only" aria-label="关闭关联选择" disabled={busy} onClick={onClose}><X size={18} /></button></header>
     <div className="wiki-relation-controls">
-      {!targetId && <div className="wiki-segment"><button aria-pressed={mode === "existing"} disabled={busy} onClick={() => setMode("existing")}>选择已有内容</button><button aria-pressed={mode === "tags"} disabled={busy} onClick={() => setMode("tags")}>按标签关联</button><button aria-pressed={mode === "new"} disabled={busy} onClick={() => setMode("new")}>新建文字</button></div>}
+      {!targetId && <div className="wiki-segment ui-segmented" role="group" aria-label="关联方式"><button aria-pressed={mode === "existing"} disabled={busy} onClick={() => setMode("existing")}>选择已有内容</button><button aria-pressed={mode === "tags"} disabled={busy} onClick={() => setMode("tags")}>按标签关联</button><button aria-pressed={mode === "new"} disabled={busy} onClick={() => setMode("new")}>新建文字</button></div>}
       <RelationFields value={semantics} onChange={setSemantics} disabled={busy} targetLabel={mode === "tags" ? "所选标签下的内容" : "所选内容"} />
       {choosing && <>
         <div className="wiki-relation-filters">

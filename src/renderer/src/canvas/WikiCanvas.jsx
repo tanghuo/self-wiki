@@ -14,6 +14,7 @@ import { relationshipGraph } from "./canvasLayout.js";
 import { maxCanvasNodes, maxCanvasEdges, canvasBatchSize } from "../../../shared/domain/canvas.js";
 import { elementLabel, relationLabel } from "../../../shared/domain/elements.js";
 import "@xyflow/react/dist/style.css";
+import PageHeader from "../ui/PageHeader.jsx";
 import "./canvas.css";
 import Select from "../Select.jsx";
 
@@ -44,7 +45,7 @@ function placeNodes(elements, groups, previous, onSelect, onOpen, aspect = 1.5) 
   });
 }
 
-export default function WikiCanvas({ readOnly, revision, addedIds, externalBusy = false, visible = true, onChanged, onBusyChange, onAdd, onOpen }) {
+export default function WikiCanvas({ readOnly, revision, addedIds, externalBusy = false, visible = true, onChanged, onBusyChange, onAdd, onOpen, headerActions, quietAdd = false }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [viewport, setViewport] = useState(null);
   const [edges, setEdges] = useState([]);
@@ -310,9 +311,10 @@ export default function WikiCanvas({ readOnly, revision, addedIds, externalBusy 
     if (relations.length) setRenaming(relations);
   }
   return <section className="wiki-canvas" aria-label="关系画布">
-    <header className="canvas-heading"><h1><Network size={24} />关系画布</h1>{!readOnly && <button className="primary" disabled={blocked} onClick={onAdd}><Plus size={16} />新增内容</button>}</header>
+    <PageHeader className="canvas-heading" title="关系画布" subtitle="看清内容之间的关联：拖动整理位置，点连线可以改关系名称。"
+      actions={!readOnly && <>{headerActions}<button className={quietAdd ? "" : "primary"} disabled={blocked} onClick={onAdd}><Plus size={16} />添加内容</button></>} />
     <div className="canvas-viewbar">
-      <div className="canvas-view-switch" role="group" aria-label="画布视图">
+      <div className="canvas-view-switch ui-segmented" role="group" aria-label="画布视图">
         <button aria-pressed={view === "relations"} disabled={blocked || loading} onClick={() => { if (view !== "relations") changeArrangement("relations"); }}><Network size={15} />关系视图</button>
         <button aria-pressed={view === "flat"} disabled={blocked || loading} onClick={() => { if (view !== "flat") changeArrangement("flat"); }}><LayoutGrid size={15} />平铺视图</button>
         <button aria-pressed={view === "tags"} disabled={blocked || loading} onClick={() => { if (view !== "tags") changeView("tags"); }}><Folders size={15} />标签视图</button>

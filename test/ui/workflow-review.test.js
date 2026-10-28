@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import { chromium } from 'playwright-core';
 import { resolveBrowserPath } from '../resolveBrowserPath.js';
 import { createServer } from '../../src/server/server.js';
-import { workflowNode as n } from '../../src/shared/domain/workflow/examples.js';
+import { workflowNode as n, output as o } from '../../src/shared/domain/workflow/examples.js';
 
 const browserPath = resolveBrowserPath();
 const options = { timeout: 20000, skip: !browserPath && 'Browser required' };
@@ -21,11 +21,56 @@ async function setup(t, nodes) {
   assert.equal(response.status, 200); const workflow = await response.json();
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } }); page.setDefaultTimeout(6000);
   await page.goto(`${app.url}#workflow`);
-  await page.getByRole('button', { name: /审查复现/ }).click();
+  await page.locator('.workflow-list article').filter({ hasText: '审查复现' }).getByRole('button', { name: '编辑', exact: true }).click();
+  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
   return { page, app, workflow };
 }
 async function begin(page) { await page.getByRole('button', { name: '运行', exact: true }).click(); }
 async function finish(page) { await page.getByRole('button', { name: '开始运行', exact: true }).click(); await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor(); }
+
+test('image review previews full images with zoom and navigation independently of selection', options, async (t) => {
+  const { page, app, workflow } = await setup(t, [n('images', 'element', { source: 'runtime', parameter: 'images', valueType: 'list<image>' }), n('check', 'review', { valueType: 'list<image>' }, { value: o('images') })]);
+  await begin(page);
+  const portrait = await sharp({ create: { width: 1000, height: 1500, channels: 3, background: '#886644' } }).png().toBuffer();
+  const landscape = await sharp({ create: { width: 1600, height: 900, channels: 3, background: '#668844' } }).png().toBuffer();
+  await page.locator('.workflow-input-form input[type=file]').setInputFiles([{ name: 'portrait.png', mimeType: 'image/png', buffer: portrait }, { name: 'landscape.png', mimeType: 'image/png', buffer: landscape }]);
+  await page.getByText('已选择 2 张图片', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  const cards = page.locator('.workflow-review-images');
+  await cards.getByRole('button', { name: '查看图片 1 大图', exact: true }).waitFor();
+  assert.equal(await cards.getByRole('checkbox', { name: '保留图片 1' }).isChecked(), true);
+  assert.equal(await cards.locator('img').first().evaluate((image) => getComputedStyle(image).objectFit), 'contain');
+  await cards.getByRole('button', { name: '查看图片 1 大图', exact: true }).click();
+  const preview = page.getByRole('dialog', { name: '审核图片预览', exact: true });
+  const image = preview.getByRole('img', { name: '审核原图 1', exact: true });
+  await preview.getByText('1000 × 1500', { exact: false }).waitFor();
+  assert.ok((await image.boundingBox()).height > 500, 'preview is large enough to inspect');
+  await page.screenshot({ path: '.local/workflow-review-large-preview.png', fullPage: true, animations: 'disabled' });
+  assert.equal(await preview.getByRole('checkbox', { name: '保留这张图片' }).isChecked(), true, 'viewing does not toggle selection');
+  await image.hover(); await page.mouse.wheel(0, -400);
+  await page.waitForFunction(() => !!document.querySelector('.workflow-image-preview img.is-zoomed'));
+  await preview.getByRole('button', { name: '恢复全图', exact: true }).click();
+  await preview.getByRole('checkbox', { name: '保留这张图片' }).uncheck();
+  await preview.getByRole('button', { name: '下一张', exact: true }).click();
+  await preview.getByText('1600 × 900', { exact: false }).waitFor();
+  assert.equal(await preview.getByRole('checkbox', { name: '保留这张图片' }).isChecked(), true);
+  await page.keyboard.press('ArrowLeft');
+  await preview.getByText('1000 × 1500', { exact: false }).waitFor();
+  assert.equal(await preview.getByRole('checkbox', { name: '保留这张图片' }).isChecked(), false);
+  await page.keyboard.press('Escape');
+  await preview.waitFor({ state: 'hidden' });
+  assert.equal(await cards.getByRole('checkbox', { name: '保留图片 1' }).isChecked(), false);
+  assert.equal(await cards.locator('img').first().evaluate((img) => getComputedStyle(img).opacity), '1', 'unselected images stay visible');
+  const loaded = await (await fetch(new URL(`api/workflows/${workflow.id}`, app.url))).json();
+  const before = await (await fetch(new URL(`api/workflow-runs/${loaded.runs[0].id}`, app.url))).json();
+  assert.equal(before.state, 'waiting_review', 'preview never approves the run');
+  await page.getByRole('button', { name: '通过', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  const after = await (await fetch(new URL(`api/workflow-runs/${loaded.runs[0].id}`, app.url))).json();
+  const outputId = after.rootInstances.find((instance) => instance.nodeId === 'check').outputs.value;
+  const artifact = await (await fetch(new URL(`api/workflow-artifacts/${outputId}?runId=${after.id}`, app.url))).json();
+  assert.equal(artifact.value.length, 1, 'only the selected image is retained');
+});
 
 test('edits made while saving remain dirty after the earlier save completes', options, async (t) => {
   const { page, workflow } = await setup(t, [n('source', 'element', { source: 'fixed', parameter: 'source', valueType: 'text', default: 'source' })]);
@@ -74,8 +119,14 @@ test('invalid JSON cannot silently run using the previous valid input', options,
 test('submitted snapshots show fixed content as well as runtime inputs', options, async (t) => {
   const { page } = await setup(t, [n('fixed', 'element', { source: 'fixed', parameter: 'fixed', valueType: 'text', default: '固定要求' }), n('runtime', 'element', { source: 'runtime', parameter: 'runtime', valueType: 'text', default: '本次内容' })]);
   await begin(page);
+  const card = page.locator('.workflow-preparation-card[data-node-id="fixed"]');
+  await card.getByText('固定要求', { exact: true }).waitFor();
+  assert.equal(await card.locator('textarea').count(), 0, 'fixed content starts read-only');
+  await card.getByRole('button', { name: '修改这项固定内容', exact: true }).click();
   await page.getByLabel('第 1 步 · fixed', { exact: true }).fill('提交前修改的固定要求');
-  await finish(page);
+  await card.getByText('已修改：开始时会保存到流程，以后每次运行都用新内容。', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '保存修改并开始运行', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   const snapshot = page.locator('.workflow-run-snapshot');
   assert.equal(await snapshot.getByLabel('第 1 步 · fixed（本次快照）', { exact: true }).count(), 1);
   assert.equal(await snapshot.getByLabel('第 1 步 · fixed（本次快照）', { exact: true }).inputValue(), '提交前修改的固定要求');

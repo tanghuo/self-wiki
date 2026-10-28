@@ -47,7 +47,7 @@ test("organization UI saves config, displays evidence, accepts and undoes additi
   await port.fill(savedPort === "8877" ? "8878" : "8877");
   await page.getByRole("button", { name: "关闭设置", exact: true }).click();
   const sharingUnsaved = page.getByRole("dialog", { name: "未保存的设置", exact: true });
-  await sharingUnsaved.getByText(/局域网共享中的修改尚未保存/).waitFor();
+  await sharingUnsaved.getByText(/局域网共享里的改动还没保存/).waitFor();
   await sharingUnsaved.getByRole("button", { name: "继续编辑", exact: true }).click();
   assert.notEqual(await port.inputValue(), savedPort);
   await port.fill(savedPort);
@@ -82,7 +82,7 @@ test("organization UI saves config, displays evidence, accepts and undoes additi
   assert.equal((await api("organization/status", null, "GET")).config.executor.timeoutMs, config.executor.timeoutMs);
   await unsaved.getByRole("button", { name: "继续编辑", exact: true }).click();
   assert.equal(await page.getByLabel("整理超时（秒）").inputValue(), "240");
-  await page.getByRole("button", { name: "保存整理配置" }).click();
+  await page.getByRole("region", { name: "保存设置" }).getByRole("button", { name: "保存", exact: true }).click();
   await page.getByText("已保存", { exact: true }).waitFor();
   assert.equal((await api("organization/status", null, "GET")).config.imageGeneration.chatgptWeb.browser, "missing-browser.exe");
   await page.getByRole("button", { name: "检测网页版生图连接" }).click();
@@ -153,10 +153,10 @@ test("organization UI saves config, displays evidence, accepts and undoes additi
   assert.equal(await page.getByLabel("整理记录", { exact: true }).count(), 0);
   assert.equal(await page.getByLabel("处理方式").inputValue(), "auto");
   await page.getByLabel("处理方式").selectOption("suggest");
-  await page.getByText("尚有未保存", { exact: false }).waitFor();
+  await page.getByText("项改动未保存", { exact: false }).waitFor();
   await page.keyboard.press("Escape");
   await unsaved.waitFor();
-  await unsaved.getByRole("button", { name: "放弃未保存修改", exact: true }).click();
+  await unsaved.getByRole("button", { name: "放弃改动并关闭", exact: true }).click();
   assert.equal((await api("organization/status", null, "GET")).config.applyMode, "auto");
   await page.locator("details.workspace-tools-more").evaluate((el) => { el.open = true; });
   await page.getByRole("button", { name: "整理历史", exact: true }).click();

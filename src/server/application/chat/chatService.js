@@ -61,7 +61,7 @@ export function createChatService({ repo, wiki, archive, organization, dataDir, 
       connection: { ...diagnostic }, streamId, revision };
   }
   function publicTurn(t) { return { ...t, sources: t.sources.map(publicSource), saved: archive.saved(t.id) }; }
-  function progressNotice(id) { return active.get(id)?.idle ? "已连续 3 分钟未收到新进展。任务仍在运行，可以继续等待或停止生成。" : ""; }
+  function progressNotice(id) { return active.get(id)?.queueNotice || (active.get(id)?.idle ? "已连续 3 分钟未收到新进展。任务仍在运行，可以继续等待或停止生成。" : ""); }
   function publish(id) {
     revision++;
     const listeners = subscribers.get(id);
@@ -194,6 +194,10 @@ export function createChatService({ repo, wiki, archive, organization, dataDir, 
     if (!run || run.done || update.threadId !== run.threadId) return;
     if (update.turnId && run.value.turnId && update.turnId !== run.value.turnId) return;
     if (update.progress) progress(run);
+    if (update.type === 'resource-queued' || update.type === 'resource-acquired') {
+      run.queueNotice = update.type === 'resource-queued' ? update.message : '';
+      publish(sessionId);
+    }
     if (update.type === "usage" && update.turnId) {
       run.tokenUsage = accumulateTurnUsage(run.tokenUsage, update.usage); saveUsage(run);
     }

@@ -9,7 +9,7 @@ import { resolveBrowserPath } from "../resolveBrowserPath.js";
 import { createServer } from "../../src/server/server.js";
 
 const browserPath = resolveBrowserPath();
-test("temporary share UI creates, pairs by link, downloads on mobile, and cancels", { skip: !browserPath, timeout: 60000 }, async (t) => {
+test("temporary share UI creates scoped links, downloads on mobile without pairing, and cancels", { skip: !browserPath, timeout: 60000 }, async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "wiki-share-ui-"));
   const app = await createServer({ port: 0, dataDir: path.join(dir, "data") });
   let browser;
@@ -42,11 +42,16 @@ test("temporary share UI creates, pairs by link, downloads on mobile, and cancel
   await page.getByRole("button", { name: "复制链接 / 二维码", exact: true }).click();
   await page.getByLabel("分享链接").waitFor();
   const shareUrl = new URL(await page.getByLabel("分享链接").inputValue());
+  assert.equal(shareUrl.searchParams.has("pair"), false);
+  assert.match(shareUrl.pathname, /^\/share\/[0-9a-f-]{36}$/);
+  assert.match(shareUrl.searchParams.get("token"), /^[A-Za-z0-9_-]{32}$/);
   shareUrl.hostname = "127.0.0.1";
   const guest = await browser.newPage({ viewport: { width: 390, height: 844 } });
   guest.on("pageerror", (failure) => errors.push(failure.message));
   await guest.goto(shareUrl.href);
   await guest.getByRole("heading", { name: "中文文件.txt", exact: true }).waitFor();
+  assert.deepEqual(await guest.context().cookies(), []);
+  assert.equal((await guest.context().request.get(new URL("/api/elements", shareUrl).href)).status(), 401);
   assert.equal(await guest.getByRole("button", { name: "创建临时分享", exact: true }).count(), 0);
   assert.equal(await guest.getByRole("button", { name: "取消分享", exact: true }).count(), 0);
   const [download] = await Promise.all([guest.waitForEvent("download"), guest.getByRole("link", { name: "下载", exact: true }).click()]);
@@ -56,6 +61,7 @@ test("temporary share UI creates, pairs by link, downloads on mobile, and cancel
   // Keep a repeatable screenshot for visual inspection without touching application data.
   await page.screenshot({ path: path.join(dir, "desktop.png"), fullPage: true });
   await page.getByRole("button", { name: "取消分享", exact: true }).click();
-  await page.getByRole("heading", { name: "暂无临时分享", exact: true }).waitFor();
+  await page.getByRole("heading", { name: "还没有临时分享", exact: true }).waitFor();
+  assert.equal((await guest.reload()).status(), 404);
   assert.deepEqual(errors, []);
 });

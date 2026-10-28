@@ -41,7 +41,7 @@ async function setup(t) {
 test("video marker UI captures time, tags and links, plays a range and jumps back from referenced content", options, async (t) => {
   const { page, player, video, note, api } = await setup(t);
   await page.getByRole("button", { name: "标记当前时间", exact: true }).click();
-  const editor = page.getByRole("dialog", { name: "新增视频标注", exact: true });
+  const editor = page.getByRole("dialog", { name: "添加视频标注", exact: true });
   assert.equal(await editor.getByLabel("标注开始时间", { exact: true }).inputValue(), "00:00.3");
   await editor.getByLabel("标注结束时间", { exact: true }).fill("1.2");
   await editor.getByLabel("标注说明", { exact: true }).fill("推进镜头的细节");
@@ -88,7 +88,7 @@ test("marker editor retains failed and invalid drafts on mobile and hidden playb
   const { page, video, api } = await setup(t);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "标记当前时间", exact: true }).click();
-  const editor = page.getByRole("dialog", { name: "新增视频标注", exact: true });
+  const editor = page.getByRole("dialog", { name: "添加视频标注", exact: true });
   await editor.getByLabel("标注结束时间", { exact: true }).fill("0.1");
   await editor.getByLabel("标注说明", { exact: true }).fill("保留这份草稿");
   await editor.getByRole("button", { name: "保存标注", exact: true }).click();

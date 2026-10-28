@@ -52,7 +52,7 @@ export default function VideoAnalysisPanel({ videoId, revision, onChanged, onSee
       <div className="wiki-video-setup" role="status">
         <p>尚未启用自动标注。可先在设置中配置 FFmpeg，或直接手动分析当前视频。</p>
         {!readOnly && <>
-          <button type="button" className="primary" disabled={disabled || blocked || !status} onClick={() => openSettings("video")}>去设置 · 视频与画面检索</button>
+          <button type="button" disabled={disabled || blocked || !status} onClick={() => openSettings("video")}>去设置 · 视频与画面检索</button>
           <button type="button" className="text-button" disabled={blocked || !status} onClick={() => mutate(`/api/elements/${videoId}/video-analysis`, { restart: false }, "分析请求已提交，进度会自动更新。")}><WandSparkles size={14} />手动分析此视频</button>
         </>}
       </div>

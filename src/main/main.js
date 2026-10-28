@@ -202,7 +202,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   quitController = createQuitController({
-    app, getWindow: () => mainWindow,
+      app, dialog, getWindow: () => mainWindow,
     waitForStartup: () => windowCreation,
     closeBackend: async () => { if (backend) await backend.close(); },
     onShutdown: () => { quitting = true; },

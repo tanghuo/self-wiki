@@ -4,8 +4,9 @@ import { handleOrganizationRoute } from "./organizationRoutes.js";
 import { handleVideoAnalysisRoute } from "./videoAnalysisRoutes.js";
 import { handleChatRoute } from "./chatRoutes.js";
 import { handleWorkflowRoute } from './workflowRoutes.js';
-import { handleTemporaryShareRoute } from "./temporaryShareRoutes.js";
+import { handleTemporaryShareRoute, handleSharedDownloadRoute } from "./temporaryShareRoutes.js";
 import { validateLanRequest, lanRequestToken, lanTokenMatches, lanRestriction, lanPairingPage, lanTokenCookie } from "./lanRoutes.js";
+import { createPairingLimiter } from "./pairingLimiter.js";
 
 export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, chat, workflow, usage, instance, rendererDist, access = "local" }) {
   const routes = new Map([
@@ -17,12 +18,13 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
     ["GET /api/instance", async (_req, res) => json(res, 200, instance)],
     ["GET /api/lan-sharing", async (_req, res) => json(res, 200, sharing.status(access))],
     ["POST /api/lan-sharing/token", async (_req, res) => json(res, 200, await sharing.regenerateToken())],
+    ["POST /api/lan-sharing/pairing", async (_req, res) => json(res, 200, await sharing.beginPairing())],
     ["PUT /api/lan-sharing", async (req, res) => json(res, 200, await sharing.configure(await readJson(req)))],
     ["POST /api/lan-sharing", async (req, res) => json(res, 200, await sharing.setEnabled((await readJson(req)).enabled, access === "lan" ? res : undefined))],
   ]);
 
   // Bound guesses across all peers; do not trust forwarding headers for identity.
-  let pairingWindow = 0, pairingFailures = 0, pairingToken;
+  const pairingLimiter = createPairingLimiter();
   // Returns true when the LAN request was fully answered (pairing redirect or page).
   async function lanGate(req, res, host) {
     const policy = sharing.policy();
@@ -30,17 +32,13 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
     if (policy.requireToken) {
       const pair = url.searchParams.get("pair");
       if (pair !== null && req.method === "GET" && !url.pathname.startsWith("/api/")) {
-        const now = Date.now();
-        if (pairingToken !== policy.token || now >= pairingWindow + 60_000) {
-          pairingToken = policy.token; pairingWindow = now; pairingFailures = 0;
-        }
         if (!lanTokenMatches(pair, policy.token)) {
-          if (pairingFailures >= 10) {
-            res.setHeader("retry-after", String(Math.max(1, Math.ceil((pairingWindow + 60_000 - now) / 1000))));
+          const retryAfter = pairingLimiter.attempt(req.socket.remoteAddress, `${policy.token}:${policy.pairingCode}`);
+          if (retryAfter) {
+            res.setHeader("retry-after", String(retryAfter));
             text(res, 429, await lanPairingPage("limited", url.origin + "/"), "text/html; charset=utf-8"); return true;
           }
-          if (!lanTokenMatches(pair, policy.pairingCode)) {
-            pairingFailures++;
+          if (!lanTokenMatches(pair, policy.pairingCode) || !sharing.consumePairingCode(pair)) {
             text(res, 401, await lanPairingPage(true, url.origin + "/"), "text/html; charset=utf-8"); return true;
           }
         }
@@ -69,13 +67,14 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
         res.setHeader("cache-control", "no-store");
         res.setHeader("x-content-type-options", "nosniff");
         res.setHeader("content-security-policy", "frame-ancestors 'none'");
-        if (await lanGate(req, res, host)) return;
       } else if (!["localhost", "127.0.0.1", "[::1]"].includes(host.hostname)) throw httpError(403, "Invalid host");
       if (req.headers.origin && req.headers.origin !== host.origin) throw httpError(403, "Invalid origin");
+      const url = new URL(req.url || "/", host);
+      if (temporaryShares && await handleSharedDownloadRoute(temporaryShares, req, res, url)) return;
+      if (access === "lan" && await lanGate(req, res, host)) return;
       if (req.headers["x-self-wiki-instance"] && req.headers["x-self-wiki-instance"] !== instance?.instanceId) {
         throw httpError(409, "Server instance changed; reconnect before retrying");
       }
-      const url = new URL(req.url || "/", host);
       if (workflow && await handleWorkflowRoute(workflow, req, res, url, access)) return;
       if (temporaryShares && await handleTemporaryShareRoute(temporaryShares, req, res, url, access)) return;
       if (chat && await handleChatRoute(chat, req, res, url)) return;

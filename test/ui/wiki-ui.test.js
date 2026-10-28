@@ -100,8 +100,8 @@ test("material actions, batch editing and remembered filtering work across categ
 
 test("new mixed content can be saved as materials without changing the category navigation", options, async (t) => {
   const { page, app } = await setup(t);
-  await page.locator(".wiki-page-header").getByRole("button", { name: "新增内容", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  await page.locator(".wiki-page-header").getByRole("button", { name: "添加内容", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   const material = dialog.getByRole("checkbox", { name: "本次内容用作资料", exact: true });
   assert.equal(await material.isChecked(), false);
   await material.check();
@@ -1177,21 +1177,21 @@ test("Trash supports selected permanent deletion, cancellation and clearing outs
   await page.getByLabel("更多操作", { exact: true }).click();
   await page.getByRole("button", { name: "批量管理", exact: true }).click();
   await page.getByRole("button", { name: "选择内容：删除这一条", exact: true }).click();
-  await page.getByRole("button", { name: "删除选中项", exact: true }).click();
+  await page.getByRole("button", { name: "永久删除选中项", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "确认永久删除" });
   await dialog.getByRole("button", { name: "取消", exact: true }).click();
   assert.equal(await page.getByRole("checkbox", { name: "选择内容：删除这一条", exact: true }).isChecked(), true);
-  await page.getByRole("button", { name: "删除选中项", exact: true }).click();
+  await page.getByRole("button", { name: "永久删除选中项", exact: true }).click();
   await dialog.getByPlaceholder("永久删除").fill("永久删除");
-  await dialog.getByRole("button", { name: "确认永久删除", exact: true }).click();
+  await dialog.getByRole("button", { name: "永久删除 1 项", exact: true }).click();
   await page.getByText("1 条内容", { exact: true }).waitFor();
   assert.equal((await fetch(new URL(`api/elements/${first.id}/restore`, app.url), { method: "POST" })).status, 404);
   await page.getByRole("textbox", { name: "搜索内容" }).fill("没有匹配");
   await page.getByRole("heading", { name: "没有找到相关内容" }).waitFor();
   await page.getByRole("button", { name: "清空回收站", exact: true }).click();
-  await dialog.getByText(/包括尚未加载/).waitFor();
+  await dialog.getByText(/包括还没加载/).waitFor();
   await dialog.getByPlaceholder("永久删除").fill("永久删除");
-  await dialog.getByRole("button", { name: "确认永久删除", exact: true }).click();
+  await dialog.getByRole("button", { name: "清空回收站", exact: true }).click();
   await dialog.waitFor({ state: "hidden" });
   await page.getByRole("button", { name: "清空筛选", exact: true }).click();
   await page.getByRole("heading", { name: "回收站是空的", exact: true }).waitFor();
@@ -1222,7 +1222,7 @@ for (const missingPaste of [false, true]) test(`Ctrl+V opens image drafts before
   });
   await page.getByRole("heading", { name: "全部内容", exact: true }).click();
   await page.keyboard.press("Control+v");
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.locator("img").waitFor();
   assert.equal(await dialog.locator("img").count(), 1);
   await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
@@ -1243,7 +1243,7 @@ test("a failed clipboard fallback shows an error instead of silently doing nothi
   await page.getByRole("heading", { name: "全部内容", exact: true }).click();
   await page.keyboard.press("Control+v");
   await page.getByText(/无法读取剪贴板图片：Clipboard unavailable/).waitFor();
-  assert.equal(await page.getByRole("dialog", { name: "新增内容", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("dialog", { name: "添加内容", exact: true }).count(), 0);
 });
 
 test("Clipboard images and dropped files join the same draft as consecutive independent text elements", options, async (t) => {
@@ -1253,7 +1253,7 @@ test("Clipboard images and dropped files join the same draft as consecutive inde
   const second = await sharp(image).rotate(90).png().toBuffer();
   const third = await sharp(image).resize(40,40).png().toBuffer();
   assert.equal(await sendImageEvent(page, "paste", image, "粘贴图片.png"), false);
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByRole("img", { name: "粘贴图片.png", exact: true }).waitFor();
   await page.waitForFunction(() => document.activeElement?.matches('dialog textarea'));
   assert.equal(await dialog.getByLabel("文字", { exact: true }).evaluate((node) => node === document.activeElement), true);
@@ -1289,13 +1289,13 @@ test("Clipboard images and dropped files join the same draft as consecutive inde
   await page.getByRole("button", { name: "打开内容：第二段文字", exact: true }).click();
   await page.getByRole("button", { name: "编辑", exact: true }).click();
   assert.equal(await sendImageEvent(page, "paste", image, "不应拦截.png"), true);
-  assert.equal(await page.getByRole("dialog", { name: "新增内容", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("dialog", { name: "添加内容", exact: true }).count(), 0);
 });
 
 test("A mixed save retains failed text for editing and retry without repeating confirmed text or image saves", options, async (t) => {
   const { page, app } = await setup(t);
-  await page.locator(".wiki-page-header").getByRole("button", { name: "新增内容", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  await page.locator(".wiki-page-header").getByRole("button", { name: "添加内容", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByLabel("本次标签", { exact: true }).fill("仪玄");
   await dialog.getByLabel("文字", { exact: true }).fill("已经保存的文字");
   await dialog.getByRole("button", { name: "添加文字", exact: true }).click();
@@ -1329,10 +1329,10 @@ test("A mixed save retains failed text for editing and retry without repeating c
 
 test("One composer saves interleaved image and text elements with common and individual tags", options, async (t) => {
   const { page, app } = await setup(t);
-  const actions = page.locator(".wiki-page-header .wiki-actions");
-  assert.equal(await actions.getByRole("button").count(), 1);
-  await actions.getByRole("button", { name: "新增内容", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  const actions = page.locator(".wiki-page-header .page-header-actions");
+  assert.deepEqual(await actions.getByRole("button").allInnerTexts(), ["问 Agent", "添加内容"], "the header holds one secondary action and the single primary action, rightmost");
+  await actions.getByRole("button", { name: "添加内容", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   assert.equal(await dialog.getByLabel("标题", { exact: true }).count(), 0);
   await dialog.getByLabel("文字", { exact: true }).fill("保留\n  文字草稿");
   await dialog.getByLabel("本次标签", { exact: true }).fill("人物 A");
@@ -1368,8 +1368,8 @@ test("One composer saves interleaved image and text elements with common and ind
 
 test("Tag input turns Enter into inline chips, keeps focus, respects IME and wraps long tags", options, async (t) => {
   const { page, app } = await setup(t);
-  await page.locator(".wiki-page-header").getByRole("button", { name: "新增内容", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  await page.locator(".wiki-page-header").getByRole("button", { name: "添加内容", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await page.waitForFunction(() => document.activeElement?.matches("dialog textarea"));
   await dialog.getByLabel("文字", { exact: true }).fill("标签输入练习");
   const input = dialog.getByLabel("本次标签", { exact: true });
@@ -1416,8 +1416,8 @@ test("Custom relation names connect independent editable text and appear on both
   const target = await create("海边散步时记录的一段文字。");
   const other = await create("另一次散步的记录。");
   await page.reload();
-  await page.locator(".wiki-page-header").getByRole("button", { name: "新增内容", exact: true }).click();
-  const creation = page.getByRole("dialog", { name: "新增内容", exact: true });
+  await page.locator(".wiki-page-header").getByRole("button", { name: "添加内容", exact: true }).click();
+  const creation = page.getByRole("dialog", { name: "添加内容", exact: true });
   await creation.getByLabel("文字", { exact: true }).fill("每段文字都是独立内容");
   assert.equal(await creation.getByLabel("标题", { exact: true }).count(), 0);
   await page.screenshot({ path: "data/wiki-neutral-text-create.png", fullPage: true, animations: "disabled" });
@@ -1576,7 +1576,7 @@ test("Batch import waits for confirmation, assigns tags, reuses duplicates, dist
   const different = await sharp({ create: { width: 60, height: 60, channels: 3, background: "#bd9caa" } }).png().toBuffer();
   const file = (name, buffer) => ({ name, mimeType: "image/png", buffer });
   const fileInput = page.getByLabel("导入图片或视频文件");
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await fileInput.setInputFiles([file("共同名字.png", image), file("第二张.png", different)]);
   await dialog.waitFor();
   assert.equal((await (await fetch(new URL("api/elements", app.url))).json()).pagination.total, 0);
@@ -1613,8 +1613,8 @@ test("Batch import waits for confirmation, assigns tags, reuses duplicates, dist
   await fileInput.setInputFiles(file("共同名字.png", third));
   await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
   await page.getByText("同名不同内容，已另存", { exact: true }).waitFor();
-  await page.locator(".wiki-page-header").getByRole("button", { name: "新增内容", exact: true }).click();
-  editor = page.getByRole("dialog", { name: "新增内容", exact: true });
+  await page.locator(".wiki-page-header").getByRole("button", { name: "添加内容", exact: true }).click();
+  editor = page.getByRole("dialog", { name: "添加内容", exact: true });
   await editor.getByLabel("文字", { exact: true }).fill("a portrait with soft light");
   await editor.getByLabel("本次标签", { exact: true }).fill("人物 A, Prompt");
   await editor.getByRole("button", { name: "保存全部", exact: true }).click();
@@ -1651,7 +1651,7 @@ test("Tags and import dialog fit a narrow viewport; invalid tags stay editable a
   await page.setViewportSize({ width: 390, height: 844 });
   const image = await sharp({ create: { width: 4, height: 6, channels: 3, background: "#9cabaa" } }).png().toBuffer();
   await page.getByLabel("导入图片或视频文件").setInputFiles({ name: "很长的文件名".repeat(8) + ".png", mimeType: "image/png", buffer: image });
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   const input = dialog.getByLabel("本次标签", { exact: true });
   await input.fill("长".repeat(61));
   await dialog.getByRole("button", { name: "保存全部", exact: true }).click();
@@ -1671,7 +1671,7 @@ test("Wiki UI completes image/text association, copy, edit, navigation, detach a
   const { page } = await setup(t);
   const image = await sharp({ create: { width: 40, height: 60, channels: 3, background: "#a5bd9c" } }).png().toBuffer();
   await page.getByLabel("导入图片或视频文件").setInputFiles({ name: "人物练习.png", mimeType: "image/png", buffer: image });
-  await page.getByRole("dialog", { name: "新增内容", exact: true }).getByRole("button", { name: "保存全部", exact: true }).click();
+  await page.getByRole("dialog", { name: "添加内容", exact: true }).getByRole("button", { name: "保存全部", exact: true }).click();
   await page.getByRole("button", { name: "打开内容：人物练习.png", exact: true }).click();
   await page.getByRole("button", { name: "添加关联", exact: true }).click();
   const picker = page.getByRole("dialog", { name: "添加关联", exact: true });
@@ -1803,8 +1803,8 @@ test("Mixed drafts keep per-item failures and block closing or navigation while 
     { name: "正常.png", mimeType: "image/png", buffer: image },
     { name: "损坏.png", mimeType: "image/png", buffer: Buffer.from("bad") },
   ]);
-  await page.getByRole("dialog", { name: "新增内容", exact: true }).getByRole("button", { name: "保存全部", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  await page.getByRole("dialog", { name: "添加内容", exact: true }).getByRole("button", { name: "保存全部", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByText("正在保存这项内容…", { exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelector(".wiki-agent-entry").getAttribute("aria-disabled") === "true");
   await page.locator(".wiki-agent-entry").dispatchEvent("click");

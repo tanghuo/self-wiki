@@ -83,7 +83,7 @@ button{width:100%;min-height:42px;margin-top:14px;border:1px solid var(--accent)
 button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}small{display:block;margin-top:16px;color:var(--muted);font-size:12px}.hint{margin:14px 0 0;color:var(--muted);font-size:12px}
 .qr{margin:16px 0 0;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--bg);text-align:center}.qr svg{display:block;width:148px;height:148px;margin:0 auto}.qr figcaption{margin-top:8px;color:var(--muted);font-size:12px;font-weight:500}
 </style></head>
-<body><main><div class="brand"><i aria-hidden="true">W</i>self-wiki · 局域网共享</div><h1>需要局域网配对码</h1><p>请在运行 self-wiki 的电脑上打开“设置 → 局域网共享”，在下方输入设置页显示的 6 位数字配对码即可连接。手机也可扫描设置页二维码。</p>
+<body><main><div class="brand"><i aria-hidden="true">W</i>self-wiki · 局域网共享</div><h1>需要局域网配对码</h1><p>请在运行 self-wiki 的电脑上打开“设置 → 局域网共享”，点击“生成 10 分钟配对码”，再在下方输入生成的 6 位数字码。配对码仅可使用一次；手机也可扫描设置页二维码。</p>
 ${failed ? `<p class="error" role="alert">${failed === "limited" ? "尝试次数过多，请稍等一分钟再输入配对码。" : "配对码不正确或已更换，请核对电脑设置页中的 6 位数字。"}</p>` : ""}<form method="get" action="/"><label>配对码<input name="pair" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="6 位数字" autocomplete="one-time-code" autocapitalize="off" spellcheck="false" required autofocus></label><button type="submit">连接</button></form>
 ${qrBlock}${failed ? '<p class="hint">设备需在同一局域网；请以电脑设置页显示的配对码为准。</p>' : ""}<small>配对后，本浏览器会记住此设备，无需重复输入。</small></main></body></html>`;
 }

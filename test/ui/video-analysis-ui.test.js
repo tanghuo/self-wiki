@@ -175,7 +175,7 @@ test("video settings preserve dirty drafts, show model destination and save auto
   await page.getByRole("button", { name: "关闭设置", exact: true }).click();
   await page.getByRole("dialog", { name: "未保存的设置", exact: true }).getByRole("button", { name: "继续编辑", exact: true }).click();
   assert.equal(await settings.getByLabel("视觉服务地址", { exact: true }).inputValue(), "http://127.0.0.1:9876");
-  await settings.getByRole("button", { name: "保存视频配置", exact: true }).click();
+  await page.getByRole("region", { name: "保存设置" }).getByRole("button", { name: "保存", exact: true }).click();
   await settings.getByText("视频与画面检索配置已保存。", { exact: true }).waitFor();
   assert.equal(state.config.enabled, true); assert.equal(state.config.applyMode, "auto"); assert.equal(state.config.visual.enabled, true);
   assert.equal(state.config.ffprobe, "ffprobe"); assert.equal(state.config.maxFrames, 120);
@@ -237,7 +237,7 @@ test("real video HTTP configuration reports missing extraction dependencies whil
   const settings = page.getByRole("region", { name: "视频与画面检索设置", exact: true });
   await settings.getByLabel("FFmpeg 程序路径", { exact: true }).fill("definitely-missing-video-analysis-test-ffmpeg");
   await settings.getByLabel("ffprobe 程序路径", { exact: true }).fill("definitely-missing-video-analysis-test-ffprobe");
-  await settings.getByRole("button", { name: "保存视频配置", exact: true }).click();
+  await page.getByRole("region", { name: "保存设置" }).getByRole("button", { name: "保存", exact: true }).click();
   await settings.getByText("视频与画面检索配置已保存。", { exact: true }).waitFor();
   await page.getByRole("button", { name: "关闭设置", exact: true }).click();
   await page.getByRole("button", { name: "打开内容：自动标注演示.webm", exact: true }).click();

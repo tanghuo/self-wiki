@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Check, CheckCircle2, X, Trash2, Search, Plus, Upload, Network, MoreHorizontal, ListChecks, LayoutGrid, PanelsTopLeft, ChevronRight, MessageCircle } from "lucide-react";
+import { Check, CheckCircle2, X, Trash2, Search, Plus, Upload, Network, MoreHorizontal, ListChecks, LayoutGrid, PanelsTopLeft, MessageCircle } from "lucide-react";
 import { apiUrl, request } from "./api.js";
 import useWikiResource from "./useWikiResource.js";
 import MediaStackCard from "./MediaStackCard.jsx";
@@ -12,7 +12,7 @@ import useWikiList from "./useWikiList.js";
 import WikiGrid from "./WikiGrid.jsx";
 import WindowedWikiGrid from "./WindowedWikiGrid.jsx";
 import AddContentDialog from "./AddContentDialog.jsx";
-import Dialog from "./Dialog.jsx";
+import { ConfirmDialog, EmptyState, PageHeader } from "./ui/index.js";
 import WikiSidebar, { wikiSections as tabs } from "./WikiSidebar.jsx";
 import CanvasBoundary from "./CanvasBoundary.jsx";
 import WikiContextMenu from "./WikiContextMenu.jsx";
@@ -248,9 +248,9 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
         }
         if (cancelled || blocked() || version !== pasteVersion) return;
         if (images.length) { setError(""); selectFiles(images); }
-        else setError("剪贴板里没有可读取的图片。请复制图片本身，或使用新增内容导入文件。");
+        else setError("剪贴板里没有可读取的图片。请复制图片本身，或点「添加内容」导入文件。");
       } catch (failure) {
-        if (!cancelled && version === pasteVersion) setError(`无法读取剪贴板图片：${failure.message}。可以使用新增内容导入文件。`);
+        if (!cancelled && version === pasteVersion) setError(`无法读取剪贴板图片：${failure.message}。可以点「添加内容」导入文件。`);
       } finally { reading = false; }
     }
     window.addEventListener("paste", paste);
@@ -388,6 +388,8 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
       if (failed.length) setError(`${failed.length} 条恢复失败：${failed[0]}`);
     } finally { writeLock.current = false; setBusy(false); }
   }
+  // 「问 Agent」 lives in each page header (library, canvas, detail) as a secondary action — no breadcrumb bar.
+  const askAgent = !readOnly && onAskAgent ? <button className="wiki-ask-agent" data-agent-trigger aria-expanded={agentOpen} disabled={busy || detailBusy || creationBusy || canvasBusy} onClick={onAskAgent} title="打开对话：可附带当前打开的内容或资料篮中的资料"><MessageCircle size={16} />问 Agent</button> : null;
   return <div className="wiki-shell" onContextMenu={(event) => {
     setBackMenu(null);
     const card = event.target.closest("[data-element-id]");
@@ -408,9 +410,6 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
   }}>
     <WikiSidebar activeTab={tab} onChooseTab={chooseTab} busy={busy || detailBusy || creationBusy || canvasBusy} readOnly={readOnly}>{workspaceNavigation}</WikiSidebar>
     <main id="main-content" className={`wiki-main ${stack.length ? "is-detail" : ""} ${tab === "canvas" && !stack.length ? "is-canvas" : ""} ${view === "masonry" && tab !== "canvas" && !stack.length ? "is-masonry" : ""}`}>
-      <div className="wiki-breadcrumb"><span>我的空间</span><ChevronRight size={13} /><span>{stack.length ? "内容详情" : tabs.find((entry) => entry.key === tab).label}</span>
-        {!readOnly && onAskAgent && <button className="text-button wiki-ask-agent" data-agent-trigger aria-expanded={agentOpen} disabled={busy || detailBusy || creationBusy || canvasBusy} onClick={onAskAgent} title="打开对话：可附带当前打开的内容或资料篮中的资料"><MessageCircle size={15} />问 Agent</button>}
-      </div>
       <div className="toast-region">
         {lastDeleted.length > 0 && <div className="wiki-deletion-feedback" role="status"><span>{lastDeleted.length === 1 ? `“${elementLabel(lastDeleted[0])}”已移入回收站` : `${lastDeleted.length} 条内容已移入回收站`}</span><button className="text-button" disabled={busy || detailBusy} onClick={() => restore(lastDeleted.map((element) => element.id))}>撤销删除</button><button className="icon-only" aria-label="关闭删除提示" disabled={busy} onClick={() => setLastDeleted([])}><X size={16} /></button></div>}
         {stackHint && <p className="wiki-toast" role="status"><CheckCircle2 size={17} aria-hidden="true" /><span>{stackHint}</span><button className="icon-only button-sm" aria-label="关闭提示" onClick={() => setStackHint("")}><X size={16} /></button></p>}
@@ -419,18 +418,20 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
       {error && <p className="wiki-error" role="alert">{error}<button onClick={() => setError("")}>关闭提示</button></p>}
       {cleanupRetry && <button disabled={busy} onClick={() => purgeTrash(true)}>有文件没删干净，点此再试</button>}
       {stack.length === 0 && imports.length > 0 && <section className="wiki-imports" aria-label="保存结果"><header><strong>保存结果</strong><button className="text-button" disabled={busy || creationBusy} onClick={() => setImports([])}>收起</button></header><ul>{imports.map((row, index) => <li key={index}><span>{row.name}</span><span>{row.status}</span><button className="text-button" disabled={busy || detailBusy || creationBusy} onClick={() => open(row.id)} aria-label={`查看保存结果：${row.name}`}>查看</button></li>)}</ul></section>}
-      {tab === "canvas" && <div hidden={stack.length > 0}><CanvasBoundary onBack={() => chooseTab("all")}><Suspense fallback={<p className="wiki-muted">正在打开画布…</p>}><WikiCanvas readOnly={readOnly} revision={resourceRevision} addedIds={canvasAdded} visible={stack.length === 0} externalBusy={busy || detailBusy || Boolean(creation)} onChanged={refresh} onBusyChange={setCanvasBusy} onAdd={addContent} onOpen={open} /></Suspense></CanvasBoundary></div>}
+      {tab === "canvas" && <div hidden={stack.length > 0}><CanvasBoundary onBack={() => chooseTab("all")}><Suspense fallback={<p className="wiki-muted">正在打开画布…</p>}><WikiCanvas headerActions={askAgent} quietAdd={agentOpen} readOnly={readOnly} revision={resourceRevision} addedIds={canvasAdded} visible={stack.length === 0} externalBusy={busy || detailBusy || Boolean(creation)} onChanged={refresh} onBusyChange={setCanvasBusy} onAdd={addContent} onOpen={open} /></Suspense></CanvasBoundary></div>}
       <div hidden={stack.length > 0 || tab === "canvas"}>
-        <header className="wiki-page-header"><div><h1>{tabs.find((t) => t.key === tab).label}</h1>{tab === "trash" && <p>移入回收站的内容可恢复；「清空」或「永久删除」不可恢复。</p>}</div>
-          {!readOnly && tab !== "trash" && <div className="wiki-actions"><button className="primary" disabled={busy} onClick={addContent}><Plus size={17} />新增内容</button></div>}
-        </header>
+        <PageHeader className="wiki-page-header" title={tabs.find((t) => t.key === tab).label}
+          subtitle={tab === "trash" ? "移入回收站的内容可以恢复；清空回收站或永久删除后不可恢复。" : undefined}
+          actions={!readOnly && (tab === "trash"
+            ? <button className="danger-quiet" disabled={busy || list.loading} onClick={() => { setPurgeConfirmPhrase(""); setPurgeConfirmation({ all: true }); }}><Trash2 size={16} />清空回收站</button>
+            : <>{askAgent}<button className={agentOpen ? "" : "primary"} disabled={busy} onClick={addContent}><Plus size={16} />添加内容</button></>)} />
         <div className="wiki-toolbar"><label className="wiki-search"><Search size={18} aria-hidden="true" /><input ref={searchInput} aria-label="搜索内容" aria-keyshortcuts="Control+K Meta+K /" value={q} disabled={busy} onChange={(e) => { setQ(e.target.value); }}
             onKeyDown={(event) => { if (event.key === "Escape" && q) { event.preventDefault(); event.stopPropagation(); setQ(""); } }} placeholder={readOnly || tab === "trash" ? "搜索文字或文件名…" : "搜索文字、文件名或描述画面…"} />{!q && <kbd className="wiki-search-hint" aria-hidden="true">{modKey} K</kbd>}</label><TagFilter aliases={availableTags.data?.aliases || []} tags={availableTags.data?.tags || []} selected={tags} match={tagMatch} disabled={busy} onChange={(next) => { setTags(next); }} />{tags.length > 1 && <Select className="wiki-tag-match" aria-label="标签匹配方式" value={tagMatch} disabled={busy} onChange={setTagMatch} options={[{ value: "any", label: "任意匹配" }, { value: "all", label: "全部匹配" }]} />}<span>{list.data ? (list.data.possible?.length ? "0 条明确匹配" : hasCollapsedMembers ? `${list.data.pagination.total} 项 · ${list.data.totalElements} 条内容` : `${list.data.pagination.total} 条内容`) : "正在读取…"}</span>
           {tab === "text" && !readOnly && <Select className="wiki-text-sort" aria-label="文字排序" title="使用次数 = 引用次数 + 复制次数（全部历史记录）" value={textSort} disabled={busy} onChange={setTextSort}
             options={[{ value: "updated", label: "最近更新" }, { value: "usage", label: "使用次数从多到少" }]} />}
           <ViewMenu disabled={busy} changed={materialOnly && tab !== "trash" || !stackSimilar && ["all", "text", "image", "video"].includes(tab)}>
             <div className="wiki-view-menu-row"><span>布局</span>
-              <div className="wiki-view-switch" role="group" aria-label="内容视图">
+              <div className="wiki-view-switch ui-segmented" role="group" aria-label="内容视图">
                 <button type="button" aria-label="网格视图" title="网格视图" aria-pressed={view === "grid"} disabled={busy} onClick={() => setView("grid")}><LayoutGrid size={16} /><span>网格</span></button>
                 <button type="button" aria-label="瀑布流视图" title="瀑布流视图" aria-pressed={view === "masonry"} disabled={busy} onClick={() => setView("masonry")}><PanelsTopLeft size={16} /><span>瀑布流</span></button>
               </div>
@@ -454,7 +455,6 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
               })}><span>堆叠相似内容</span><i aria-hidden="true" /></button>}
             {tab !== "trash" && <label className="wiki-material-filter"><input type="checkbox" checked={materialOnly} disabled={busy} onChange={(event) => setMaterialOnly(event.target.checked)} />仅看资料</label>}
           </ViewMenu>
-          {!readOnly && tab === "trash" && <button className="danger-quiet" disabled={busy || list.loading} onClick={() => { setPurgeConfirmPhrase(""); setPurgeConfirmation({ all: true }); }}><Trash2 size={16} />清空回收站</button>}
           {!readOnly && !managing && <details className="library-menu wiki-list-menu" onKeyDown={(event) => { if (event.key === "Escape") event.currentTarget.open = false; }}>
             <summary aria-label="更多操作" title="更多操作"><MoreHorizontal size={18} /></summary>
             <div className="menu-panel"><button disabled={busy || list.loading || !list.data?.elements.length} onClick={(event) => { event.currentTarget.closest("details").open = false; setSelected(new Set()); setManaging(true); }}><ListChecks size={16} />批量管理</button></div>
@@ -466,7 +466,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
           <button className="text-button" disabled={busy || list.loading || !list.data?.elements.length} onClick={() => setSelected(new Set(list.data.elements.map((element) => element.id)))}>全选已加载内容</button>
           <button className="text-button" disabled={busy || !selected.size} onClick={() => setSelected(new Set())}>清空选择</button>
           {tab !== "trash" && <><button disabled={busy || list.loading || !selected.size} onClick={() => setMaterial([...selected], true)}>设为资料</button><button disabled={busy || list.loading || !selected.size} onClick={() => setMaterial([...selected], false)}>取消资料标记</button></>}
-          <button className="danger-quiet" disabled={busy || list.loading || !selected.size} onClick={() => { if (tab === "trash") { setPurgeConfirmPhrase(""); setPurgeConfirmation({ ids: [...selected] }); } else trashSelected(); }}><Trash2 size={15} />{busy ? "正在处理…" : tab === "trash" ? "删除选中项" : "移入回收站"}</button>
+          <button className="danger-quiet" disabled={busy || list.loading || !selected.size} onClick={() => { if (tab === "trash") { setPurgeConfirmPhrase(""); setPurgeConfirmation({ ids: [...selected] }); } else trashSelected(); }}><Trash2 size={15} />{busy ? "正在处理…" : tab === "trash" ? "永久删除选中项" : "移入回收站"}</button>
           <button className="text-button" disabled={busy} onClick={finishManaging}>退出管理</button>
         </div>}
         {availableTags.error && <p className="wiki-error" role="alert">标签列表读取失败<button onClick={refresh}>重试</button></p>}
@@ -474,7 +474,9 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
         {list.error && <p className="wiki-error" role="alert">{list.error}<button onClick={list.retry}>重试</button></p>}
         {list.loading && !list.data && <div className="wiki-list-loading" role="status"><p className="wiki-muted"><span className="spinner" aria-hidden="true" />正在读取内容…</p>
           <div className="wiki-skeleton-grid" aria-hidden="true">{Array.from({ length: 8 }, (_, index) => <span key={index} className="skeleton" />)}</div></div>}
-        {list.data?.elements.length === 0 && !list.data?.possible?.length && <div className="wiki-empty"><span className="wiki-empty-mark"><Network size={36} /></span><h2>{q || tags.length ? "没有找到相关内容" : tab === "trash" ? "回收站是空的" : readOnly ? "暂无共享内容" : "暂无内容"}</h2><p>{q || tags.length ? "试试其他关键词或标签，或清空筛选看看。" : tab === "trash" ? "移入回收站的内容会保留在这里。" : readOnly ? "本机保存内容后即可在这里浏览。" : "把图片、视频拖到这里，或点击下方按钮开始。"}</p>{q || tags.length ? <button onClick={() => { setQ(""); setTags([]); }}>清空筛选</button> : !readOnly && tab !== "trash" ? <button type="button" className="primary wiki-empty-cta" disabled={busy} onClick={addContent}><Plus size={17} />新增内容</button> : null}</div>}
+        {list.data?.elements.length === 0 && !list.data?.possible?.length && <EmptyState className="wiki-empty" icon={tab === "trash" ? Trash2 : Network}
+          title={q || tags.length ? "没有找到相关内容" : tab === "trash" ? "回收站是空的" : readOnly ? "暂无共享内容" : "还没有内容"}
+          actions={q || tags.length ? <button onClick={() => { setQ(""); setTags([]); }}>清空筛选</button> : null}>{q || tags.length ? "试试其他关键词或标签，或清空筛选。" : tab === "trash" ? "移入回收站的内容会保留在这里，可以随时恢复。" : readOnly ? "本机保存内容后即可在这里浏览。" : "把图片、视频拖到这里，或者点右上角的「添加内容」。"}</EmptyState>}
         <WindowedWikiGrid key={query.toString()} masonry={view === "masonry"} cardWidth={cardWidth}>{list.data?.elements.map((element, index) => <MediaStackCard key={element.id} element={element} loading={index < 8 ? "eager" : "lazy"} onOpen={open} onShowStack={setMediaStackId} onRestore={(id) => restore([id])} onSelect={managing ? toggleSelected : undefined} selected={selected.has(element.id)} disabled={busy} />)}</WindowedWikiGrid>
         <div className="wiki-load-more" ref={list.sentinel}>
           {list.data && (list.loading ? <span className="wiki-muted" role="status">正在读取更多内容…</span> : list.hasMore ? <button className="text-button" disabled={busy} onClick={list.error ? list.retry : list.loadMore}>{list.error ? "重试加载" : "加载更多"}</button> : list.data.elements.length > 0 ? <span className="wiki-muted" role="status">已显示全部 {list.data.elements.length} {hasCollapsedMembers ? "项" : "条内容"}</span> : null)}
@@ -501,7 +503,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
         onRelationPage={(value) => setStack((current) => current.map((entry, i) => i === current.length - 1 ? { ...entry, page: value } : entry))}
         restoreScroll={detailScroll} onBusyChange={setDetailBusy} onBack={back} onOpen={open} onChanged={refresh} onAddReference={onAddReference}
         onContentContextMenu={(event, element) => { event.preventDefault(); event.stopPropagation(); setBackMenu({ x: event.clientX, y: event.clientY, element }); }}
-        onTrashed={(element) => { recordDeletion([element]); setStack([]); savedScroll.current = []; }} />}
+        headerActions={askAgent} onTrashed={(element) => { recordDeletion([element]); setStack([]); savedScroll.current = []; }} />}
     </main>
     {mediaStackId && <MediaStackDialog id={mediaStackId} revision={resourceRevision} readOnly={readOnly} onClose={() => setMediaStackId(null)} onOpen={(id) => { setMediaStackId(null); open(id); }} />}
     {backMenu && <WikiContextMenu menu={backMenu} onClose={() => setBackMenu(null)} onSetMaterial={readOnly ? undefined : (element) => setMaterial([element.id], !element.material)} onAddReference={readOnly ? undefined : onAddReference} onEdit={readOnly ? undefined : editText} onBack={back} disabled={busy || detailBusy} onNotice={setPurgeNotice} onError={setError} />}
@@ -509,12 +511,13 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
     {!readOnly && <input ref={files} hidden type="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mp4,.m4v,.webm,.mov" aria-label="导入图片或视频文件" onChange={(e) => selectFiles(e.target.files)} />}
     {creation && <AddContentDialog value={creation} onChange={setCreation} onChooseFiles={() => files.current.click()}
       onClose={() => setCreation(null)} onBusyChange={setCreationBusy} onSaved={contentSaved} onComplete={completeCreation} />}
-    {purgeConfirmation && <Dialog open label="确认永久删除" className="wiki-dialog" onClose={() => { if (!busy) { setPurgeConfirmation(null); setPurgeConfirmPhrase(""); } }}>
-      <header className="wiki-dialog-header"><h2>{purgeConfirmation.all ? "清空回收站？" : `永久删除选中的 ${purgeConfirmation.ids.length} 条内容？`}</h2></header>
-      <p>{purgeConfirmation.all ? "将永久删除整个回收站的所有内容，包括尚未加载以及当前搜索、标签筛选未显示的内容。" : "将永久删除选中的回收站内容。"}此操作不可恢复：图片与视频原文件、视频标注、会话历史副本及关联都会永久删除。其他仍留在库中的内容不受影响。</p>
-      <label className="wiki-purge-confirm">请输入「永久删除」以确认<input value={purgeConfirmPhrase} onChange={(e) => setPurgeConfirmPhrase(e.target.value)} autoFocus disabled={busy} placeholder="永久删除" autoComplete="off" spellCheck={false} /></label>
-      <footer className="wiki-dialog-footer"><button disabled={busy} onClick={() => { setPurgeConfirmation(null); setPurgeConfirmPhrase(""); }}>取消</button><button className="danger-quiet" disabled={busy || purgeConfirmPhrase !== "永久删除"} onClick={purgeTrash}>{busy ? "正在删除…" : "确认永久删除"}</button></footer>
-    </Dialog>}
+    {purgeConfirmation && <ConfirmDialog label="确认永久删除" title={purgeConfirmation.all ? "清空回收站？" : `永久删除选中的 ${purgeConfirmation.ids.length} 项？`}
+      busy={busy} busyLabel="正在删除…" confirmDisabled={purgeConfirmPhrase !== "永久删除"}
+      confirmLabel={purgeConfirmation.all ? "清空回收站" : `永久删除 ${purgeConfirmation.ids.length} 项`}
+      onCancel={() => { setPurgeConfirmation(null); setPurgeConfirmPhrase(""); }} onConfirm={purgeTrash}>
+      <p>{purgeConfirmation.all ? "回收站里的所有内容都会被永久删除，包括还没加载、或被当前搜索和标签筛选隐藏的内容。" : "选中的内容会被永久删除。"}原始图片和视频文件、视频标注、对话里的副本和关联也会一起删除，无法恢复。内容库里的其他内容不受影响。</p>
+      <label className="wiki-purge-confirm"><span>输入「永久删除」以确认</span><input value={purgeConfirmPhrase} onChange={(e) => setPurgeConfirmPhrase(e.target.value)} autoFocus disabled={busy} placeholder="永久删除" autoComplete="off" spellCheck={false} /></label>
+    </ConfirmDialog>}
     {dragging && <div className="wiki-drop-overlay"><Upload size={42} /><h2>松开后加入待保存内容</h2></div>}
   </div>;
 }

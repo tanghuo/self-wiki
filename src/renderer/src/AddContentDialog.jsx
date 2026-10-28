@@ -75,10 +75,10 @@ export default function AddContentDialog({ value, onChange, onChooseFiles, onClo
       else onComplete(completed);
     } finally { locked.current = false; setSaving(null); setBusy(false); }
   }
-  return <><Dialog open label="新增内容" className="wiki-dialog wiki-composer" onClose={requestClose}>
+  return <><Dialog open label="添加内容" className="wiki-dialog wiki-composer" onClose={requestClose}>
     <form onSubmit={submit}>
-      <header className="wiki-dialog-header"><div><h2>新增内容</h2><p>图片、视频和文字可以放在一起，每一项独立保存。</p></div>
-        <button type="button" className="icon-only" aria-label="关闭新增内容" disabled={busy} onClick={requestClose}><X size={18} /></button></header>
+      <header className="wiki-dialog-header"><div><h2>添加内容</h2><p>图片、视频和文字可以放在一起，每一项独立保存。</p></div>
+        <button type="button" className="icon-only" aria-label="关闭添加内容" disabled={busy} onClick={requestClose}><X size={18} /></button></header>
       <div className="wiki-form-fields">
         <label className="wiki-material-filter"><input type="checkbox" checked={material} disabled={busy || saved.length > 0} onChange={(event) => setMaterial(event.target.checked)} />本次内容用作资料</label>
         <div className="wiki-composer-tags"><TagInput label="本次标签" value={value.tags} disabled={busy || saved.length > 0}

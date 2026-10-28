@@ -4,34 +4,36 @@ import '@xyflow/react/dist/style.css';
 import { acceptedTypes, inferGraphTypes, setNodeBinding, canAppendTextReference } from './workflowBindings.js';
 import ModelAdapterFields, { newAdapterConfig } from '../modelAdapters/ModelAdapterFields.jsx';
 import WorkflowTextField from './WorkflowTextField.jsx';
-import { variableLabel, nodeDisplayName, workflowSteps, stepLabel, stepConnections, isPreparationInput } from './workflowLabels.js';
+import { variableLabel, nodeDisplayName, workflowSteps, stepLabel, stepConnections, isPreparationInput, typeLabel } from './workflowLabels.js';
 import WorkflowContentField from './WorkflowContentField.jsx';
 import WorkflowOutputs from './WorkflowOutputs.jsx';
 import { nodeTypes as catalog, inputPorts, outputVariables, outputBindingType, outputPortName, downstreamClosure, bindings, validateDefinition, matchesType, listItemType, bindingHandle, isRuntimeElement } from '../../../../shared/domain/workflow/contracts.js';
 import { workflowNode, constant, output } from '../../../../shared/domain/workflow/examples.js';
+import WorkflowStepsView from './WorkflowStepsView.jsx';
 
 const options = ['text', 'number', 'boolean', 'json', 'image', 'list<text>', 'list<number>', 'list<boolean>', 'list<json>', 'list<image>'];
 const typeLabels = { text: '文字', number: '数字', boolean: '开关', json: '结构化数据', image: '单张图片', 'list<text>': '多段文字', 'list<number>': '数字列表', 'list<boolean>': '开关列表', 'list<json>': '数据列表', 'list<image>': '多张图片' };
 const portLabels = { value: '内容', prompt: '提示词', images: '参考图片', items: '待处理列表', a: '内容一', b: '内容二' };
-const hints = { element: '在属性中选择文字、图片及内容来源', template: '拼接文字和变量', model: '让 AI 理解或生成文字', 'image.generate': '根据提示词和参考图生成图片', transform: '拼接、提取或整理内容', foreach: '对列表中的每项执行子流程', review: '预览上游内容，等待接受、修改或拒绝；可作为终点，不自动入库', preview: '查看上游结果', 'library.save': '执行到这里才保存到内容库' };
-const palette = [{ type: 'element', label: '元素', hint: hints.element }, ...catalog.filter((n) => !['input', 'element', 'preview', 'template'].includes(n.type)).map((n) => ({ ...n, hint: hints[n.type] }))];
-const paletteGroups = [{ title: '素材输入', types: ['element'] }, { title: '处理', types: ['model', 'image.generate', 'transform', 'foreach'] }, { title: '人工审核', types: ['review'] }, { title: '保存', types: ['library.save'] }];
-const labels = Object.fromEntries(catalog.map((n) => [n.type, n.label]));
-export function WorkflowPlan({ definition, onLocate, activeNodeId }) {
-  const steps = workflowSteps(definition);
+const hints = { element: '文字或图片：固定内容，或每次运行时填写', template: '拼接文字和前面步骤的结果', model: 'AI 看图或读文字，写出文字', 'image.generate': '按提示词和参考图生成图片', transform: '提取、收集或配对内容（高级）', foreach: '对列表里的每一项做同样的步骤', review: '暂停下来，等你确认、修改或跳过；通过不等于保存', preview: '查看前面步骤的结果', 'library.save': '执行到这里才存进资料库' };
+const palette = [{ type: 'element', label: typeLabel('element'), hint: hints.element }, ...catalog.filter((n) => !['input', 'element', 'preview', 'template'].includes(n.type)).map((n) => ({ ...n, label: typeLabel(n.type), hint: hints[n.type] }))];
+const paletteGroups = [{ title: '内容', types: ['element'] }, { title: 'AI 与处理', types: ['model', 'image.generate', 'foreach', 'transform'] }, { title: '我来确认', types: ['review'] }, { title: '保存', types: ['library.save'] }];
+const labels = Object.fromEntries(catalog.map((n) => [n.type, typeLabel(n.type)]));
+export function WorkflowPlan({ definition, onLocate, activeNodeId, scope = null }) {
+  // Numbers always come from the whole flow so a loop's steps keep the numbers shown on the canvas.
+  const allSteps = workflowSteps(definition), steps = scope ? allSteps.filter((step) => step.parentId === scope) : allSteps;
   const reviews = steps.filter((step) => step.node.type === 'review');
   const saves = steps.filter((step) => step.node.type === 'library.save');
-  return <div className="workflow-plan-body"><h3>处理流程 <small>共 {steps.length} 步</small></h3>{steps.length ? <ol>{steps.map((step) => {
-    const { sources, targets } = stepConnections(step, steps);
+  return <div className="workflow-plan-body"><h3>{scope ? '循环里的步骤' : '处理流程'} <small>共 {steps.length} 步</small></h3>{steps.length ? <ol>{steps.map((step) => {
+    const { sources, targets } = stepConnections(step, allSteps);
     const editable = step.depth === 0 && isPreparationInput(step.node);
     const text = step.node.config.parts?.map((part) => part.kind === 'text' ? part.text : '').join('') || (typeof step.node.config.default === 'string' ? step.node.config.default : '');
-    return <li key={step.id} data-node-id={step.id} data-active={activeNodeId === step.id} style={{ marginLeft: step.depth * 16 }}><span className="workflow-plan-number" aria-hidden="true">{step.number}</span><div>{editable && onLocate ? <button className="workflow-plan-locate" aria-label={'定位' + stepLabel(step)} onClick={() => onLocate(step.id)}>{step.name}</button> : <strong>{step.name}</strong>}<code className="workflow-node-identity">{step.node.id}</code>{['element', 'template'].includes(step.node.type) && !isPreparationInput(step.node) && <small>运行时自动获取上游结果，无需填写</small>}{sources.length > 0 && <small>来自：{sources.map(stepLabel).join('、')}</small>}{targets.length > 0 && <small>用于：{targets.map(stepLabel).join('、')}</small>}{text.trim() && <small className="workflow-plan-excerpt">{text.trim().slice(0, 90)}</small>}{!sources.length && !targets.length && <small>{hints[step.node.type] || '素材输入'}</small>}</div></li>;
-  })}</ol> : <p>还没有步骤，请返回编辑添加。</p>}{!!reviews.length && <p className="workflow-plan-note">需要你确认的步骤：{reviews.map((step) => step.name).join('、')}。运行到这里会暂停等待。</p>}{!!saves.length && <p className="workflow-plan-note">结果将通过「{saves.map((step) => step.name).join('、')}」保存到内容库。</p>}</div>;
+    return <li key={step.id} data-node-id={step.id} data-active={activeNodeId === step.id} style={{ marginLeft: step.depth * 16 }}><span className="workflow-plan-number" aria-hidden="true">{step.number}</span><div>{editable && onLocate ? <button className="workflow-plan-locate" aria-label={'定位' + stepLabel(step)} onClick={() => onLocate(step.id)}>{step.name}</button> : <strong>{step.name}</strong>}{['element', 'template'].includes(step.node.type) && !isPreparationInput(step.node) && <small>运行时自动使用前面步骤的结果，不用填写</small>}{sources.length > 0 && <small>来自：{sources.map(stepLabel).join('、')}</small>}{targets.length > 0 && <small>用于：{targets.map(stepLabel).join('、')}</small>}{text.trim() && <small className="workflow-plan-excerpt">{text.trim().slice(0, 90)}</small>}{!sources.length && !targets.length && <small>{hints[step.node.type] || '内容'}</small>}</div></li>;
+  })}</ol> : <p>{scope ? '循环里还没有步骤，从左侧添加。' : '还没有步骤，请返回修改流程添加。'}</p>}{!!reviews.length && <p className="workflow-plan-note">需要你确认的步骤：{reviews.map((step) => step.name).join('、')}。运行到这里会暂停等待。</p>}{!!saves.length && <p className="workflow-plan-note">运行到「{saves.map((step) => step.name).join('、')}」时才会存进资料库。</p>}</div>;
 }
 function LoopOutputSelect({ nodes, value, onChange }) {
-  const choices = nodes.flatMap((node) => outputVariables(node).map((v) => ({ label: `${node.name || node.id} / ${v.name} (${v.type})`, ref: { kind: 'output', nodeId: node.id, port: v.port, path: v.path } })));
+  const choices = nodes.flatMap((node) => outputVariables(node).map((v) => ({ label: `${nodeDisplayName(node)} / ${variableLabel(v)}（${typeLabels[v.type] || v.type}）`, ref: { kind: 'output', nodeId: node.id, port: v.port, path: v.path } })));
   const index = choices.findIndex((v) => v.ref.nodeId === value.nodeId && v.ref.port === outputPortName(nodes.find((n) => n.id === value.nodeId), value.port) && JSON.stringify(v.ref.path) === JSON.stringify(value.path || []));
-  return <select aria-label="循环输出变量" value={index} onChange={(e) => onChange(choices[Number(e.target.value)].ref)}><option value={-1} disabled>输出变量不存在，请重新选择</option>{choices.map((v, i) => <option key={i} value={i}>{v.label}</option>)}</select>;
+  return <select aria-label="循环输出变量" value={index} onChange={(e) => onChange(choices[Number(e.target.value)].ref)}><option value={-1} disabled>原来的结果已不存在，请重新选择</option>{choices.map((v, i) => <option key={i} value={i}>{v.label}</option>)}</select>;
 }
 function FlowNode({ data, selected }) {
   const n = data.node, ports = inputPorts(n);
@@ -42,20 +44,20 @@ function FlowNode({ data, selected }) {
   const imageContent = contentNode && n.config.valueType?.includes('image');
   const updateNodeInternals = useUpdateNodeInternals();
   useEffect(() => { updateNodeInternals(n.id); }, [n.id, n.config.parts, n.config.outputType, n.config.source, n.config.valueType, n.config.default, n.inputs, updateNodeInternals]);
-  return <div className={`workflow-node ${selected ? 'selected' : ''}`}>
-    {data.stepNumber && <small className="workflow-canvas-step">第 {data.stepNumber} 步</small>}
+  return <div className={`workflow-node ${selected ? 'selected' : ''} ${data.hasIssue ? 'has-issue' : ''}`}>
+    {data.stepNumber && <small className="workflow-canvas-step">第 {data.stepNumber} 步</small>}{data.hasIssue && <small className="workflow-node-issue">需要处理</small>}
     {title !== kind && <small>{kind}</small>}<strong>{title}</strong>
-    {runtime && <small>运行时提供</small>}
+    {runtime && <small>每次运行时填写</small>}
     {n.type === 'element' && n.config.source === 'fixed' && n.config.valueType === 'text' && !n.config.parts && <p className="workflow-node-excerpt">{typeof n.config.default === 'string' ? n.config.default.slice(0, 100) || '填写文字' : n.config.default?.elementId ? '已选资料库文字' : '填写文字'}</p>}
     {n.type === 'element' && n.config.parts && <p className="workflow-node-excerpt">{n.config.parts.map((p) => p.kind === 'text' ? p.text : '【引用】').join('').slice(0, 100)}</p>}
     {imageContent && n.config.source === 'fixed' && <p className="workflow-node-excerpt">{Array.isArray(n.config.default) ? n.config.default.length ? `已选 ${n.config.default.length} 张` : '选择图片' : n.config.default ? '已选 1 张' : '选择图片'}</p>}
     {contentNode && !imageContent && Array.isArray(n.config.default) && <small>已选 {n.config.default.length} 项</small>}
-    <div className="workflow-node-inputs">{Object.keys(ports).map((key) => <div key={key}><Handle type="target" position={Position.Left} id={key} /><span>{data.portNames?.[key] || portLabels[key] || key}</span></div>)}{n.type === 'foreach' && <div><Handle type="target" position={Position.Left} id="capture:new" /><span>＋带入外部内容</span></div>}</div>
+    <div className="workflow-node-inputs">{Object.keys(ports).map((key) => <div key={key}><Handle type="target" position={Position.Left} id={key} /><span>{data.portNames?.[key] || portLabels[key] || key}</span></div>)}{n.type === 'foreach' && <div><Handle type="target" position={Position.Left} id="capture:new" /><span>＋带入循环外的内容</span></div>}</div>
     {(n.type === 'template' || n.type === 'element' && n.config.source === 'fixed') && n.config.parts?.map((part, i) => part.kind === 'ref' && <div key={i} className="workflow-template-handle"><Handle type="target" position={Position.Left} id={`template:${i}`} /><span>引用 {n.config.parts.slice(0, i + 1).filter((p) => p.kind === 'ref').length}</span></div>)}
     {canAppendTextReference(n) && <div className="workflow-template-handle"><Handle type="target" position={Position.Left} id="template:new" aria-label="接入文字" /><span>＋接入文字</span></div>}
     {Object.entries(n.inputs || {}).flatMap(([port, b]) => b?.kind === 'text' ? b.parts.map((p, i) => p.kind === 'ref' && <div key={`${port}:${i}`} className="workflow-template-handle"><Handle type="target" position={Position.Left} id={`text:${port}:${i}`} /><span>{portLabels[port] || port} · 引用 {i + 1}</span></div>) : [])}
     <div className="workflow-node-outputs">{outputVariables(n).filter((v) => !v.path.length).map((v) => <div key={v.port}><span title={v.port}>{variableLabel(v)}</span><Handle type="source" position={Position.Right} id={v.port} aria-label={`输出 ${v.name}`} /></div>)}</div>
-    {n.type === 'foreach' && <button className="nodrag" onClick={() => data.enter(n.id)}>打开循环子图 →</button>}
+    {n.type === 'foreach' && <button className="nodrag" onClick={() => data.enter(n.id)}>打开循环里的步骤 →</button>}
   </div>;
 }
 const flowTypes = { workflow: FlowNode };
@@ -74,7 +76,7 @@ export function WorkflowGraphSnapshot({ definition }) {
   const numbers = new Map(workflowSteps(definition).map((step) => [step.id, step.number]));
   const nodes = graph.nodes.map((n, index) => ({ id: n.id, type: 'workflow', position: n.position || { x: index * 260, y: 0 }, data: { node: n, enter: setScope, stepNumber: numbers.get(scope ? scope + '/' + n.id : n.id) } }));
   const edges = graph.nodes.flatMap((n) => bindings(n).filter(({ binding }) => binding?.kind === 'output' && binding.nodeId).map(({ field, binding }, i) => ({ id: `${n.id}:${i}`, source: binding.nodeId, sourceHandle: outputPortName(graph.nodes.find((source) => source.id === binding.nodeId), binding.port), target: n.id, targetHandle: bindingHandle(field) })));
-  return <div className="workflow-frozen-graph"><button disabled={!parent} onClick={() => setScope(null)}>主流程</button><span>{parent ? parent.name || parent.id : '本次运行的不可变图快照'}</span><div style={{ height: 420 }}><ReactFlow key={scope || 'root'} nodes={nodes} edges={edges} nodeTypes={flowTypes} nodesDraggable={false} nodesConnectable={false} edgesReconnectable={false} deleteKeyCode={null} fitView fitViewOptions={{ maxZoom: 1, padding: 0.2 }}><Background /><Controls /></ReactFlow></div></div>;
+  return <div className="workflow-frozen-graph"><button disabled={!parent} onClick={() => setScope(null)}>主流程</button><span>{parent ? parent.name || parent.id : '这次运行用的流程（只读）'}</span><div style={{ height: 420 }}><ReactFlow key={scope || 'root'} nodes={nodes} edges={edges} nodeTypes={flowTypes} nodesDraggable={false} nodesConnectable={false} edgesReconnectable={false} deleteKeyCode={null} fitView fitViewOptions={{ maxZoom: 1, padding: 0.2 }}><Background /><Controls /></ReactFlow></div></div>;
 }
 function defaultConfig(type) {
   if (type === 'element') return { parameter: `content_${crypto.randomUUID().slice(0, 8)}`, source: 'fixed', valueType: 'text', default: '' };
@@ -97,11 +99,11 @@ function BindingField({ label, displayLabel, value, type, nodes, selected, paren
   const target = nodes.find((n) => n.id === selected);
   const accepts = acceptedTypes(target, label, type);
   const unavailable = downstreamClosure(nodes, [selected]);
-  const choices = nodes.filter((n) => !unavailable.has(n.id)).flatMap((n) => outputVariables(n).filter((v) => accepts.includes(v.type)).map((v) => ({ label: `${n.name || n.id} / ${variableLabel(v)} (${typeLabels[v.type] || v.type})`, binding: { kind: 'output', nodeId: n.id, port: v.port, path: v.path } })));
+  const choices = nodes.filter((n) => !unavailable.has(n.id)).flatMap((n) => outputVariables(n).filter((v) => accepts.includes(v.type)).map((v) => ({ label: `${nodeDisplayName(n)} / ${variableLabel(v)} (${typeLabels[v.type] || v.type})`, binding: { kind: 'output', nodeId: n.id, port: v.port, path: v.path } })));
   const scoped = parent ? [
-    ...(accepts.includes(listItemType(parent.config.itemsType)) ? [{ label: '当前循环项', binding: { kind: 'item' } }] : []),
-    ...(accepts.includes('number') ? [{ label: '当前项序号', binding: { kind: 'index' } }] : []),
-    ...(accepts.includes('text') ? [{ label: '项 ID', binding: { kind: 'itemId' } }] : []),
+    ...(accepts.includes(listItemType(parent.config.itemsType)) ? [{ label: '这一项', binding: { kind: 'item' } }] : []),
+    ...(accepts.includes('number') ? [{ label: '这一项的序号', binding: { kind: 'index' } }] : []),
+    ...(accepts.includes('text') ? [{ label: '这一项的编号', binding: { kind: 'itemId' } }] : []),
     ...Object.keys(parent.config.captureTypes || {}).filter((key) => accepts.includes(parent.config.captureTypes[key])).map((key) => ({ label: `循环外：${parent.captureLabels?.[key] || key}`, binding: { kind: 'capture', name: key } })),
   ] : [];
   const all = [...choices, ...scoped];
@@ -113,14 +115,15 @@ function BindingField({ label, displayLabel, value, type, nodes, selected, paren
     <select aria-label={`${label}输出变量`} value={choiceIndex >= 0 ? String(choiceIndex) : mode === 'constant' ? 'constant' : ''} onChange={(e) => onChange(e.target.value === 'constant' ? constant(type.startsWith('list<') ? [] : type === 'number' ? 0 : type === 'boolean' ? false : type === 'json' ? {} : '') : all[Number(e.target.value)].binding)}>
       <option value="" disabled>{value?.nodeId ? '来源不可用，重新选择…' : type.includes('image') ? '＋选择参考图片来源' : '选择内容来源…'}</option>
       {type !== 'image' && <option value="constant">{type.includes('image') ? '不使用参考图片' : '直接填写'}</option>}
-      {!!choices.length && <optgroup label="上游节点">{choices.map((choice, i) => <option key={i} value={i}>{choice.label}</option>)}</optgroup>}
-      {!!scoped.length && <optgroup label="当前循环">{scoped.map((choice, i) => <option key={i} value={choices.length + i}>{choice.label}</option>)}</optgroup>}
+      {!!choices.length && <optgroup label="前面步骤的结果">{choices.map((choice, i) => <option key={i} value={i}>{choice.label}</option>)}</optgroup>}
+      {!!scoped.length && <optgroup label="循环里">{scoped.map((choice, i) => <option key={i} value={choices.length + i}>{choice.label}</option>)}</optgroup>}
     </select>
     {choiceIndex >= 0 && <button onClick={() => onChange(type === 'list<image>' ? constant([]) : output(''))}>断开{portLabels[label] || label}</button>}
     {mode === 'constant' && !type.includes('image') && (type === 'text' ? <WorkflowTextField label={`${label}固定值`} parts={textParts} nodes={nodes} selected={selected} parent={parent} onChange={setTextParts} /> : type === 'number' ? <input aria-label={`${label}固定值`} type="number" value={value?.value ?? 0} onChange={(e) => onChange(constant(Number(e.target.value)))} /> : type === 'boolean' ? <select value={String(value?.value ?? false)} onChange={(e) => onChange(constant(e.target.value === 'true'))}><option>false</option><option>true</option></select> : <JsonField key={`${selected}:${label}:constant`} label="JSON 值" value={value?.value ?? (type.startsWith('list<') ? [] : {})} onChange={(v) => onChange(constant(v))} />)}
   </fieldset>;
 }
-export default function WorkflowEditor({ definition, onChange, onPreview, errors = [], adapters = [], active = true }) {
+export default function WorkflowEditor({ definition, onChange, onPreview, issues = [], locate = null, adapters = [], active = true }) {
+  const [builderView, setBuilderView] = useState('steps');
   const [scope, setScope] = useState(null), [selected, setSelected] = useState(null), [search, setSearch] = useState(''), [selectedIds, setSelectedIds] = useState([]);
   const [history, setHistory] = useState([]), [future, setFuture] = useState([]);
   const [nodeViews, setNodeViews] = useState({});
@@ -139,6 +142,15 @@ export default function WorkflowEditor({ definition, onChange, onPreview, errors
     return () => cancelAnimationFrame(frame);
   }, [active]);
   const enterScope = useCallback((id) => { setScope(id); setSelected(null); setSelectedIds([]); setSelectedEdgeIds([]); }, []);
+  useEffect(() => {
+    // Jump to the step named by a problem in the issue list, entering its loop when needed.
+    if (!locate || !active) return;
+    const inScope = locate.scope ? definition.nodes.find((n) => n.id === locate.scope)?.config.body?.nodes : definition.nodes;
+    if (!inScope?.some((n) => n.id === locate.nodeId)) return;
+    setScope(locate.scope || null); setSelected(locate.nodeId); setSelectedIds([locate.nodeId]); setSelectedEdgeIds([]);
+    const frame = requestAnimationFrame(() => requestAnimationFrame(() => flow.current?.fitView({ nodes: [{ id: locate.nodeId }], padding: 0.6, maxZoom: 1, duration: 200 })));
+    return () => cancelAnimationFrame(frame);
+  }, [locate, active]);
   const parentNode = scope && definition.nodes.find((n) => n.id === scope);
   const parent = parentNode && { ...parentNode, captureLabels: Object.fromEntries(Object.keys(parentNode.config.captureTypes || {}).map((key) => [key, definition.nodes.find((n) => n.id === parentNode.inputs?.[key]?.nodeId)?.name || key])) };
   const graph = parent?.config.body || definition;
@@ -191,6 +203,7 @@ export default function WorkflowEditor({ definition, onChange, onPreview, errors
     });
     if (changed) updateGraph({ ...graph, nodes });
   }
+  const issueIds = useMemo(() => new Set(issues.filter((issue) => (issue.scope || null) === (scope || null)).map((issue) => issue.nodeId)), [issues, scope]);
   const flowNodes = useMemo(() => {
     const stepNumbers = new Map(workflowSteps(definition).map((step) => [step.id, step.number]));
     const viewFor = (id) => nodeViews[`${scope || 'root'}:${id}`] || {};
@@ -203,12 +216,13 @@ export default function WorkflowEditor({ definition, onChange, onPreview, errors
       const key = `${scope || 'root'}:${n.id}`, view = viewFor(n.id), previous = flowNodeCache.current.get(key), selected = selectedIds.includes(n.id);
       const stepNumber = stepNumbers.get(scope ? scope + '/' + n.id : n.id);
       const portNames = n.type === 'foreach' ? Object.fromEntries(Object.keys(n.config.captureTypes || {}).map((key) => [key, graph.nodes.find((source) => source.id === n.inputs?.[key]?.nodeId)?.name || key])) : undefined;
-      if (previous?.data.node === n && previous.data.stepNumber === stepNumber && previous.selected === selected && previous.measured === view.measured && previous.dragging === view.dragging && JSON.stringify(previous.data.portNames) === JSON.stringify(portNames)) return previous;
-      const node = { id: n.id, type: 'workflow', ...view, position: n.position || { x: 0, y: 0 }, selected, data: { node: n, enter: enterScope, portNames, stepNumber } };
+      const hasIssue = issueIds.has(n.id);
+      if (previous?.data.node === n && previous.data.stepNumber === stepNumber && previous.data.hasIssue === hasIssue && previous.selected === selected && previous.measured === view.measured && previous.dragging === view.dragging && JSON.stringify(previous.data.portNames) === JSON.stringify(portNames)) return previous;
+      const node = { id: n.id, type: 'workflow', ...view, position: n.position || { x: 0, y: 0 }, selected, data: { node: n, enter: enterScope, portNames, stepNumber, hasIssue } };
       flowNodeCache.current.set(key, node);
       return node;
     })];
-  }, [definition.nodes, graph.nodes, graph.layout?.groups, nodeViews, scope, selectedIds, enterScope]);
+  }, [definition.nodes, graph.nodes, graph.layout?.groups, nodeViews, scope, selectedIds, enterScope, issueIds]);
   const edges = useMemo(() => graph.nodes.flatMap((n) => bindings(n).filter(({ binding }) => binding?.kind === 'output' && binding.nodeId).map(({ field, binding }, index) => ({ id: `${scope || 'root'}:${n.id}:${field}:${index}`, selected: selectedEdgeIds.includes(`${scope || 'root'}:${n.id}:${field}:${index}`), source: binding.nodeId, sourceHandle: outputPortName(graph.nodes.find((source) => source.id === binding.nodeId), binding.port), target: n.id, targetHandle: bindingHandle(field), label: binding.path?.length ? binding.path.join('.') : undefined, reconnectable: true, interactionWidth: 28, data: { field } }))), [graph, scope, selectedEdgeIds]);
   const current = graph.nodes.find((n) => n.id === selected), ports = current && inputPorts(current);
   function remove(ids) { updateGraph({ ...graph, nodes: graph.nodes.filter((n) => !ids.includes(n.id)) }); setSelected(null); }
@@ -223,12 +237,18 @@ export default function WorkflowEditor({ definition, onChange, onPreview, errors
   function redo() { if (!future.length) return; setHistory((h) => [...h, definition]); onChange(future[0]); setFuture((f) => f.slice(1)); }
   // Stay mounted so undo and selection survive a run, but omit the canvas while inactive so its labels are not in the document.
   if (!active) return null;
-  return <div className="workflow-editor" ref={wrapper} onKeyDown={(e) => { if (!(e.ctrlKey || e.metaKey) || e.target.closest('input,textarea,select')) return; if (e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); } if (e.key === 'c') { e.preventDefault(); clipboard.current = graph.nodes.filter((n) => selectedIds.includes(n.id)); } if (e.key === 'v') { e.preventDefault(); paste(); } }}>
-    <aside className="workflow-palette"><h3>节点库</h3><input aria-label="搜索节点" placeholder="搜索节点…" value={search} onChange={(e) => setSearch(e.target.value)} />{paletteGroups.map((group) => {
+  return <div className="workflow-editor-shell">
+    <div className="workflow-builder-tabs ui-segmented" role="toolbar" aria-label="搭建视图">
+      <button type="button" aria-pressed={builderView === 'steps'} onClick={() => setBuilderView('steps')}>步骤</button>
+      <button type="button" aria-pressed={builderView === 'canvas'} onClick={() => setBuilderView('canvas')}>画布（高级）</button>
+    </div>
+    {builderView === 'steps' ? <WorkflowStepsView definition={definition} onChange={onChange} adapters={adapters} issues={issues} locate={locate} onPreview={onPreview} /> : null}
+    {builderView === 'canvas' ? <div className="workflow-editor" ref={wrapper} onKeyDown={(e) => { if (!(e.ctrlKey || e.metaKey) || e.target.closest('input,textarea,select')) return; if (e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); } if (e.key === 'c') { e.preventDefault(); clipboard.current = graph.nodes.filter((n) => selectedIds.includes(n.id)); } if (e.key === 'v') { e.preventDefault(); paste(); } }}>
+    <aside className="workflow-palette"><h3>添加步骤</h3><input aria-label="搜索步骤" placeholder="搜索步骤…" value={search} onChange={(e) => setSearch(e.target.value)} />{paletteGroups.map((group) => {
       const items = palette.filter((n) => group.types.includes(n.type) && n.label.includes(search) && (!parent || n.type !== 'foreach'));
-      return items.length ? <div className="workflow-palette-group" key={group.title}><h4>{group.title}</h4>{items.map((n) => <button disabled={['model', 'image.generate'].includes(n.type) && !adapters.some((entry) => entry.nodeType === n.type)} draggable key={n.type} onDragStart={(e) => e.dataTransfer.setData('application/workflow-node', n.type)} title="添加节点" onClick={(event) => { if (event.detail <= 1) add(n.type); }}>{n.label}<small>{n.hint}</small></button>)}</div> : null;
+      return items.length ? <div className="workflow-palette-group" key={group.title}><h4>{group.title}</h4>{items.map((n) => <button disabled={['model', 'image.generate'].includes(n.type) && !adapters.some((entry) => entry.nodeType === n.type)} draggable key={n.type} onDragStart={(e) => e.dataTransfer.setData('application/workflow-node', n.type)} title="添加这一步" onClick={(event) => { if (event.detail <= 1) add(n.type); }}>{n.label}<small>{n.hint}</small></button>)}</div> : null;
     })}</aside>
-    <div className="workflow-canvas-column"><div className="workflow-canvas-toolbar"><button disabled={!parent} onClick={() => { setScope(null); setSelected(null); }}>主流程</button><span>{parent ? `循环：${parent.name || parent.id}` : '空白画布 · 自由组合'}</span><button disabled={!history.length} onClick={undo}>撤销</button><button disabled={!future.length} onClick={redo}>重做</button><button disabled={!selectedIds.length} onClick={() => { clipboard.current = graph.nodes.filter((n) => selectedIds.includes(n.id)); }}>复制节点</button><button onClick={paste}>粘贴</button><button disabled={!selectedEdgeIds.length} onClick={() => disconnectEdges(edges.filter((edge) => selectedEdgeIds.includes(edge.id)))}>断开连线</button><button disabled={selectedIds.length < 2} onClick={() => updateGraph({ ...graph, layout: { ...graph.layout, groups: [...(graph.layout?.groups || []), { id: `group_${crypto.randomUUID()}`, name: '节点组', nodeIds: selectedIds }] } })}>分组</button><button disabled={!graph.layout?.groups?.some((g) => g.nodeIds.some((id) => selectedIds.includes(id)))} onClick={() => updateGraph({ ...graph, layout: { ...graph.layout, groups: graph.layout.groups.filter((g) => !g.nodeIds.some((id) => selectedIds.includes(id))) } })}>取消分组</button></div>
+    <div className="workflow-canvas-column"><div className="workflow-canvas-toolbar"><button disabled={!parent} onClick={() => { setScope(null); setSelected(null); }}>主流程</button><span>{parent ? `「${nodeDisplayName(parent)}」里的步骤` : '画布'}</span><button disabled={!history.length} onClick={undo}>撤销</button><button disabled={!future.length} onClick={redo}>重做</button><button disabled={!selectedIds.length} onClick={() => { clipboard.current = graph.nodes.filter((n) => selectedIds.includes(n.id)); }}>复制所选</button><button onClick={paste}>粘贴</button><button disabled={!selectedEdgeIds.length} onClick={() => disconnectEdges(edges.filter((edge) => selectedEdgeIds.includes(edge.id)))}>断开连线</button><button disabled={selectedIds.length < 2} onClick={() => updateGraph({ ...graph, layout: { ...graph.layout, groups: [...(graph.layout?.groups || []), { id: `group_${crypto.randomUUID()}`, name: '节点组', nodeIds: selectedIds }] } })}>分组</button><button disabled={!graph.layout?.groups?.some((g) => g.nodeIds.some((id) => selectedIds.includes(id)))} onClick={() => updateGraph({ ...graph, layout: { ...graph.layout, groups: graph.layout.groups.filter((g) => !g.nodeIds.some((id) => selectedIds.includes(id))) } })}>取消分组</button></div>
       <div className="workflow-canvas" onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }} onDrop={(e) => { e.preventDefault(); const type = e.dataTransfer.getData('application/workflow-node'); if (palette.some((n) => n.type === type)) add(type, flow.current?.screenToFlowPosition({ x: e.clientX, y: e.clientY })); }}>
         <ReactFlow nodes={flowNodes} edges={edges} nodeTypes={flowTypes} edgeTypes={edgeTypes} onInit={(instance) => { flow.current = instance; }} fitView fitViewOptions={{ maxZoom: 1, padding: 0.2 }} minZoom={0.15} maxZoom={2} deleteKeyCode={['Backspace', 'Delete']} edgesReconnectable reconnectRadius={12}
           onEdgeClick={(event, edge) => { event.stopPropagation(); setSelectedEdgeIds([edge.id]); setSelectedIds([]); setSelected(null); event.currentTarget.focus?.(); }}
@@ -245,7 +265,7 @@ export default function WorkflowEditor({ definition, onChange, onPreview, errors
             const attempt = reconnecting.current; reconnecting.current = null;
             if (attempt && !attempt.cancelled && !attempt.connected && event.key !== 'Escape' && !state.toNode && ['mouseup', 'pointerup', 'touchend'].includes(event.type)) disconnectEdges([edge]);
           }}
-          selectionOnDrag onNodeClick={(_e, n) => setSelected(n.id)}
+          selectionOnDrag onNodeClick={(_e, n) => setSelected(n.id)} onPaneClick={() => setSelected(null)}
           onNodeDragStart={() => { setHistory((h) => [...h.slice(-49), definition]); setFuture([]); }}
           onNodesChange={(changes) => {
             const selections = changes.filter((c) => c.type === 'select');
@@ -302,14 +322,14 @@ export default function WorkflowEditor({ definition, onChange, onPreview, errors
           }}><Background /><Controls /><MiniMap /></ReactFlow>
       </div>
     </div>
-    <aside className="workflow-inspector"><h3>{current ? '节点配置' : '图配置'}</h3>{current ? <>
-      <button disabled={!onPreview} title={onPreview ? '显示最近一次运行，不会执行新调用' : '先运行流程，再查看节点结果'} onClick={() => onPreview(current.id, scope)}>查看最近运行结果</button><label>显示名称<input value={current.name || ''} onChange={(e) => updateNode(current.id, { name: e.target.value })} /></label><small>用来说明这个节点的用途。留空或只写类型名时，运行页只显示类型。</small>
-      {current.type === 'review' && <p>预览上游内容，等待接受、修改或拒绝。可以作为终点。接受只继续这一支，不会自动保存到内容库。</p>}
-      {current.type === 'library.save' && <p>只有执行到这个节点时，才会把结果保存到内容库。</p>}
-      {current.type === 'element' ? <><label>元素类型<select aria-label="元素类型" value={current.config.valueType?.includes('image') ? 'image' : current.config.valueType || 'text'} onChange={(e) => changeValueType(current, e.target.value === 'image' ? 'list<image>' : e.target.value)}>{[...new Set(['text', ...(!parent ? ['image'] : []), ...(!['text', 'image', 'list<image>'].includes(current.config.valueType || 'text') ? [current.config.valueType] : [])])].map((t) => <option key={t} value={t}>{t === 'image' ? '图片' : typeLabels[t]}</option>)}</select></label></> : current.type === 'input' && <label>内容类型<select aria-label="内容类型" value={current.config.valueType || 'text'} onChange={(e) => changeValueType(current, e.target.value)}>{(current.type === 'review' ? ['text', 'list<image>'] : current.type === 'library.save' ? ['text', 'image', 'list<image>'] : options).map((t) => <option key={t} value={t}>{typeLabels[t]}</option>)}</select></label>}
-      {['review', 'preview', 'library.save'].includes(current.type) && <p>内容类型：{current.inputs?.value ? typeLabels[current.config.valueType] || current.config.valueType : '连接内容后自动确定'}</p>}
+    <aside className="workflow-inspector"><h3>{current ? '这一步的设置' : parent ? '循环概览' : '流程概览'}</h3>{current ? <>
+      <button disabled={!onPreview} title={onPreview ? '显示最近一次运行，不会执行新调用' : '先运行流程，再查看节点结果'} onClick={() => onPreview(current.id, scope)}>查看最近运行结果</button><label>显示名称<input value={current.name || ''} onChange={(e) => updateNode(current.id, { name: e.target.value })} /></label><small>给这一步起个好懂的名字。留空时只显示类型。</small>
+      {current.type === 'review' && <p>运行到这里会暂停，等你确认、修改或跳过。通过只是让后面的步骤继续，不会自动存进资料库。</p>}
+      {current.type === 'library.save' && <p>只有执行到这一步时，才会把结果存进资料库。</p>}
+      {current.type === 'element' ? <><label>内容种类<select aria-label="内容种类" value={current.config.valueType?.includes('image') ? 'image' : current.config.valueType || 'text'} onChange={(e) => changeValueType(current, e.target.value === 'image' ? 'list<image>' : e.target.value)}>{[...new Set(['text', ...(!parent ? ['image'] : []), ...(!['text', 'image', 'list<image>'].includes(current.config.valueType || 'text') ? [current.config.valueType] : [])])].map((t) => <option key={t} value={t}>{t === 'image' ? '图片' : typeLabels[t]}</option>)}</select></label></> : current.type === 'input' && <label>内容类型<select aria-label="内容类型" value={current.config.valueType || 'text'} onChange={(e) => changeValueType(current, e.target.value)}>{(current.type === 'review' ? ['text', 'list<image>'] : current.type === 'library.save' ? ['text', 'image', 'list<image>'] : options).map((t) => <option key={t} value={t}>{typeLabels[t]}</option>)}</select></label>}
+      {['review', 'preview', 'library.save'].includes(current.type) && <p>内容类型：{current.inputs?.value ? typeLabels[current.config.valueType] || current.config.valueType : '选好内容来源后自动确定'}</p>}
       {current.type === 'element' && <>
-        <label>内容来源<select aria-label="内容来源" value={current.config.source} onChange={(e) => { const source = e.target.value, config = { ...current.config, source }; if (source === 'runtime' && config.parts) { config.default = config.parts.filter((p) => p.kind === 'text').map((p) => p.text).join(''); delete config.parts; } config.parameter ||= `content_${crypto.randomUUID().slice(0, 8)}`; updateNode(current.id, { config, inputs: source === 'upstream' ? current.inputs : {} }); }}><option value="fixed">{current.config.parts?.some((p) => p.kind === 'ref') ? '文字与上游结果' : '固定内容'}</option><option value="runtime" disabled={!!parent || current.config.parts?.some((p) => p.kind === 'ref')}>运行时提供</option>{current.config.source === 'upstream' && <option value="upstream">上游结果（旧流程中转节点）</option>}</select></label>
+        <label>内容来源<select aria-label="内容来源" value={current.config.source} onChange={(e) => { const source = e.target.value, config = { ...current.config, source }; if (source === 'runtime' && config.parts) { config.default = config.parts.filter((p) => p.kind === 'text').map((p) => p.text).join(''); delete config.parts; } config.parameter ||= `content_${crypto.randomUUID().slice(0, 8)}`; updateNode(current.id, { config, inputs: source === 'upstream' ? current.inputs : {} }); }}><option value="fixed">{current.config.parts?.some((p) => p.kind === 'ref') ? '文字与前面步骤的结果' : '固定内容'}</option><option value="runtime" disabled={!!parent || current.config.parts?.some((p) => p.kind === 'ref')}>每次运行时填写</option>{current.config.source === 'upstream' && <option value="upstream">前面步骤的结果（旧流程）</option>}</select></label>
         {current.config.source !== 'upstream' && (parent && current.config.valueType === 'text' ? <WorkflowTextField label="内容" parts={current.config.parts || [{ kind: 'text', text: current.config.default || '' }]} nodes={graph.nodes} selected={current.id} parent={parent} onChange={(parts) => setElementText(current, parts)} /> : <WorkflowContentField key={`${current.id}:${current.config.valueType}`} label={current.config.source === 'fixed' ? '内容' : '预填内容（可选）'} type={current.config.valueType || 'text'} value={current.config.default} renderText={current.config.source === 'fixed' ? (text) => <WorkflowTextField label="内容" parts={current.config.parts || [{ kind: 'text', text }]} nodes={graph.nodes} selected={current.id} parent={parent} onChange={(parts) => setElementText(current, parts)} /> : undefined} onChange={(value) => { const config = { ...current.config }; delete config.parts; config.parameter ||= `content_${crypto.randomUUID().slice(0, 8)}`; if (value === undefined) delete config.default; else config.default = value; updateNode(current.id, { config }); }} />)}
       </>}
       {['model', 'image.generate'].includes(current.type) && <ModelAdapterFields node={current} adapters={adapters} onChange={(config) => { const inputs = Object.fromEntries(Object.entries(current.inputs || {}).filter(([key]) => Object.hasOwn(config.adapterInputs || {}, key))); updateNode(current.id, { config, inputs }); }} />}
@@ -319,13 +339,14 @@ export default function WorkflowEditor({ definition, onChange, onPreview, errors
         {current.config.operation === 'nth' && <label>取第几项（从 1 开始）<input type="number" min={1} value={(current.config.index || 0) + 1} onChange={(e) => setConfig(current.id, { index: Number(e.target.value) - 1 })} /></label>}
         {current.config.operation === 'field' && <label>字段路径（以 / 分隔）<input value={(current.config.path || []).join('/')} onChange={(e) => setConfig(current.id, { path: e.target.value ? e.target.value.split('/') : [] })} /></label>}
       </>}
-      {Object.entries(ports || {}).map(([port, type]) => <BindingField key={`${current.id}:${port}`} label={port} displayLabel={current.type === 'foreach' && port !== 'items' ? graph.nodes.find((n) => n.id === current.inputs?.[port]?.nodeId)?.name : /^part_/.test(port) ? '输入 ' + (Object.keys(ports).indexOf(port) + 1) : undefined} type={type} value={current.inputs?.[port]} nodes={graph.nodes} selected={current.id} parent={parent} onChange={(v) => bind(current.id, port, v)} />)}
+      {Object.entries(ports || {}).map(([port, type]) => <BindingField key={`${current.id}:${port}`} label={port} displayLabel={current.type === 'foreach' && port !== 'items' ? (() => { const source = graph.nodes.find((n) => n.id === current.inputs?.[port]?.nodeId); return source ? nodeDisplayName(source) : '带入的内容'; })() : /^part_/.test(port) ? '输入 ' + (Object.keys(ports).indexOf(port) + 1) : undefined} type={type} value={current.inputs?.[port]} nodes={graph.nodes} selected={current.id} parent={parent} onChange={(v) => bind(current.id, port, v)} />)}
       <WorkflowOutputs key={`${current.id}:${current.config.outputType}`} node={current} onChange={(config) => updateNode(current.id, { config })} />
-      {current.type === 'foreach' && <><p>列表内容：{typeLabels[current.config.itemsType] || '连接列表后自动确定'}</p><label>最多循环项<input type="number" min={1} max={1000} value={current.config.maxItems} onChange={(e) => setConfig(current.id, { maxItems: Number(e.target.value) })} /></label><h4>带入循环的内容</h4><select aria-label="带入循环的内容" value="" onChange={(event) => bind(current.id, 'capture:new', JSON.parse(event.target.value))}><option value="">＋带入内容</option>{graph.nodes.filter((node) => !downstreamClosure(graph.nodes, [current.id]).has(node.id)).flatMap((node) => outputVariables(node).map((v) => <option key={`${node.id}:${v.name}`} value={JSON.stringify({ kind: 'output', nodeId: node.id, port: v.port, path: v.path })}>{node.name || node.id} / {variableLabel(v)}</option>))}</select>{Object.entries(current.config.captureTypes || {}).map(([key, type]) => <div key={key}><p>{graph.nodes.find((n) => n.id === current.inputs?.[key]?.nodeId)?.name || key}：{current.inputs?.[key] ? typeLabels[type] || type : '连接内容后自动确定'}</p><button onClick={() => { const captureTypes = { ...current.config.captureTypes }, inputs = { ...current.inputs }; delete captureTypes[key]; delete inputs[key]; updateNode(current.id, { config: { ...current.config, captureTypes }, inputs }); }}>移除此内容</button></div>)}<button onClick={() => { setScope(current.id); setSelected(null); }}>编辑循环子图</button></>}
-      <details className="workflow-advanced"><summary>高级设置</summary><small>节点标识：{current.id}</small>{current.type === 'transform' && current.config.operation === 'field' && <label>提取结果类型<select aria-label="提取结果类型" value={current.config.valueType || 'json'} onChange={(e) => changeValueType(current, e.target.value)}>{options.map((t) => <option key={t} value={t}>{typeLabels[t]}</option>)}</select><small>无法从结构化数据的字段路径确定结果类型时，可在此指定。</small></label>}{['input', 'element'].includes(current.type) && <label>参数标识<input value={current.config.parameter || ''} onChange={(e) => setConfig(current.id, { parameter: e.target.value })} /></label>}{current.type === 'input' && !['text', 'number', 'boolean', 'image', 'list<image>'].includes(current.config.valueType || 'text') && <JsonField key={`${current.id}:${current.config.valueType}:default`} label="默认值 JSON" value={current.config.default ?? (current.config.valueType?.startsWith('list<') ? [] : {})} onChange={(v) => setConfig(current.id, { default: v })} />}<JsonField key={`${current.id}:${current.config.valueType}:advanced`} label="完整配置 JSON" value={current.config} onChange={(v) => updateNode(current.id, { config: v })} /></details>
-      <button className="danger-quiet" onClick={() => remove([current.id])}>删除节点</button>
-    </> : <><p>选择节点编辑参数和绑定。按 Shift 框选，Ctrl/Cmd C、V 复制粘贴，Z 撤销。</p><WorkflowPlan definition={graph} />{parent && <><h4>循环返回的结果</h4>{Object.entries(graph.outputs || {}).map(([key, b]) => <label key={key}>{key}<LoopOutputSelect nodes={graph.nodes} value={b} onChange={(binding) => updateGraph({ ...graph, outputs: { ...graph.outputs, [key]: binding } })} /><button onClick={() => { const outputs = { ...graph.outputs }; delete outputs[key]; updateGraph({ ...graph, outputs }); }}>删除</button></label>)}<button disabled={!graph.nodes.length} onClick={() => updateGraph({ ...graph, outputs: { ...graph.outputs, [`output_${Object.keys(graph.outputs || {}).length + 1}`]: output(graph.nodes.at(-1).id) } })}>添加输出</button></>}</>}
-      {!!errors.length && <div className="workflow-errors" role="alert">{errors.map((e, i) => <p key={i}>{e.nodeId} · {e.field}：{e.message}</p>)}</div>}
+      {current.type === 'foreach' && <><p>列表内容：{typeLabels[current.config.itemsType] || '连接列表后自动确定'}</p><label>最多处理几项<input type="number" min={1} max={1000} value={current.config.maxItems} onChange={(e) => setConfig(current.id, { maxItems: Number(e.target.value) })} /></label><h4>带入循环的内容</h4><select aria-label="带入循环的内容" value="" onChange={(event) => bind(current.id, 'capture:new', JSON.parse(event.target.value))}><option value="">＋带入内容</option>{graph.nodes.filter((node) => !downstreamClosure(graph.nodes, [current.id]).has(node.id)).flatMap((node) => outputVariables(node).map((v) => <option key={`${node.id}:${v.name}`} value={JSON.stringify({ kind: 'output', nodeId: node.id, port: v.port, path: v.path })}>{nodeDisplayName(node)} / {variableLabel(v)}</option>))}</select>{Object.entries(current.config.captureTypes || {}).map(([key, type]) => <div key={key}><p>{(() => { const source = graph.nodes.find((n) => n.id === current.inputs?.[key]?.nodeId); return source ? nodeDisplayName(source) : '已断开的内容'; })()}：{current.inputs?.[key] ? typeLabels[type] || type : '选好内容来源后自动确定'}</p><button onClick={() => { const captureTypes = { ...current.config.captureTypes }, inputs = { ...current.inputs }; delete captureTypes[key]; delete inputs[key]; updateNode(current.id, { config: { ...current.config, captureTypes }, inputs }); }}>移除此内容</button></div>)}<button onClick={() => { setScope(current.id); setSelected(null); }}>编辑循环里的步骤</button></>}
+      <details className="workflow-advanced"><summary>高级设置</summary><small>内部标识：{current.id}</small>{current.type === 'transform' && current.config.operation === 'field' && <label>提取结果类型<select aria-label="提取结果类型" value={current.config.valueType || 'json'} onChange={(e) => changeValueType(current, e.target.value)}>{options.map((t) => <option key={t} value={t}>{typeLabels[t]}</option>)}</select><small>无法从结构化数据的字段路径确定结果类型时，可在此指定。</small></label>}{['input', 'element'].includes(current.type) && <label>参数标识<input value={current.config.parameter || ''} onChange={(e) => setConfig(current.id, { parameter: e.target.value })} /></label>}{current.type === 'input' && !['text', 'number', 'boolean', 'image', 'list<image>'].includes(current.config.valueType || 'text') && <JsonField key={`${current.id}:${current.config.valueType}:default`} label="默认值 JSON" value={current.config.default ?? (current.config.valueType?.startsWith('list<') ? [] : {})} onChange={(v) => setConfig(current.id, { default: v })} />}<JsonField key={`${current.id}:${current.config.valueType}:advanced`} label="完整配置 JSON" value={current.config} onChange={(v) => updateNode(current.id, { config: v })} /></details>
+      <button className="danger-quiet" onClick={() => remove([current.id])}>删除这一步</button>
+    </> : <><p>点选一个步骤来修改它。按住 Shift 可框选多个；Ctrl/Cmd + C、V 复制粘贴，Z 撤销。</p><WorkflowPlan definition={definition} scope={scope} />{parent && <><h4>循环返回的结果</h4>{Object.entries(graph.outputs || {}).map(([key, b], index) => <label key={key}>结果 {index + 1}<LoopOutputSelect nodes={graph.nodes} value={b} onChange={(binding) => updateGraph({ ...graph, outputs: { ...graph.outputs, [key]: binding } })} /><button onClick={() => { const outputs = { ...graph.outputs }; delete outputs[key]; updateGraph({ ...graph, outputs }); }}>删除</button></label>)}<button disabled={!graph.nodes.length} onClick={() => updateGraph({ ...graph, outputs: { ...graph.outputs, [`output_${Object.keys(graph.outputs || {}).length + 1}`]: output(graph.nodes.at(-1).id) } })}>添加返回结果</button></>}</>}
+      {(() => { const own = current ? issues.filter((issue) => issue.nodeId === current.id && (issue.scope || null) === (scope || null)) : []; return own.length ? <div className="workflow-errors" role="alert"><strong>这一步还需要处理</strong>{own.map((issue) => <p key={issue.key}>{issue.message}</p>)}</div> : null; })()}
     </aside>
+  </div> : null}
   </div>;
 }

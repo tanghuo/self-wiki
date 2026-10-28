@@ -31,7 +31,7 @@ test("settings select Grok as chat engine and ordinary chat edits the preceding 
   await page.getByRole("button", { name: "Agent 连接", exact: false }).click();
   await page.getByLabel("聊天引擎", { exact: true }).selectOption("grok-build");
   assert.equal(await page.getByLabel("Grok 聊天程序路径").inputValue(), config.chat.grokBuild.executable);
-  await page.getByRole("button", { name: "保存连接配置", exact: true }).click();
+  await page.getByRole("region", { name: "保存设置" }).getByRole("button", { name: "保存", exact: true }).click();
   await page.getByText("已保存", { exact: true }).waitFor();
   await page.goto(`${app.url}#agent?new=1`); await page.reload();
   await page.locator(".chat-connection > summary").filter({ hasText: "Grok Build 已连接" }).waitFor();

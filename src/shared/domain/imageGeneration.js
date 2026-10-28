@@ -27,7 +27,7 @@ export function grokBuildConfig(value = defaultImageGenerationConfig().grokBuild
   if (!value || typeof value !== "object" || Array.isArray(value)
       || Object.keys(value).some((key) => !["executable", "model", "aspectRatio"].includes(key))
       || !validExecutable(value.executable) || /\.(?:cmd|bat)$/i.test(value.executable.trim())
-      || typeof value.model !== "string" || !/^[a-zA-Z0-9._-]{1,100}$/.test(value.model)
+      || typeof value.model !== "string" || !/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(value.model)
       || !grokAspectRatios.includes(value.aspectRatio)) throw elementError("请检查 Grok Build 程序路径、模型和图片比例（不支持 cmd/bat 启动器）");
   return { executable: value.executable.trim(), model: value.model, aspectRatio: value.aspectRatio };
 }

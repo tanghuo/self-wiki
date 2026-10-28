@@ -1,16 +1,13 @@
 /* Surface layering and typography shared by every theme. Colors come from themes.css:
    sidebar (deepest) → page background → cards and panels (raised). */
-.wiki-sidebar { background: var(--sidebar); border-right-color: var(--sidebar-line); }
-.wiki-sidebar-nav > button { color: var(--muted); }
-.wiki-sidebar-nav > button.active { background: var(--panel); color: var(--ink); box-shadow: var(--shadow-sm), inset 3px 0 0 var(--accent); }
-.wiki-main h1 { font-size: var(--title-page); font-weight: 700; letter-spacing: -.6px; line-height: 1.25; }
-.wiki-detail-header h1 { font-size: var(--title-detail); font-weight: 650; line-height: 1.4; }
-.agent-source-body .wiki-detail-header h1 { font-size: var(--text-2xl); }
-.wiki-search { min-height: var(--control-lg); background: var(--panel); border-color: var(--line); box-shadow: var(--shadow-sm); }
+.wiki-main h1 { font-size: var(--fs-page); font-weight: 700; letter-spacing: -.6px; line-height: 1.25; }
+.wiki-detail-header h1 { font-size: var(--fs-page); font-weight: 650; line-height: 1.4; }
+.agent-source-body .wiki-detail-header h1 { font-size: var(--fs-page); }
+.wiki-search { min-height: var(--h-md); background: var(--panel); border-color: var(--line); box-shadow: var(--e-1); }
 
 /* Cards are raised above the page; media sits on its own backdrop (black in 夜幕). */
-.wiki-card { border-color: var(--card-border); box-shadow: var(--shadow-sm); }
-.wiki-card:hover { border-color: var(--card-border); box-shadow: var(--shadow-md), 0 0 0 1px var(--line-strong); }
+.wiki-card { border-color: var(--card-border); box-shadow: var(--e-1); }
+.wiki-card:hover { border-color: var(--card-border); box-shadow: var(--e-2), 0 0 0 1px var(--line-strong); }
 .wiki-card.is-selected { box-shadow: 0 0 0 2px var(--accent); }
 .wiki-card-image, .wiki-card-video-cover, .wiki-original { background: var(--media-bg); }
 .wiki-card-tags { background: var(--tag-overlay); color: var(--tag-overlay-ink); backdrop-filter: blur(6px); }
@@ -18,64 +15,62 @@
 /* Text cards: the first line reads as the title, the rest as muted body, and a strip marks the type. */
 .wiki-card.is-text:not(.wiki-related-item *)::before { content: ""; position: absolute; z-index: 1; top: 0; bottom: 0; left: 0; width: 4px; background: var(--strip-text); pointer-events: none; }
 .wiki-card.is-text.has-material:not(.wiki-related-item *)::before { background: var(--strip-material); }
-.wiki-card.is-text:not(.wiki-related-item *) .wiki-card-text { padding-left: 22px; }
-.wiki-card-text p { color: var(--muted); font-size: var(--text-card); line-height: 1.75; }
-.wiki-card-text p::first-line { color: var(--ink); font-size: 15px; font-weight: 700; }
+.wiki-card.is-text:not(.wiki-related-item *) .wiki-card-text { padding-left: var(--sp-6); }
+.wiki-card-text p { color: var(--muted); font-size: var(--fs-body); line-height: 1.75; }
+.wiki-card-text p::first-line { color: var(--ink); font-size: var(--fs-body); font-weight: 700; }
 
 @media (max-width: 760px) {
-  .wiki-main h1 { font-size: var(--text-2xl); }
-  .wiki-detail-header h1 { font-size: var(--text-xl); }
-  .wiki-sidebar-nav > button.active { box-shadow: var(--shadow-sm), inset 0 -2px 0 var(--accent); }
+  .wiki-main h1 { font-size: var(--fs-page); }
+  .wiki-detail-header h1 { font-size: var(--fs-dialog); }
 }
 
 /* Styled dropdown (Select.jsx) and the native selects that remain in forms share one look. */
 .ui-select { position: relative; display: inline-flex; min-width: 0; }
-.ui-select > button { justify-content: space-between; gap: 8px; width: 100%; min-width: 0; min-height: var(--control-md); padding: 0 10px 0 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); color: var(--ink); font-size: var(--text-base); font-weight: 400; box-shadow: var(--shadow-sm); }
+.ui-select > button { justify-content: space-between; gap: var(--sp-2); width: 100%; min-width: 0; min-height: var(--h-md); padding: 0 var(--sp-3) 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); color: var(--ink); font-size: var(--fs-body); font-weight: 400; box-shadow: var(--e-1); }
 .ui-select > button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-select > button > svg { flex-shrink: 0; color: var(--muted); transition: transform var(--duration-fast) var(--ease-out); }
 .ui-select > button[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .ui-select > button[aria-expanded="true"] > svg { transform: rotate(180deg); }
 .ui-select > button:hover:not(:disabled) { border-color: var(--line-strong); background: var(--panel); }
-.ui-select-list { position: absolute; z-index: var(--z-menu); top: calc(100% + 6px); left: 0; min-width: max(100%, 160px); max-width: min(360px, calc(100vw - 24px)); max-height: 320px; overflow-y: auto; margin: 0; padding: 5px; list-style: none; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow-lg); animation: dialog-in var(--duration-fast) var(--ease-out); }
+.ui-select-list { position: absolute; z-index: var(--z-menu); top: calc(100% + 6px); left: 0; min-width: max(100%, 160px); max-width: min(360px, calc(100vw - 24px)); max-height: 320px; overflow-y: auto; margin: 0; padding: var(--sp-1); list-style: none; border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--e-3); animation: dialog-in var(--duration-fast) var(--ease-out); }
 .ui-select-list[data-placement="top"] { top: auto; bottom: calc(100% + 6px); }
-.ui-select-list > li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; padding: 0 10px; border-radius: var(--radius-sm); color: var(--ink); font-size: var(--text-base); cursor: pointer; white-space: nowrap; }
+.ui-select-list > li { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: 34px; padding: 0 var(--sp-3); border-radius: var(--r-sm); color: var(--ink); font-size: var(--fs-body); cursor: pointer; white-space: nowrap; }
 .ui-select-list > li > span { overflow: hidden; text-overflow: ellipsis; }
 .ui-select-list > li.is-active { background: var(--accent-soft); }
 .ui-select-list > li[aria-selected="true"] { color: var(--accent); font-weight: 600; }
 .ui-select-list > li > svg { flex-shrink: 0; }
-select:where(:not([multiple])) { appearance: none; padding-right: 32px; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 17px) 52%, calc(100% - 12px) 52%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+select:where(:not([multiple])) { appearance: none; padding-right: var(--sp-8); background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 17px) 52%, calc(100% - 12px) 52%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
 
 /* Library toolbar: search and tag filter lead; secondary view options live in the 视图 popover. */
 .wiki-view-menu { position: relative; flex-shrink: 0; }
-.wiki-view-menu-trigger { gap: 7px; min-height: var(--control-lg); padding: 0 11px; border-color: var(--line); background: var(--panel); color: var(--ink); font-size: var(--text-sm); box-shadow: var(--shadow-sm); }
+.wiki-view-menu-trigger { gap: var(--sp-2); min-height: var(--h-md); padding: 0 var(--sp-3); border-color: var(--line); background: var(--panel); color: var(--ink); font-size: var(--fs-small); box-shadow: var(--e-1); }
 .wiki-view-menu-trigger > svg:first-child { color: var(--muted); }
 .wiki-view-menu-trigger > svg:last-child { color: var(--muted); transition: transform var(--duration-fast) var(--ease-out); }
 .wiki-view-menu-trigger[aria-expanded="true"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .wiki-view-menu-trigger[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
 .wiki-view-menu-trigger > i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
-.wiki-view-menu-panel { position: absolute; z-index: var(--z-menu); top: calc(100% + 6px); right: 0; width: min(290px, calc(100vw - 32px)); display: grid; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow-lg); animation: dialog-in var(--duration-fast) var(--ease-out); }
-.wiki-view-menu-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 40px; padding: 0 6px; color: var(--muted); font-size: var(--text-sm); }
+.wiki-view-menu-panel { position: absolute; z-index: var(--z-menu); top: calc(100% + 6px); right: 0; width: min(290px, calc(100vw - 32px)); display: grid; gap: var(--sp-1); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--e-3); animation: dialog-in var(--duration-fast) var(--ease-out); }
+.wiki-view-menu-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: 40px; padding: 0 var(--sp-2); color: var(--muted); font-size: var(--fs-small); }
 .wiki-view-menu-panel .wiki-size-control input[type="range"] { flex: 1; width: auto; }
-.wiki-view-menu-panel .wiki-stack-toggle, .wiki-view-menu-panel .wiki-material-filter { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: 40px; padding: 0 6px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--ink); font-size: var(--text-base); font-weight: 400; }
+.wiki-view-menu-panel .wiki-stack-toggle, .wiki-view-menu-panel .wiki-material-filter { display: flex; align-items: center; justify-content: space-between; width: 100%; min-height: var(--h-md); padding: 0 var(--sp-2); border: 0; border-radius: var(--r-sm); background: transparent; color: var(--ink); font-size: var(--fs-body); font-weight: 400; }
 .wiki-view-menu-panel .wiki-stack-toggle:hover:not(:disabled), .wiki-view-menu-panel .wiki-material-filter:hover { background: var(--panel-2); }
 .wiki-view-menu-panel .wiki-stack-toggle[aria-pressed] { color: var(--ink); background: transparent; border: 0; }
-.wiki-view-menu-panel .wiki-stack-toggle > i { position: relative; width: 32px; height: 18px; border-radius: var(--radius-full); background: var(--line-strong); transition: background var(--duration-fast); }
-.wiki-view-menu-panel .wiki-stack-toggle > i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--panel); box-shadow: var(--shadow-sm); transition: transform var(--duration-fast) var(--ease-out); }
+.wiki-view-menu-panel .wiki-stack-toggle > i { position: relative; width: 32px; height: 18px; border-radius: var(--r-full); background: var(--line-strong); transition: background var(--duration-fast); }
+.wiki-view-menu-panel .wiki-stack-toggle > i::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: var(--panel); box-shadow: var(--e-1); transition: transform var(--duration-fast) var(--ease-out); }
 .wiki-view-menu-panel .wiki-stack-toggle[aria-pressed="true"] > i { background: var(--accent); }
 .wiki-view-menu-panel .wiki-stack-toggle[aria-pressed="true"] > i::after { transform: translateX(14px); }
 .wiki-view-menu-panel .wiki-material-filter { flex-direction: row-reverse; cursor: pointer; }
 .wiki-view-menu-panel .wiki-view-switch { flex-shrink: 0; }
 
 /* Detail toolbar: everyday actions stay visible; wallpaper and trash move into the … menu. */
-.wiki-detail-menu > summary { width: var(--control-md); min-height: var(--control-md); border: 1px solid var(--line); background: var(--panel); }
-.wiki-detail-menu .menu-panel { width: 200px; padding: 5px; box-shadow: var(--shadow-lg); }
-.wiki-detail-menu .menu-panel > button { gap: 8px; }
+.wiki-detail-menu > summary { width: var(--h-md); min-height: var(--h-md); border: 1px solid var(--line); background: var(--panel); }
+.wiki-detail-menu .menu-panel { width: 200px; padding: var(--sp-1); box-shadow: var(--e-3); }
+.wiki-detail-menu .menu-panel > button { gap: var(--sp-2); }
 .menu-panel > button.danger-quiet { color: var(--bad); }
 .menu-panel > button.danger-quiet:hover:not(:disabled) { background: var(--bad-soft); }
 .wiki-view-menu-panel[hidden] { display: none; }
-.wiki-empty-cta { min-height: var(--control-lg); padding: 0 22px; font-size: var(--text-md); }
 
-.wiki-relation-simple { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
-.wiki-relation-chip { min-height: 34px; padding: 0 12px; border-radius: var(--radius-full); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: var(--text-sm); font-weight: 500; }
+.wiki-relation-simple { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-bottom: var(--sp-1); }
+.wiki-relation-chip { min-height: var(--h-md); padding: 0 var(--sp-3); border-radius: var(--r-full); border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: var(--fs-small); font-weight: 500; }
 .wiki-relation-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .wiki-relation-chip:hover:not(:disabled) { border-color: var(--line-strong); }

@@ -3,6 +3,7 @@ import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
+import { terminateProcessTree } from './processTree.js';
 
 export async function grokCommand(executable = "grok") {
   if (executable === "grok") {
@@ -18,10 +19,9 @@ export async function startGrokAcp(config, { cwd, signal, onNotification = () =>
   // ACP ignores the TUI/headless --tools filter. The session's client hook is
   // the execution gate; do not imply that those flags restrict this transport.
   const child = spawn(command.executable, [...command.prefix, "--no-auto-update", "agent", "--no-leader", "-m", config.model, "stdio"],
-    { cwd, shell: false, windowsHide: true, env: { ...process.env, GROK_MEMORY: "0" }, stdio: ["pipe", "pipe", "pipe"] });
+    { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', env: { ...process.env, GROK_MEMORY: "0" }, stdio: ["pipe", "pipe", "pipe"] });
   const decoder = new StringDecoder("utf8"), pending = new Map();
   let sequence = 0, buffer = "", ended = false, closing = false, closePromise;
-  const exited = new Promise((resolve) => child.once("close", resolve));
   const write = (value) => { if (!ended && !child.stdin.destroyed) child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...value }) + "\n"); };
   function fail(error) {
     if (ended) return; ended = true;
@@ -66,15 +66,8 @@ export async function startGrokAcp(config, { cwd, signal, onNotification = () =>
     if (closePromise) return closePromise; closing = true;
     closePromise = (async () => {
       child.stdin.end();
-      const timer = setTimeout(() => {
-        if (child.exitCode !== null || !child.pid) return;
-        if (process.platform === "win32") {
-          const killer = spawn("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { shell: false, windowsHide: true, stdio: "ignore" });
-          killer.on("error", () => child.kill()); killer.on("exit", (code) => { if (code) child.kill(); });
-        } else child.kill("SIGKILL");
-      }, 500);
-      const fallback = setTimeout(() => child.kill(), 2500);
-      await exited; clearTimeout(timer); clearTimeout(fallback);
+      await terminateProcessTree(child);
+      fail(new Error('Grok ACP 连接已关闭'));
       signal?.removeEventListener("abort", abort);
     })(); return closePromise;
   }

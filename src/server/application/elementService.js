@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { elementContent, elementError, elementId, elementTags, imagePreviewWidths, relationBatch, relationBatchUpdate, relationUpdate, relationSemantics } from "../../shared/domain/elements.js";
+import { readEmbeddedPrompt } from "./embeddedPrompt.js";
 import { canvasPositions } from "../../shared/domain/canvas.js";
 import { vocabularyAlias, vocabularyKind } from "../../shared/domain/vocabulary.js";
 import { videoMarkerInput, markerRevision } from "../../shared/domain/videoMarkers.js";
@@ -140,6 +141,10 @@ export function createElementService(repo, imageStore, cleanupHistory, videoStor
     async image(id) {
       const file = repo.image(id);
       return { bytes: await imageStore.read(file.storageKey), contentType: file.mimeType };
+    },
+    async embeddedPrompt(id) {
+      const file = repo.image(id);
+      return readEmbeddedPrompt(await imageStore.read(file.storageKey));
     },
     async importVideo(stream, name, inputTags = [], material = false) {
       if (importingVideos >= 2) throw elementError("正在保存视频，请稍后重试", 503);

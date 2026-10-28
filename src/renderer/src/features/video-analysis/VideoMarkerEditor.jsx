@@ -53,9 +53,9 @@ export default function VideoMarkerEditor({ videoId, marker, playerRef, onClose,
     } catch (failure) { setError(failure.message); }
     finally { locked.current = false; setBusy(false); }
   }
-  return <><Dialog open label={marker.id ? "编辑视频标注" : "新增视频标注"} className="wiki-dialog wiki-marker-editor" onClose={close}>
+  return <><Dialog open label={marker.id ? "编辑视频标注" : "添加视频标注"} className="wiki-dialog wiki-marker-editor" onClose={close}>
     <form onSubmit={save}>
-      <header className="wiki-dialog-header"><h2>{marker.id ? "编辑视频标注" : "新增视频标注"}</h2><button type="button" className="icon-only" aria-label="关闭视频标注" onClick={close} disabled={busy}><X size={18} /></button></header>
+      <header className="wiki-dialog-header"><h2>{marker.id ? "编辑视频标注" : "添加视频标注"}</h2><button type="button" className="icon-only" aria-label="关闭视频标注" onClick={close} disabled={busy}><X size={18} /></button></header>
       <div className="wiki-form-fields">
         <div className="wiki-marker-times">
           <label>开始时间<input aria-label="标注开始时间" value={start} disabled={busy} onChange={(event) => setStart(event.target.value)} placeholder="02:15.5" /><button type="button" className="text-button" disabled={busy} onClick={() => capture(setStart)}><Clock size={14} />使用当前播放时间</button></label>

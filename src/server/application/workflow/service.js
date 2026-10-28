@@ -181,7 +181,8 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
       const w = repo.workflow(id);
       if (payload.revision !== w.revision) throw workflowError('草稿已改变，请保存并刷新', 409);
       if (payload.sample !== undefined && typeof payload.sample !== 'boolean') throw workflowError('试跑选项须为布尔值');
-      const checked = checkedDefinition(w.definition), definition = payload.sample ? sampleDefinition(checked) : checked, executors = adapters.snapshotDefinition(definition, executionConfig());
+      // A run can carry temporary settings without overwriting the saved draft.
+      const checked = checkedDefinition(payload.definition ?? w.definition), definition = payload.sample ? sampleDefinition(checked) : checked, executors = adapters.snapshotDefinition(definition, executionConfig());
       const prepared = await prepareInputs(definition, payload.inputs || {});
       const result = repo.command(scope, payload.requestKey, payload, () => {
         if (repo.workflow(id).revision !== payload.revision) throw workflowError('准备输入时草稿已改变', 409);

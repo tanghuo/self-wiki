@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AssistantRuntimeProvider, ComposerPrimitive, ThreadPrimitive, useExternalStoreRuntime, MessageNotSentError } from "@assistant-ui/react";
-import { ArrowUp, BookOpen, FileText, LoaderCircle, Network, Plus, Search, Square, X } from "lucide-react";
+import { ArrowUp, BookOpen, FileText, LoaderCircle, MessageCircle, Network, Plus, Search, Square, X } from "lucide-react";
 import { imageExecutorDefinition } from "../../shared/domain/imageGeneration.js";
 import { chatEngineLabel } from "../../shared/domain/chatEngine.js";
 import { randomUUID } from "./browserCrypto.js";
@@ -361,7 +361,7 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
         {codexDown && needsCodex && <div className="chat-codex-needed" role="status">
           <strong>{chatEngineLabel(connection?.engine)} 未连接</strong>
           <p>{connection?.message || "连接后即可发送消息。程序与登录沿用「设置 → Agent 连接」。"}</p>
-          <button type="button" className="primary" disabled={probing} onClick={onProbe}>{probing ? "检测中…" : "检测连接"}</button>
+          <button type="button" disabled={probing} onClick={onProbe}>{probing ? "检测中…" : "检测连接"}</button>
         </div>}
         {error && <p className="wiki-error" role="alert">{error}<button className="text-button" onClick={() => setError("")}>关闭提示</button></p>}
         {id && !connected && <p className="wiki-muted" role="status">正在连接会话…</p>}
@@ -393,7 +393,7 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
             <div className="chat-composer-sources"><button type="button" className="text-button" aria-label="从库中选择" title="从资料库加入本轮（资料篮是跨会话收藏）" aria-expanded={picker} disabled={running || blocked} onClick={() => setPicker(!picker)}><Plus size={20} /><span>从库中选择{sources.length ? ` · ${sources.length}` : ""}</span></button>{currentIds.length > 0 && <button type="button" className="text-button" disabled={running || blocked} onClick={addCurrent}>加入当前内容</button>}</div>
             <div className="chat-composer-tools" ref={setComposerTools} />
             {directImage ? <span className="wiki-muted">{imageExecutorDefinition(imageOptions.executor).label}</span> : <ChatModelPicker model={model} effort={effort} catalog={catalog} disabled={running || sendBlocked} loading={modelsLoading} error={modelsError} onChange={selectModel} onRefresh={onRefreshModels} />}
-            {running ? <ComposerPrimitive.Cancel aria-label="停止生成" title={stopping ? "正在停止…" : "停止生成"} aria-busy={stopping} disabled={stopping}><Square size={15} fill="currentColor" aria-hidden="true" /></ComposerPrimitive.Cancel> : <button type="submit" className="primary" aria-label="发送消息" disabled={sendBlocked || !imageReady || (!draft.text.trim() && !hasImages && !(directImage && sources.length))}><ArrowUp size={17} /></button>}</div>
+            {running ? <ComposerPrimitive.Cancel aria-label="停止生成" title={stopping ? "正在停止…" : "停止生成"} aria-busy={stopping} disabled={stopping}><Square size={15} fill="currentColor" aria-hidden="true" /></ComposerPrimitive.Cancel> : <button type="submit" className="primary" aria-label="发送消息" title={sendBlocked && codexDown && needsCodex ? `请先连接 ${chatEngineLabel(connection?.engine)} 再发送` : !draft.text.trim() && !hasImages ? "输入问题后发送" : "发送（Enter）"} disabled={sendBlocked || !imageReady || (!draft.text.trim() && !hasImages && !(directImage && sources.length))}><ArrowUp size={17} /></button>}</div>
         </ComposerPrimitive.Root>
       </div>
     </ThreadPrimitive.Root></AssistantRuntimeProvider>

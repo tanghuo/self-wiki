@@ -27,6 +27,7 @@
     "package:dir": "npm run build && node tools/package-windows.mjs --dir",
     "test:unit": "node --test \"test/unit/*.test.js\"",
     "test:integration": "node --test \"test/integration/*.test.js\"",
+    "pretest:ui": "npm run build",
     "test:ui": "node --test \"test/ui/*.test.js\""
   },
   "dependencies": {

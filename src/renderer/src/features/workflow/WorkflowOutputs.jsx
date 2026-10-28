@@ -3,6 +3,7 @@ import { outputVariables } from '../../../../shared/domain/workflow/contracts.js
 import { checkJsonSchema } from '../../../../shared/domain/workflow/jsonSchema.js';
 import { variableLabel } from './workflowLabels.js';
 
+const typeWords = { text: '文字', number: '数字', boolean: '开关', json: '结构化数据', image: '单张图片', 'list<text>': '多段文字', 'list<number>': '数字列表', 'list<boolean>': '开关列表', 'list<json>': '数据列表', 'list<image>': '多张图片' };
 export default function WorkflowOutputs({ node, onChange }) {
   const [schema, setSchema] = useState(() => JSON.stringify(node.config.jsonSchema || { type: 'object', properties: {} }, null, 2));
   const [error, setError] = useState('');
@@ -11,8 +12,8 @@ export default function WorkflowOutputs({ node, onChange }) {
     setSchema((previous) => { try { if (JSON.stringify(JSON.parse(previous)) === JSON.stringify(value)) return previous; } catch { /* Keep incomplete edits until the persisted schema changes. */ } return JSON.stringify(value, null, 2); });
     setError('');
   }, [node.config.jsonSchema]);
-  return <section className="workflow-outputs"><h4>输出变量</h4>
-    {outputVariables(node).map((variable) => <div key={variable.name}><span>{variableLabel(variable)}<code>{variable.name}</code></span><small>{variable.type}</small></div>)}
+  return <section className="workflow-outputs"><h4>这一步产出的内容</h4>
+    {outputVariables(node).map((variable) => <div key={variable.name} title={variable.name}><span>{variableLabel(variable)}</span><small>{typeWords[variable.type] || variable.type}</small></div>)}
     {node.type === 'model' && node.config.outputType === 'json' && <label>结构化输出 Schema<textarea aria-label="结构化输出 Schema" className="workflow-code" rows={9} value={schema} onChange={(event) => {
       setSchema(event.target.value);
       try { const value = JSON.parse(event.target.value); checkJsonSchema(value, undefined, { validateOnly: true }); onChange({ ...node.config, jsonSchema: value }); setError(''); }

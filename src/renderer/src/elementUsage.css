@@ -1,17 +1,17 @@
 .wiki-dialog.element-usage-dialog { width: min(1000px, calc(100vw - 32px)); }
 .element-usage-body { padding: 20px; overflow: auto; min-height: 160px; }
-.element-usage-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-.element-usage-filters label { display: grid; gap: 6px; font-size: var(--text-base); }
-.element-usage-summary { margin: 12px 0 20px; }
+.element-usage-filters { display: flex; align-items: end; flex-wrap: wrap; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.element-usage-filters label { display: grid; gap: var(--sp-2); font-size: var(--fs-body); }
+.element-usage-summary { margin: var(--sp-3) 0 20px; }
 .element-usage-table { overflow-x: auto; }
-.element-usage-table table { width: 100%; border-collapse: collapse; font-size: var(--text-base); }
-.element-usage-table th, .element-usage-table td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--line); }
+.element-usage-table table { width: 100%; border-collapse: collapse; font-size: var(--fs-body); }
+.element-usage-table th, .element-usage-table td { text-align: left; padding: var(--sp-3) var(--sp-2); border-bottom: 1px solid var(--line); }
 .element-usage-table td:not(:first-child), .element-usage-table th { white-space: nowrap; }
-.element-usage-content { display: flex; align-items: center; gap: 10px; min-width: 160px; max-width: 350px; }
-.element-usage-content img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--radius-sm); }
+.element-usage-content { display: flex; align-items: center; gap: var(--sp-3); min-width: 160px; max-width: 350px; }
+.element-usage-content img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--r-sm); }
 .element-usage-content span { overflow-wrap: anywhere; }
-.element-usage-content small { display: block; opacity: .65; margin-top: 4px; }
-.element-usage-dialog .wiki-dialog-footer p { margin: 0; font-size: var(--text-sm); line-height: 1.6; }
-.element-usage-entry { margin-top: 24px; font-size: var(--text-sm); }
+.element-usage-content small { display: block; opacity: .65; margin-top: var(--sp-1); }
+.element-usage-dialog .wiki-dialog-footer p { margin: 0; font-size: var(--fs-small); line-height: 1.6; }
+.element-usage-entry { margin-top: var(--sp-6); font-size: var(--fs-small); }
 .element-usage-entry summary { cursor: pointer; }
-.element-usage-entry button { margin-top: 10px; }
+.element-usage-entry button { margin-top: var(--sp-3); }

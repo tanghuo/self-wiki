@@ -229,8 +229,8 @@ test("Canvas connects by dragging, edits full text, persists layout, retries sav
   await page.getByRole("button", { name: "撤销删除", exact: true }).click();
   await page.getByRole("button", { name: /^选择内容：色彩笔记/ }).waitFor();
   await page.waitForFunction(() => document.querySelector(".canvas-footer")?.textContent.includes("2 条关联"));
-  await page.getByRole("button", { name: "新增内容", exact: true }).click();
-  const creation = page.getByRole("dialog", { name: "新增内容", exact: true });
+  await page.getByRole("button", { name: "添加内容", exact: true }).click();
+  const creation = page.getByRole("dialog", { name: "添加内容", exact: true });
   await creation.getByLabel("文字", { exact: true }).fill("画布中新建的笔记");
   await creation.getByRole("button", { name: "保存全部", exact: true }).click();
   await creation.waitFor({ state: "hidden" });
@@ -479,8 +479,8 @@ test("Canvas includes every element from a mixed save even when its active filte
   await create("已有元素");
   await openCanvas();
   await page.getByLabel("搜索画布内容", { exact: true }).fill("已有元素");
-  await page.getByRole("button", { name: "新增内容", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "新增内容", exact: true });
+  await page.getByRole("button", { name: "添加内容", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
   await dialog.getByLabel("文字", { exact: true }).fill("新文字甲");
   await dialog.getByRole("button", { name: "添加文字", exact: true }).click();
   await dialog.getByLabel("文字", { exact: true }).last().fill("新文字乙");
@@ -600,7 +600,7 @@ test("LAN canvas supports editing, filters trash and fits a phone viewport", opt
   await page.getByRole("button", { name: /^选择内容：自然观察/ }).click();
   await page.getByRole("heading", { name: /^自然观察/ }).waitFor();
   assert.equal(await page.getByRole("button", { name: "编辑内容", exact: true }).count(), 1);
-  assert.ok(await page.getByRole("button", { name: "新增内容", exact: true }).count() >= 1);
+  assert.ok(await page.getByRole("button", { name: "添加内容", exact: true }).count() >= 1);
   assert.equal(await page.getByRole("button", { name: "保存布局", exact: true }).count(), 0);
   assert.equal(await page.getByRole("button", { name: /重命名关联/ }).count(), 1);
   assert.equal((await lanFetch(`${lan}/api/relations/batch`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids: [1], name: "局域网修改" }) })).status, 200);
