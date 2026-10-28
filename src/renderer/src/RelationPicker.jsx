@@ -8,6 +8,7 @@ import WikiPaging from "./WikiPaging.jsx";
 import TagInput, { readTagInput } from "./TagInput.jsx";
 import { maxElementBody, elementLabel } from "../../shared/domain/elements.js";
 import VideoPlayer from "./VideoPlayer.jsx";
+import Select from "./Select.jsx";
 
 export default function RelationPicker({ sourceId, targetId, onClose, onChanged }) {
   const [q, setQ] = useState("");
@@ -89,13 +90,13 @@ export default function RelationPicker({ sourceId, targetId, onClose, onChanged 
   return <><Dialog open label="添加关联" className={`wiki-dialog wiki-relation-dialog ${choosing ? "is-choosing" : ""}`} onClose={() => !busy && onClose()}>
     <header className="wiki-dialog-header"><div><h2>添加关联</h2>{choosing && <p className="wiki-muted">勾选需要关联的内容，选好后一次保存。</p>}</div><button className="icon-only" aria-label="关闭关联选择" disabled={busy} onClick={onClose}><X size={18} /></button></header>
     <div className="wiki-relation-controls">
-      {!targetId && <div className="wiki-segment"><button aria-pressed={mode === "existing"} disabled={busy} onClick={() => setMode("existing")}>选择已有内容</button><button aria-pressed={mode === "tags"} disabled={busy} onClick={() => setMode("tags")}>选择 tag</button><button aria-pressed={mode === "new"} disabled={busy} onClick={() => setMode("new")}>新建文字</button></div>}
+      {!targetId && <div className="wiki-segment"><button aria-pressed={mode === "existing"} disabled={busy} onClick={() => setMode("existing")}>选择已有内容</button><button aria-pressed={mode === "tags"} disabled={busy} onClick={() => setMode("tags")}>按标签关联</button><button aria-pressed={mode === "new"} disabled={busy} onClick={() => setMode("new")}>新建文字</button></div>}
       <RelationFields value={semantics} onChange={setSemantics} disabled={busy} targetLabel={mode === "tags" ? "所选标签下的内容" : "所选内容"} />
       {choosing && <>
         <div className="wiki-relation-filters">
           <label className="wiki-search"><Search size={17} /><input aria-label="搜索可关联内容" placeholder="搜索文字或文件名" value={q} disabled={busy || showSelected} onChange={(e) => { setQ(e.target.value); setPage(1); }} /></label>
-          <select aria-label="筛选关联内容类型" value={kind} disabled={busy || showSelected} onChange={(e) => { setKind(e.target.value); setPage(1); }}><option value="">全部类型</option><option value="image">图片</option><option value="video">视频</option><option value="text">文字</option><option value="session">会话</option></select>
-          <select aria-label="筛选关联内容标签" value={filterTag} disabled={busy || showSelected} onChange={(e) => { setFilterTag(e.target.value); setPage(1); }}><option value="">全部标签</option>{Array.from(new Set([...(tagResults.data?.tags || []), ...(filterTag ? [filterTag] : [])])).map((tag) => <option key={tag} value={tag}>{tag}</option>)}</select>
+          <Select aria-label="筛选关联内容类型" value={kind} disabled={busy || showSelected} onChange={(next) => { setKind(next); setPage(1); }} options={[{ value: "", label: "全部类型" }, { value: "image", label: "图片" }, { value: "video", label: "视频" }, { value: "text", label: "文字" }, { value: "session", label: "会话" }]} />
+          <Select aria-label="筛选关联内容标签" value={filterTag} disabled={busy || showSelected} onChange={(next) => { setFilterTag(next); setPage(1); }} options={[{ value: "", label: "全部标签" }, ...Array.from(new Set([...(tagResults.data?.tags || []), ...(filterTag ? [filterTag] : [])])).map((tag) => ({ value: tag, label: tag }))]} />
         </div>
         <div className="wiki-relation-tools">
           <span className="wiki-muted">{showSelected ? "展示全部已选内容，不受筛选影响" : "可跨页选择，最多 100 项"}</span>
@@ -122,8 +123,8 @@ export default function RelationPicker({ sourceId, targetId, onClose, onChanged 
         {!visible.length && (showSelected || results.data) && <p className="wiki-empty-inline">{showSelected ? "还没有选中内容，返回全部后勾选。" : "没有匹配的内容，试试其他关键词、类型或标签。"}</p>}
         {!showSelected && <WikiPaging pagination={results.data?.pagination} onPage={setPage} disabled={busy} />}
       </> : mode === "tags" ? <>
-        <p className="wiki-muted">关系应用于所选 tag 下所有内容。后续加入 tag 的内容也会自动生效，展示时排除自己。</p>
-        <label className="wiki-search"><Search size={17} /><input aria-label="搜索可关联标签" placeholder="搜索 tag" value={tagSearch} disabled={busy} onChange={(e) => setTagSearch(e.target.value)} /></label>
+        <p className="wiki-muted">关系应用于所选标签下的全部内容。之后加入该标签的内容也会自动带上此关联（不含自己）。</p>
+        <label className="wiki-search"><Search size={17} /><input aria-label="搜索可关联标签" placeholder="搜索标签" value={tagSearch} disabled={busy} onChange={(e) => setTagSearch(e.target.value)} /></label>
         {tagResults.loading && <p role="status" className="wiki-muted">正在读取标签…</p>}
         {tagResults.error && <p role="alert" className="wiki-error">{tagResults.error}<button onClick={() => setRetry((n) => n + 1)}>重试</button></p>}
         <div className="wiki-pick-list">{matchingTags.map((tag) => <button key={tag} aria-label={`选择标签：${tag}`} aria-pressed={selectedTags.includes(tag)} disabled={busy || (selectedTags.length >= 30 && !selectedTags.includes(tag))} onClick={() => toggleTag(tag)}><Tag size={18} /><span>{tag}</span>{selectedTags.includes(tag) && <Check size={16} />}</button>)}</div>

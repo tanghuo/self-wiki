@@ -1,7 +1,7 @@
 import { pipeline } from "node:stream/promises";
 import { httpError } from "./http.js";
 
-export async function serveVideo(req, res, { handle, contentType, byteSize }, downloadName) {
+export async function serveVideo(req, res, { handle, contentType, byteSize, contentHash }, downloadName) {
   try {
     const info = await handle.stat(), size = info.size;
     if (!info.isFile() || !size || size !== byteSize) throw httpError(409, "原视频文件大小异常，请从备份恢复");
@@ -9,9 +9,13 @@ export async function serveVideo(req, res, { handle, contentType, byteSize }, do
       "content-type": contentType, "content-length": size, "accept-ranges": "bytes",
       "cache-control": "no-store", "x-content-type-options": "nosniff",
     };
+    // Videos are immutable: the content hash is a strong validator, so resumed downloads (If-Range) can use ranges.
+    const etag = typeof contentHash === "string" && /^[a-f0-9]{16,128}$/i.test(contentHash) ? `"${contentHash}"` : null;
+    if (etag) headers.etag = etag;
     if (downloadName) headers["content-disposition"] = `attachment; filename="video"; filename*=UTF-8''${encodeURIComponent(downloadName).replace(/['()*]/g, (char) => `%${char.charCodeAt(0).toString(16)}`)}`;
     let start = 0, end = size - 1, status = 200;
-    if (req.method !== "HEAD" && req.headers.range && !req.headers["if-range"]) {
+    const ifRange = req.headers["if-range"];
+    if (req.method !== "HEAD" && req.headers.range && (!ifRange || (etag && ifRange === etag))) {
       const match = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
       if (match && (match[1] || match[2])) {
         if (!match[1]) start = Math.max(0, size - Number(match[2]));

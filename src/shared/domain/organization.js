@@ -1,11 +1,13 @@
 import { elementError, elementId, elementTags, relationName, relationSemantics } from "./elements.js";
 import { defaultEmbeddingConfig, embeddingConfig } from "./embedding.js";
 import { defaultImageGenerationConfig, imageGenerationConfig } from "./imageGeneration.js";
+import { isNetworkPath, validExecutable } from "./executablePath.js";
+import { defaultChatEngineConfig, chatEngineConfig } from "./chatEngine.js";
 
 export function defaultOrganizationConfig() {
   return { schemaVersion: 1, enabled: false, applyMode: "suggest", executor: {
     type: "codex-cli", timeoutMs: 180000, codexCli: { executable: "codex", codexHome: null, model: null },
-  }, embedding: defaultEmbeddingConfig(), imageGeneration: defaultImageGenerationConfig() };
+  }, embedding: defaultEmbeddingConfig(), imageGeneration: defaultImageGenerationConfig(), chat: defaultChatEngineConfig() };
 }
 
 function object(value, keys) {
@@ -15,18 +17,19 @@ function object(value, keys) {
 }
 
 export function organizationConfig(value) {
-  object(value, ["schemaVersion", "enabled", "applyMode", "executor", "embedding", "imageGeneration"]);
+  object(value, ["schemaVersion", "enabled", "applyMode", "executor", "embedding", "imageGeneration", "chat"]);
   object(value.executor, ["type", "timeoutMs", "codexCli"]);
-  object(value.executor.codexCli, ["executable", "codexHome", "model"]);
-  const { executor } = value, { executable, codexHome, model } = executor.codexCli;
+  object(value.executor.codexCli, ["executable", "codexHome", "model", "allowShell"]);
+  const { executor } = value, { executable, codexHome, model, allowShell } = executor.codexCli;
   if (value.schemaVersion !== 1 || typeof value.enabled !== "boolean" || !["suggest", "auto"].includes(value.applyMode) ||
       executor.type !== "codex-cli" || !Number.isInteger(executor.timeoutMs) || executor.timeoutMs < 1000 || executor.timeoutMs > 1800000 ||
-      typeof executable !== "string" || !executable.trim() || executable.length > 1000 || /[\r\n\0]/.test(executable) ||
-      !(codexHome === null || typeof codexHome === "string" && /^(?:[A-Za-z]:[\\/]|\/|\\\\)/.test(codexHome) && !/[\r\n\0]/.test(codexHome)) ||
-      !(model === null || typeof model === "string" && /^[\w./:-]{1,160}$/.test(model))) {
-    throw elementError("请检查自动整理版本、模式、执行器路径、模型及超时（1000–1800000 毫秒）");
+      !validExecutable(executable) ||
+      !(codexHome === null || typeof codexHome === "string" && /^(?:[A-Za-z]:[\\/]|\/)/.test(codexHome) && !isNetworkPath(codexHome) && !/[\r\n\0]/.test(codexHome)) ||
+      !(model === null || typeof model === "string" && /^[\w./:-]{1,160}$/.test(model)) ||
+      !(allowShell === undefined || typeof allowShell === "boolean")) {
+    throw elementError("请检查自动整理版本、模式、执行器与 Codex 目录路径（须为本机路径，不支持 \\\\服务器 网络路径）、模型及超时（1000–1800000 毫秒）");
   }
-  return { ...structuredClone(value), embedding: embeddingConfig(value.embedding === undefined ? defaultEmbeddingConfig() : value.embedding), imageGeneration: imageGenerationConfig(value.imageGeneration) };
+  return { ...structuredClone(value), embedding: embeddingConfig(value.embedding === undefined ? defaultEmbeddingConfig() : value.embedding), imageGeneration: imageGenerationConfig(value.imageGeneration), chat: chatEngineConfig(value.chat) };
 }
 
 const evidenceSchema = { type: "object", additionalProperties: false, required: ["kind", "elementId", "quote", "reason"], properties: {

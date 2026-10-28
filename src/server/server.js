@@ -4,13 +4,15 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
+import { createVectorQueries } from "./data/vectorQueries.js";
 import { initDb } from "./data/sqlite.js";
 import { createRequestHandler } from "./http/routes.js";
 import { createElementRepository } from "./data/elementRepository.js";
 import { createElementService } from "./application/elementService.js";
 import { createImageStore } from "./assets/imageStore.js";
 import { createVideoStore } from "./assets/videoStore.js";
-import { createLanSharing } from "./lanSharing.js";
+import { createLanSharing } from "./application/lanSharing.js";
+import { lanAddresses } from "./http/lanRoutes.js";
 import { createOrganizationRepository } from "./data/organizationRepository.js";
 import { createOrganizationService } from "./application/organizationService.js";
 import { createSemanticRepository } from "./data/semanticRepository.js";
@@ -22,6 +24,10 @@ import { createChatArchiveRepository } from "./data/chatArchiveRepository.js";
 import { createChatArchiveService } from "./application/chatArchiveService.js";
 import { createVideoAnalysisRepository } from "./data/videoAnalysisRepository.js";
 import { createVideoAnalysisService } from "./application/videoAnalysisService.js";
+import { createTemporaryShares } from "./application/temporaryShares.js";
+import { createWorkflowRepository } from './data/workflowRepository.js';
+import { createWorkflowStore } from './assets/workflowStore.js';
+import { createWorkflowService } from './application/workflow/service.js';
 
 const projectRoot = path.resolve(import.meta.dirname, "../..");
 // Fetch Standard port blocking: https://fetch.spec.whatwg.org/#port-blocking
@@ -39,7 +45,9 @@ export async function createServer(options = {}) {
   if (port !== 0 && browserBlockedPorts.has(port)) throw new Error(`Port ${port} is blocked by browsers; choose another port or 0 for automatic selection`);
   const dataDir = path.resolve(options.dataDir || path.join(projectRoot, "data"));
   await mkdir(dataDir, { recursive: true });
-  const db = initDb(path.join(dataDir, "library.sqlite3"));
+  const dbPath = path.join(dataDir, "library.sqlite3");
+  const db = initDb(dbPath);
+  const vectorQueries = createVectorQueries(db, dbPath);
   const imageStore = createImageStore(path.join(dataDir, "assets"));
   const archive = createChatArchiveService({ repo: createChatArchiveRepository(db), imageStore, dataDir });
   const wikiRepo = createElementRepository(db);
@@ -49,11 +57,25 @@ export async function createServer(options = {}) {
   const rendererDist = path.join(projectRoot, "dist/renderer");
   const usage = createUsageRepository(db);
   const recordUsage = (event) => usage.record(event);
-  const semantic = createSemanticService({ repo: createSemanticRepository(db), wiki, recordUsage });
-  const organization = await createOrganizationService({ repo: createOrganizationRepository(db), dataDir, semantic, recordUsage,
-    searchMedia: (elementId) => videoAnalysis.search({ elementId, firstFrame: true }) });
-  const videoAnalysis = await createVideoAnalysisService({ repo: createVideoAnalysisRepository(db, { wiki: wikiRepo }), wiki, wikiRepo, organization, dataDir, recordUsage });
+  const semantic = createSemanticService({ repo: createSemanticRepository(db, { vectorQueries }), wiki, recordUsage });
+  const mediaSearch = {
+    searchFirstFrame(elementId) {
+      throw Object.assign(new Error("视频分析尚未就绪"), { statusCode: 503 });
+    },
+  };
+  const organization = await createOrganizationService({
+    repo: createOrganizationRepository(db), dataDir, semantic, recordUsage,
+    searchMedia: (elementId) => mediaSearch.searchFirstFrame(elementId),
+  });
+  const videoAnalysis = await createVideoAnalysisService({
+    repo: createVideoAnalysisRepository(db, { wiki: wikiRepo, vectorQueries }),
+    wiki, dataDir, recordUsage,
+    executionConfig: () => organization.executionConfig(),
+    getEmbeddingConfig: () => organization.status().config.embedding,
+  });
+  mediaSearch.searchFirstFrame = (elementId) => videoAnalysis.search({ elementId, firstFrame: true });
   const chat = createChatService({ repo: createChatRepository(db), wiki, archive, organization, dataDir, recordUsage });
+  const workflow = createWorkflowService({ repo: createWorkflowRepository(db), store: createWorkflowStore(dataDir), wiki, imageStore, executionConfig: () => organization.executionConfig() });
   const instance = { application: "self-wiki", protocolVersion: 1, instanceId: randomUUID(), dataDir };
   const services = {
     instance,
@@ -62,16 +84,23 @@ export async function createServer(options = {}) {
     semantic,
     videoAnalysis,
     chat,
+    workflow,
     usage,
     rendererDist,
   };
-  const sharing = await createLanSharing({ dataDir, services });
+  const temporaryShares = await createTemporaryShares(dataDir);
+  services.temporaryShares = temporaryShares;
+  const sharing = await createLanSharing({
+    dataDir,
+    listAddresses: lanAddresses,
+    createHandler: (sharingInstance) => createRequestHandler({ ...services, sharing: sharingInstance, access: "lan" }),
+  });
   const handleRequest = createRequestHandler({ ...services, sharing });
   const requests = new Set();
   const server = createHttpServer((req, res) => {
     const running = handleRequest(req, res);
     requests.add(running);
-    running.finally(() => requests.delete(running));
+    running.finally(() => requests.delete(running)).catch((error) => console.error("[self-wiki] request failed:", error?.stack || error));
   });
   let actualPort;
   try {
@@ -87,10 +116,13 @@ export async function createServer(options = {}) {
     }
     if (browserBlockedPorts.has(actualPort)) throw new Error("Unable to allocate a browser-accessible port after 10 attempts");
   } catch (error) {
+    await workflow.close();
+    await temporaryShares.close();
     await videoAnalysis.close();
     await chat.close();
     await sharing.close();
     await organization.close();
+    await vectorQueries.close();
     db.close();
     throw error;
   }
@@ -102,15 +134,18 @@ export async function createServer(options = {}) {
     port: actualPort, dataDir, url: `http://127.0.0.1:${actualPort}/`,
     close() {
       closing ||= (async () => {
+        await workflow.close();
         await videoAnalysis.close();
         await chat.close();
         await organization.close();
         const stopped = new Promise((resolve) => server.close(resolve));
         server.closeAllConnections();
         await sharing.close();
+        await temporaryShares.close();
         await Promise.allSettled([...requests]);
         await stopped;
         await wiki.closePreviews();
+        await vectorQueries.close();
         db.close();
         await rm(runtimePath, { force: true });
       })();
@@ -123,7 +158,8 @@ export async function createServer(options = {}) {
     organization.initialize({ url: instance.url, instanceId: instance.instanceId });
     chat.initialize({ url: instance.url, instanceId: instance.instanceId });
     videoAnalysis.start();
-    void wiki.startPreviews();
+    workflow.start();
+    wiki.startPreviews().catch((error) => console.error("[self-wiki] preview warming failed:", error?.stack || error));
     if (sharing.status().autoStart) await sharing.setEnabled(true).catch(() => {});
   } catch (error) { await app.close(); throw error; }
   return app;
@@ -139,6 +175,10 @@ async function runCli() {
     else if (args[i] === "--open") open = true;
     else throw new Error(`Unknown argument: ${args[i]}`);
   }
+  // Background failures are logged and the API keeps serving; a synchronous crash
+  // leaves state unknown, so exit and let the desktop shell offer a restart.
+  process.on("unhandledRejection", (reason) => console.error("[self-wiki] unhandled rejection:", reason?.stack || reason));
+  process.on("uncaughtException", (error) => { console.error("[self-wiki] uncaught exception:", error?.stack || error); process.exit(70); });
   const server = await createServer(options);
   const close = () => server.close().then(() => { if (process.connected) process.disconnect(); });
   process.once("SIGINT", close);

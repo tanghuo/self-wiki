@@ -1,7 +1,8 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-if (process.platform === "win32" && process.isMainFrame) {
+if (process.isMainFrame) {
   contextBridge.exposeInMainWorld("wikiDesktop", {
-    setWallpaper: (elementId) => ipcRenderer.invoke("wiki:set-wallpaper", elementId),
+    ...(process.platform === "win32" ? { setWallpaper: (elementId) => ipcRenderer.invoke("wiki:set-wallpaper", elementId) } : {}),
+    pickShareSource: (kind) => ipcRenderer.invoke("wiki:pick-share-source", kind),
   });
 }

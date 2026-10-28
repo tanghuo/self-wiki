@@ -64,15 +64,27 @@ export async function handleChatRoute(chat, req, res, url) {
         chat.detail(id);
         res.writeHead(200, { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache", connection: "keep-alive", "x-accel-buffering": "no" });
         let blocked = false, pending;
-        const send = (data) => {
+        // "snapshot" carries the whole page; "turn" carries only the streaming turn.
+        const send = (data, kind = "snapshot") => {
           if (res.destroyed) return;
-          if (blocked) { pending = data; return; }
-          blocked = !res.write(`event: snapshot\ndata: ${JSON.stringify(data)}\n\n`);
+          if (blocked) {
+            // A delta cannot be applied on top of a snapshot the client never received:
+            // collapse anything missed while blocked into one fresh snapshot.
+            pending = kind === "snapshot" ? data : null;
+            return;
+          }
+          blocked = !res.write(`event: ${kind}\ndata: ${JSON.stringify(data)}\n\n`);
         };
         const unsubscribe = chat.subscribe(id, send);
         // write(false) accepted the snapshot. Only send updates received while blocked;
         // replaying the same large snapshot on every drain starves other HTTP requests.
-        res.on("drain", () => { blocked = false; if (pending) { const next = pending; pending = undefined; send(next); } });
+        res.on("drain", () => {
+          blocked = false;
+          if (pending === undefined) return;
+          let next = pending; pending = undefined;
+          if (next === null) { try { next = chat.detail(id); } catch { return; } }
+          send(next);
+        });
         const timer = setInterval(() => { if (!res.destroyed && !blocked) blocked = !res.write(": heartbeat\n\n"); }, 15000);
         res.once("close", () => { clearInterval(timer); unsubscribe(); }); return true;
       } else throw httpError(405, "Method not allowed");

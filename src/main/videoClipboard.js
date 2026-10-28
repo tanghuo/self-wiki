@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
+import { pruneCache, touchCacheEntry } from "./cacheCleanup.js";
 
 export function videoDownloadUrl(src, backendUrl, pageOrigin = new URL(backendUrl).origin) {
   const url = new URL(src);
@@ -29,7 +30,9 @@ export async function prepareVideoFile(url, cacheRoot) {
   const length = response.headers.get("content-length");
   const existing = await stat(target).catch((error) => { if (error.code !== "ENOENT") throw error; });
   if (existing?.isFile() && length !== null && existing.size === Number(length)) {
+    // Library videos are immutable per element id, so an equal-size cached copy is the same file.
     await response.body.cancel();
+    await touchCacheEntry(target); await touchCacheEntry(directory);
     return target;
   }
   await mkdir(directory, { recursive: true });
@@ -40,7 +43,9 @@ export async function prepareVideoFile(url, cacheRoot) {
   } finally {
     await rm(temporary, { force: true });
   }
-  // Keep the cached file after app exit so a later paste still works.
+  // Keep the cached file after app exit so a later paste still works, but bound the cache:
+  // the newest copies stay, older ones go once the folder exceeds 2 GiB or 5 videos.
+  await pruneCache(cacheRoot, { keep: 1, maxEntries: 5, maxBytes: 2 * 1024 ** 3, protect: [target] }).catch(() => {});
   return target;
 }
 

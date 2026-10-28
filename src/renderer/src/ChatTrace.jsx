@@ -50,7 +50,7 @@ export function TraceContent({ turnId, eventId, version, running }) {
   return <div className="chat-trace-content">
     {data.status === "legacy" && <p>仅展示历史事件中实际保存的字段，其余调用参数未记录。</p>}
     {isRequest && value.contextMode === "direct-image" ? <>
-      <p>本轮原文直发到 {imageExecutors.find((entry) => entry.id === (value.imageExecutor || "chatgpt-web"))?.label}，未调用 AI 改写。文字素材按选择顺序拼接。</p>
+      <p>本轮原文直发到 {imageExecutors.find((entry) => entry.id === (value.imageExecutor || "chatgpt-web"))?.label}，{value.imageExecutor === "grok-build" ? "应用未改写文案，Grok 负责调用图片工具，实际参数见工具记录。" : "未调用 AI 改写。"}文字素材按选择顺序拼接。</p>
       {(!value.imageExecutor || value.imageExecutor === "chatgpt-web") && <p>{value.submission?.confirmed ? "已在 ChatGPT 页面确认收到提示词。" : "尚未确认 ChatGPT 网页收到提示词。"}</p>}
       {value.error && <p>{value.error}</p>}
       <TraceField title="本轮生图选项" value={value.imageOptions} />
@@ -81,6 +81,8 @@ export function TraceContent({ turnId, eventId, version, running }) {
       <TraceField title="进程输出" value={value.execution} />
       <TraceField title="执行进度" value={value.progress} />
       <TraceField title="ComfyUI 任务" value={value.comfyui} />
+      <TraceField title="Grok 图片工具实际调用" value={value.grokBuild} />
+      <TraceField title="Grok 会话与用量" value={value.grokBuildResult} />
       {value.submission?.confirmed && <p>执行器已确认收到请求。</p>}
       {value.output === undefined || !Object.keys(output).length ? <p>工具输出：{running ? "尚未返回。" : isImageTool ? "执行器未返回。" : "CLI 未返回。"}</p> : <TraceField title="工具输出" value={output} />}
       <details><summary>查看记录 JSON</summary><TraceField title="工具记录 JSON" value={data.record} /></details>

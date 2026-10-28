@@ -7,6 +7,16 @@ const sourceRoot = path.join(projectRoot, "src");
 
 const rules = [
   {
+    from: "src/server/application/workflow/",
+    disallow: ["src/server/application/executorsPort.js", "src/server/application/modelAdapters/grok.js", "src/server/application/modelAdapters/comfyui.js", "src/shared/domain/comfyui.js", "src/shared/domain/imageGeneration.js"],
+    message: "Workflow must use the adapter registry rather than provider implementations",
+  },
+  {
+    from: "src/renderer/src/features/workflow/",
+    disallow: ["src/renderer/src/features/modelAdapters/ComfyuiConfiguration.jsx", "src/shared/domain/comfyui.js", "src/shared/domain/imageGeneration.js"],
+    message: "Workflow UI must use adapter fields rather than provider-specific configuration",
+  },
+  {
     from: "src/agent/",
     disallow: ["src/server/", "src/renderer/", "src/main/", "src/cli/"],
     message: "Agent worker must use HTTP and shared contracts rather than application internals",
@@ -33,8 +43,14 @@ const rules = [
   },
   {
     from: "src/server/application/",
-    disallow: ["src/server/http/", "src/renderer/"],
-    message: "application layer must not depend on HTTP or renderer",
+    disallow: ["src/server/http/", "src/renderer/", "src/agent/"],
+    allowFiles: ["src/server/application/executorsPort.js"],
+    message: "application layer must not depend on HTTP, renderer, or agent (use executorsPort)",
+  },
+  {
+    from: "src/server/features/",
+    disallow: ["src/renderer/", "src/agent/"],
+    message: "feature modules must not import renderer or agent (use application ports)",
   },
   {
     from: "src/server/http/",
@@ -101,6 +117,7 @@ function checkFileImports(filePath, source) {
     if (!importPath) continue;
 
     for (const rule of fileRules) {
+      if (rule.allowFiles?.includes(repoPath)) continue;
       const disallowed = rule.disallow.find((boundary) => matchesBoundary(importPath, boundary));
       if (disallowed) {
         violations.push({

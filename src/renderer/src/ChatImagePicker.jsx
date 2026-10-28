@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { imageExecutors } from "../../shared/domain/imageGeneration.js";
+import { createPortal } from "react-dom";
+import { imageExecutors, grokAspectRatios } from "../../shared/domain/imageGeneration.js";
 import { maxComfyWorkflowBytes } from "../../shared/domain/comfyui.js";
 import { request } from "./api.js";
 import "./chatImagePicker.css";
+import Select from "./Select.jsx";
 
 const endpoint = "/api/chat/image-generation";
 const fieldKey = (field) => JSON.stringify([field.nodeId, field.input]);
@@ -19,7 +21,8 @@ function Parameter({ field, value, disabled, onChange }) {
   </label>;
 }
 
-export default function ChatImagePicker({ options, disabled, onChange }) {
+// toolbarTarget: when given, the executor controls render there (the composer toolbar); hints and the workflow panel stay above the composer.
+export default function ChatImagePicker({ options, chatEngine, disabled, onChange, toolbarTarget }) {
   const [open, setOpen] = useState(false), [draft, setDraft] = useState(options);
   const [stored, setStored] = useState(null), [record, setRecord] = useState(null), [listing, setListing] = useState(null);
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
@@ -83,23 +86,27 @@ export default function ChatImagePicker({ options, disabled, onChange }) {
   }
   const fields = record?.fields.filter((field) => !(draft?.prompt?.nodeId === field.nodeId && draft.prompt.input === field.input)) || [];
   const renderField = (field) => <Parameter key={fieldKey(field)} field={field} value={draft.parameters.find((entry) => fieldKey(entry) === fieldKey(field))?.value ?? field.value} disabled={locked} onChange={(value) => parameter(field, value)} />;
+  const toolbar = <div className="chat-image-toolbar">
+    <span className="chat-image-executor"><span aria-hidden="true">生图</span><Select aria-label="生图方式" placement="top" value={options?.executor || "codex-cli"} disabled={locked} onChange={async (executor) => {
+      if (await onChange({ executor, direct: executor !== "codex-cli" && Boolean(options?.direct) })) { setOpen(false); setRecord(null); }
+    }} options={imageExecutors.filter((entry) => chatEngine !== "grok-build" || entry.id !== "codex-cli").map((entry) => ({ value: entry.id, label: entry.label }))} /></span>
+    {chatEngine === "grok-build" && options?.executor === "grok-build" && !options.direct && <span className="wiki-muted">随当前 Grok 会话生图</span>}
+    {options?.executor === "grok-build" && <Select aria-label="Grok 图片比例" placement="top" value={options.aspectRatio || "auto"} disabled={locked}
+      onChange={(aspectRatio) => void onChange({ ...options, aspectRatio })} options={grokAspectRatios.map((ratio) => ({ value: ratio, label: ratio === "auto" ? "自动比例" : ratio }))} />}
+    {options?.executor === "comfyui" && <button type="button" ref={trigger} className="chat-workflow-trigger" aria-label="工作流与参数" aria-expanded={open} disabled={locked} onClick={() => open ? setOpen(false) : void show()}>
+      {stored?.name || (options.workflowId ? `工作流 #${options.workflowId}` : "选择工作流")} · 参数
+    </button>}
+    <label className="chat-direct-image"><input type="checkbox" checked={Boolean(options?.direct)} disabled={locked} onChange={(event) => {
+      const direct = event.target.checked;
+      void onChange({ ...options, executor: direct && options.executor === "codex-cli" ? "chatgpt-web" : options.executor, direct });
+    }} />原文直发生图</label>
+  </div>;
   return <div className="chat-image-control" onKeyDown={(event) => { if (event.key === "Escape" && !busy) { event.stopPropagation(); setOpen(false); trigger.current?.focus(); } }}>
-    <div className="chat-image-toolbar">
-      <label>生图<select aria-label="生图方式" value={options?.executor || "codex-cli"} disabled={locked} onChange={async (event) => {
-        const executor = event.target.value;
-        if (await onChange({ executor, direct: executor !== "codex-cli" && Boolean(options?.direct) })) { setOpen(false); setRecord(null); }
-      }}>{imageExecutors.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select></label>
-      {options?.executor === "comfyui" && <button type="button" ref={trigger} className="chat-workflow-trigger" aria-label="工作流与参数" aria-expanded={open} disabled={locked} onClick={() => open ? setOpen(false) : void show()}>
-        {stored?.name || (options.workflowId ? `工作流 #${options.workflowId}` : "选择工作流")} · 参数
-      </button>}
-      <label className="chat-direct-image"><input type="checkbox" checked={Boolean(options?.direct)} disabled={locked} onChange={(event) => {
-        const direct = event.target.checked;
-        void onChange({ ...options, executor: direct && options.executor === "codex-cli" ? "chatgpt-web" : options.executor, direct });
-      }} />原文直发生图</label>
-    </div>
+    {toolbarTarget ? createPortal(toolbar, toolbarTarget) : toolbar}
     {options?.direct && <p className="wiki-muted chat-direct-hint">{options.executor === "comfyui"
       ? "文字留空沿用工作流提示词；填写文字或选择文字素材则替换提示词。可直接发送一张图片，工作流需有唯一图片入口。种子使用参数面板中的数值。"
-      : `原文直接发送到 ${executor?.label}。文字素材依次附在文案后；延续当前会话的网页对话。`}</p>}
+      : options.executor === "grok-build" ? "文案原样交给 Grok Build；文字素材依次附在文案后，Grok 负责调用图片工具。附图时进行编辑或融合，最多 8 张；单图编辑保留原图比例。每次独立执行，连续改图需附上上一张结果。"
+        : `原文直接发送到 ${executor?.label}。文字素材依次附在文案后；延续当前会话的网页对话。`}</p>}
     {options?.executor === "comfyui" && !options.workflowId && !open && <p className="wiki-muted">选择已保存的工作流后即可生成图片。</p>}
     {open && options?.executor === "comfyui" && <section className="chat-workflow-panel" aria-label="ComfyUI 工作流设置">
       <div className="chat-workflow-heading"><strong>ComfyUI 工作流</strong><button type="button" disabled={busy} onClick={() => setOpen(false)}>收起</button></div>

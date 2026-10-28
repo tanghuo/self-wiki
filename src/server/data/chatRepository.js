@@ -51,10 +51,19 @@ export function createChatRepository(db) {
     }
     return excerpt.role === "user" ? source.text : source.answer;
   }
+  const turnSelect = `SELECT t.*, (SELECT json_group_object(record_key,version) FROM chat_trace_records WHERE turn_id=t.id) AS trace_versions FROM chat_turns t`;
   function turn(id) {
-    const row = db.prepare(`SELECT t.*, (SELECT json_group_object(record_key,version) FROM chat_trace_records WHERE turn_id=t.id) AS trace_versions
-      FROM chat_turns t WHERE id=?`).get(id);
+    const row = db.prepare(`${turnSelect} WHERE id=?`).get(id);
     if (!row) throw elementError("消息不存在", 404);
+    return turnFromRow(row);
+  }
+  // One query for a page of turns instead of one per turn.
+  function turns(ids) {
+    if (!ids.length) return [];
+    const rows = new Map(db.prepare(`${turnSelect} WHERE id IN (SELECT value FROM json_each(?))`).all(JSON.stringify(ids)).map((row) => [row.id, row]));
+    return ids.map((id) => { if (!rows.has(id)) throw elementError("消息不存在", 404); return turnFromRow(rows.get(id)); });
+  }
+  function turnFromRow(row) {
     const traceVersions = JSON.parse(row.trace_versions || "{}");
     return { id: row.id, sessionId: row.session_id, requestKey: row.request_key, turnId: row.codex_turn_id, model: row.model, effort: row.effort, text: row.text, answer: row.answer, internal: Boolean(row.internal),
       parentTurnId: row.parent_turn_id, updatedAt: row.updated_at, requestTraceVersion: traceVersions.request || 0, directImage: Boolean(row.direct_image),
@@ -65,6 +74,9 @@ export function createChatRepository(db) {
   function proposal(id) {
     const row = db.prepare("SELECT * FROM chat_proposals WHERE id=?").get(id);
     if (!row) throw elementError("建议不存在", 404);
+    return proposalFromRow(row);
+  }
+  function proposalFromRow(row) {
     return { id: row.id, turnId: row.turn_id, state: proposalStates[row.state], payload: JSON.parse(row.payload), snapshots: JSON.parse(row.snapshots), changes: JSON.parse(row.changes), after: JSON.parse(row.after_snapshots) };
   }
   function checkBranch(info, revision) {
@@ -230,14 +242,22 @@ export function createChatRepository(db) {
     detail(id, before = Number.MAX_SAFE_INTEGER, head = session(id).activeTurnId) {
       const info = session(id);
       const ids = path(id, head).filter((turnId) => turnId < before);
-      const turns = ids.slice(-20).map((turnId) => {
-        const value = turn(turnId);
-        return { ...value, versions: db.prepare("SELECT id FROM chat_turns WHERE session_id=? AND parent_turn_id IS ? AND internal=0 ORDER BY id")
-          .all(id, value.parentTurnId).map((r) => r.id) };
-      });
-      const proposals = turns.length ? db.prepare(`SELECT id FROM chat_proposals WHERE turn_id IN (${turns.map(() => "?").join(",")}) ORDER BY id DESC`)
-        .all(...turns.map((t) => t.id)).map(({ id }) => proposal(id)) : [];
-      return { session: info, turns, proposals, hasOlder: ids.length > 20 };
+      const page = turns(ids.slice(-20));
+      // Sibling versions for every turn on the page in a single query.
+      const siblings = new Map();
+      if (page.length) {
+        for (const row of db.prepare(`SELECT id,parent_turn_id FROM chat_turns WHERE session_id=? AND internal=0
+          AND (parent_turn_id IN (SELECT value FROM json_each(?)) OR (parent_turn_id IS NULL AND ?)) ORDER BY id`)
+          .all(id, JSON.stringify(page.map((t) => t.parentTurnId).filter((value) => value !== null)), Number(page.some((t) => t.parentTurnId === null)))) {
+          const key = row.parent_turn_id ?? "root";
+          if (!siblings.has(key)) siblings.set(key, []);
+          siblings.get(key).push(row.id);
+        }
+      }
+      const pageTurns = page.map((value) => ({ ...value, versions: siblings.get(value.parentTurnId ?? "root") || [] }));
+      const proposals = pageTurns.length ? db.prepare("SELECT * FROM chat_proposals WHERE turn_id IN (SELECT value FROM json_each(?)) ORDER BY id DESC")
+        .all(JSON.stringify(pageTurns.map((t) => t.id))).map(proposalFromRow) : [];
+      return { session: info, turns: pageTurns, proposals, hasOlder: ids.length > 20 };
     },
     promptContext(turnId) {
       const target = turn(turnId);

@@ -24,7 +24,7 @@ export default function SemanticSettings({ config, status, onChange, locked, onA
     {status && <div className="settings-subgroup"><h4>索引状态与维护</h4>
       <p role="status" className="wiki-muted">{status.diagnostic}</p>
       <p className="wiki-muted">已索引 {status.counts.ready} · 待索引 {status.counts.pending} · 处理中 {status.counts.running} · 失败 {status.counts.failed}</p>
-      {status.activeElementId && <p className="wiki-muted">正在处理元素 #{status.activeElementId}</p>}
+      {status.activeElementId && <p className="wiki-muted">正在处理内容 #{status.activeElementId}</p>}
       {status.errors.map((error) => <p className="wiki-error" key={error.elementId}>#{error.elementId}：{error.error}</p>)}
       <p className="wiki-muted">先保存下方配置，再检测或重建。重建向量会复用已有图片描述。</p>
       <div className="wiki-actions">

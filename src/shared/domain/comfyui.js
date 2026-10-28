@@ -1,5 +1,7 @@
 import { elementError } from "./elements.js";
 
+export const maxComfyReferenceImages = 8;
+
 export const maxComfyWorkflowBytes = 512 * 1024;
 
 export function defaultComfyuiConfig() {
@@ -26,7 +28,7 @@ export function comfyuiWorkflow(value) {
 
 export function comfyuiConfig(value = defaultComfyuiConfig()) {
   if (!value || typeof value !== "object" || Array.isArray(value)
-      || Object.keys(value).some((key) => !["baseUrl", "workflowName", "workflow", "prompt", "outputNodeId"].includes(key))) {
+      || Object.keys(value).some((key) => !["baseUrl", "workflowName", "workflow", "prompt", "outputNodeId", "imageInputs"].includes(key))) {
     throw elementError("无效的 ComfyUI 配置");
   }
   value = { ...defaultComfyuiConfig(), ...value };
@@ -47,14 +49,24 @@ export function comfyuiConfig(value = defaultComfyuiConfig()) {
     throw elementError("请选择工作流中的提示词文本字段，不能覆盖节点连线");
   }
   if (value.outputNodeId && !Object.hasOwn(workflow || {}, value.outputNodeId)) throw elementError("所选 ComfyUI 输出节点不存在");
+  let imageInputs;
+  if (value.imageInputs !== undefined) {
+    if (!Array.isArray(value.imageInputs) || value.imageInputs.length > maxComfyReferenceImages) throw elementError('参考图映射最多 8 项');
+    const used = new Set();
+    imageInputs = value.imageInputs.map((entry, index) => {
+      if (!entry || Object.keys(entry).some((key) => !['nodeId', 'input'].includes(key)) || typeof entry.nodeId !== 'string' || entry.input !== 'image' || workflow?.[entry.nodeId]?.class_type !== 'LoadImage' || typeof workflow[entry.nodeId].inputs.image !== 'string' || used.has(entry.nodeId)) throw elementError(`请选择第 ${index + 1} 张参考图对应的独立 LoadImage 图片入口`);
+      if (prompt?.nodeId === entry.nodeId && prompt.input === entry.input) throw elementError('提示词字段不能与参考图入口重叠');
+      used.add(entry.nodeId); return { nodeId: entry.nodeId, input: 'image' };
+    });
+  }
   return { baseUrl: url.href.replace(/\/+$/, ""), workflowName: value.workflowName.trim(), workflow,
-    prompt: prompt && { nodeId: prompt.nodeId, input: prompt.input }, outputNodeId: value.outputNodeId };
+    prompt: prompt && { nodeId: prompt.nodeId, input: prompt.input }, outputNodeId: value.outputNodeId, ...(imageInputs !== undefined && { imageInputs }) };
 }
 
 // Only the selected output and its dependencies run. The template stays intact.
-export function configuredComfyuiWorkflow(config) {
+export function configuredComfyuiWorkflow(config, { requirePrompt = true } = {}) {
   const { workflow, prompt, outputNodeId } = config;
-  if (!workflow || !prompt || !outputNodeId) throw elementError("请在会话中选择 ComfyUI 工作流、提示词字段和图片输出节点");
+  if (!workflow || requirePrompt && !prompt || !outputNodeId) throw elementError("请选择 ComfyUI 工作流、提示词字段和图片输出节点");
   const reachable = new Set(), visiting = new Set();
   function visit(id) {
     if (visiting.has(id)) throw elementError("ComfyUI 工作流存在循环连线");
@@ -67,6 +79,7 @@ export function configuredComfyuiWorkflow(config) {
     visiting.delete(id); reachable.add(id);
   }
   visit(outputNodeId);
-  if (!reachable.has(prompt.nodeId)) throw elementError("提示词节点没有连接到所选图片输出，请检查映射");
+  if (prompt && !reachable.has(prompt.nodeId)) throw elementError("提示词节点没有连接到所选图片输出，请检查映射");
+  for (const entry of config.imageInputs || []) if (!reachable.has(entry.nodeId)) throw elementError(`参考图入口 ${entry.nodeId} 没有连接到所选图片输出`);
   return Object.fromEntries([...reachable].map((id) => [id, structuredClone(workflow[id])]));
 }

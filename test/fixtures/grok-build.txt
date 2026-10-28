@@ -1,0 +1,33 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+const args = process.argv.slice(2);
+if (args.includes('--version')) { console.log('grok 1.0.62 (fixture)'); process.exit(0); }
+const arg = (key) => args[args.indexOf(key) + 1];
+const sessionId = arg('--session-id'), cwd = arg('--cwd');
+const request = await readFile(arg('--prompt-file'), 'utf8');
+await writeFile(path.join(process.env.GROK_HOME, 'observed.json'), JSON.stringify({ args, request, cwd }));
+const input = JSON.parse(request.slice(request.indexOf('\n') + 1));
+const tool = arg('--tools');
+const emit = (event) => process.stdout.write(JSON.stringify(event) + '\n');
+// Split a Chinese character across buffers to test incremental UTF-8 decoding.
+const message = Buffer.from(JSON.stringify({ type: 'text', data: '橘猫' }) + '\n');
+const split = message.indexOf(Buffer.from('橘')) + 1;
+process.stdout.write(message.subarray(0, split));
+await new Promise((resolve) => setTimeout(resolve, 5));
+process.stdout.write(message.subarray(split));
+if (input.prompt === 'malformed') { console.log('not-json'); setInterval(() => {}, 1000); }
+else {
+  emit({ type: 'tool_call', toolName: tool, toolCallId: 'image-1', rawInput: input, status: 'pending' });
+  if (input.prompt === 'hang') setInterval(() => {}, 1000);
+  else if (input.prompt === 'failed') emit({ type: 'tool_call_update', toolCallId: 'image-1', status: 'failed' });
+  else {
+    const directory = path.join(process.env.GROK_HOME, 'sessions', 'workspace', input.prompt === 'wrong-session' ? 'other-session' : sessionId, 'images');
+    await mkdir(directory, { recursive: true });
+    const file = path.join(directory, '1.png');
+    await writeFile(file, Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'));
+    const result = { type: 'tool_call_update', toolCallId: 'image-1', status: 'completed', rawOutput: { type: tool === 'image_gen' ? 'ImageGen' : 'ImageEdit', path: file } };
+    emit(result);
+    if (input.prompt === 'duplicate') emit(result);
+  }
+  if (input.prompt !== 'hang') emit({ type: 'end', sessionId, stopReason: 'end_turn', usage: { total_tokens: 12 } });
+}

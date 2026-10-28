@@ -1,3 +1,4 @@
+import { migrateWorkflow } from "./workflowMigration.js";
 import { migrateElementMaterial } from "./elementMaterialMigration.js";
 import { migrateImageDimensions } from "./imageDimensionsMigration.js";
 import { migrateChatEffort } from "./chatEffortMigration.js";
@@ -33,12 +34,12 @@ import { migrateVideoAnalysis } from "./videoAnalysisMigration.js";
 import { migrateVideoAnalysisConsistency } from "./videoAnalysisConsistencyMigration.js";
 import { migrateVideoAnalysisApplication } from "./videoAnalysisApplicationMigration.js";
 
-export function migrateWiki(db) {
+function migrateCore(db) {
   db.exec("BEGIN IMMEDIATE");
   try {
     db.exec("CREATE TABLE IF NOT EXISTS wiki_schema (version INTEGER PRIMARY KEY CHECK (version > 0))");
     const versions = db.prepare("SELECT version FROM wiki_schema ORDER BY version").all();
-    if (versions.some(({ version }) => ![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39].includes(version))) throw new Error("Unsupported Wiki schema version");
+    if (versions.some(({ version }) => !knownVersions.has(version))) throw new Error("Unsupported Wiki schema version");
     if (!versions.length) {
       db.exec(`
         CREATE TABLE elements (
@@ -106,7 +107,9 @@ export function migrateWiki(db) {
     db.exec("ROLLBACK");
     throw error;
   }
-  migrateNeutralText(db);
+}
+
+function migrateRelations(db) {
   db.exec("BEGIN IMMEDIATE");
   try {
     if (!db.prepare("SELECT 1 FROM wiki_schema WHERE version = 5").get()) {
@@ -155,37 +158,69 @@ export function migrateWiki(db) {
     if (db.prepare("PRAGMA foreign_key_check").all().length) throw new Error("Relation migration foreign key check failed");
     db.exec("COMMIT");
   } catch (error) { db.exec("ROLLBACK"); throw error; }
-  migrateOrganization(db);
-  migrateSemantic(db);
-  migrateChat(db);
-  migrateOrganizationProvenance(db);
-  migrateChatModels(db);
-  migrateRelationDirections(db);
-  migrateChatImageEdits(db);
-  migrateElementLifecycle(db);
-  migrateChatFileCopies(db);
-  migrateChatContent(db);
-  migrateVocabulary(db);
-  migrateChatDrafts(db);
-  migrateChatBranches(db);
-  migrateChatEffort(db);
-  migrateChatTrace(db);
-  migrateChatModelPreference(db);
-  migrateChatSessionStarts(db);
-  migrateElementCreationSource(db);
-  migrateChatReferences(db);
-  migrateChatAttachments(db);
-  migrateChatDirectImages(db);
-  migrateChatWebConversations(db);
-  migrateChatComposerStorage(db);
-  migrateVideos(db);
-  migrateVideoMarkers(db);
-  migrateVideoAnalysis(db);
-  migrateVideoAnalysisConsistency(db);
-  migrateVideoAnalysisApplication(db);
-  migrateElementUsage(db);
-  migrateChatImageOptions(db);
-  migrateVideoOrganization(db);
-  migrateImageDimensions(db);
-  migrateElementMaterial(db);
+}
+
+// Ordered migration registry. Each step is idempotent, runs in its own transaction and
+// records its version(s) in wiki_schema; add new steps at the end with the next version.
+export const wikiMigrations = [
+  { versions: [1, 2, 3], run: migrateCore },
+  { versions: [4], run: migrateNeutralText },
+  { versions: [5, 6], run: migrateRelations },
+  { versions: [7], run: migrateOrganization },
+  { versions: [8], run: migrateSemantic },
+  { versions: [9], run: migrateChat },
+  { versions: [10], run: migrateOrganizationProvenance },
+  { versions: [11], run: migrateChatModels },
+  { versions: [12], run: migrateRelationDirections },
+  { versions: [13], run: migrateChatImageEdits },
+  { versions: [14], run: migrateElementLifecycle },
+  { versions: [15], run: migrateChatFileCopies },
+  { versions: [16], run: migrateChatContent },
+  { versions: [17], run: migrateVocabulary },
+  { versions: [18], run: migrateChatDrafts },
+  { versions: [19], run: migrateChatBranches },
+  { versions: [20], run: migrateChatEffort },
+  { versions: [21], run: migrateChatTrace },
+  { versions: [22], run: migrateChatModelPreference },
+  { versions: [23], run: migrateChatSessionStarts },
+  { versions: [24], run: migrateElementCreationSource },
+  { versions: [25], run: migrateChatReferences },
+  { versions: [26], run: migrateChatAttachments },
+  { versions: [27], run: migrateChatDirectImages },
+  { versions: [28], run: migrateChatWebConversations },
+  { versions: [29], run: migrateChatComposerStorage },
+  { versions: [30], run: migrateVideos },
+  { versions: [31], run: migrateVideoMarkers },
+  { versions: [32], run: migrateVideoAnalysis },
+  { versions: [33], run: migrateVideoAnalysisConsistency },
+  { versions: [34], run: migrateVideoAnalysisApplication },
+  { versions: [35], run: migrateElementUsage },
+  { versions: [36], run: migrateChatImageOptions },
+  { versions: [37], run: migrateVideoOrganization },
+  { versions: [38], run: migrateImageDimensions },
+  { versions: [39], run: migrateElementMaterial },
+  { versions: [40], run: migrateWorkflow },
+];
+const knownVersions = new Set(wikiMigrations.flatMap((step) => step.versions));
+export const latestWikiVersion = Math.max(...knownVersions);
+
+function appliedVersions(db) {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='wiki_schema'").get()) return null;
+  return new Set(db.prepare("SELECT version FROM wiki_schema").all().map(({ version }) => version));
+}
+
+// null: brand-new database; []: up to date; otherwise the versions that would be applied.
+export function pendingWikiVersions(db) {
+  const applied = appliedVersions(db);
+  if (!applied) return null;
+  if ([...applied].some((version) => !knownVersions.has(version))) throw new Error("Unsupported Wiki schema version");
+  return [...knownVersions].filter((version) => !applied.has(version)).sort((a, b) => a - b);
+}
+
+export function migrateWiki(db) {
+  const applied = appliedVersions(db);
+  if (applied && [...applied].some((version) => !knownVersions.has(version))) throw new Error("Unsupported Wiki schema version");
+  for (const step of wikiMigrations) {
+    if (!applied || step.versions.some((version) => !applied.has(version))) step.run(db);
+  }
 }

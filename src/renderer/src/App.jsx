@@ -1,5 +1,7 @@
 import { Activity, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Settings, History, X } from "lucide-react";
+import { Settings, History, Keyboard, X } from "lucide-react";
+import KeyboardShortcuts from "./KeyboardShortcuts.jsx";
+import { isEditableTarget, overlayOpen } from "./shortcuts.js";
 import WikiApp from "./WikiApp.jsx";
 import SettingsDialog from "./SettingsDialog.jsx";
 import WikiSidebar from "./WikiSidebar.jsx";
@@ -9,15 +11,49 @@ import ReferenceTray from "./ReferenceTray.jsx";
 import useReferenceTray from "./useReferenceTray.js";
 import Dialog from "./Dialog.jsx";
 import OrganizationPanel from "./OrganizationPanel.jsx";
+import TemporaryShares from "./TemporaryShares.jsx";
 import { request } from "./api.js";
 import "./wiki.css";
+import "./surfaces.css";
 
-const readOnly = document.querySelector('meta[name="wiki-access"]')?.content === "read-only";
+const access = document.querySelector('meta[name="wiki-access"]')?.content;
+const readOnly = access === "read-only";
+// LAN visitors never get the agent, settings or other local-only tools.
+const lanGuest = readOnly || access === "lan-edit";
 const ChatPanel = lazy(() => import("./ChatPanel.jsx"));
-const currentSection = () => readOnly || window.location.hash === "#wiki" ? "wiki" : "agent";
+const WorkflowApp = lazy(() => import('./features/workflow/WorkflowApp.jsx'));
+// Empty hash opens the library. Agent is only restored when the user last left it there and the library is not empty.
+const currentSection = () => {
+  if ((window.location.hash || "").startsWith("#shares")) return "shares";
+  if (lanGuest) return "wiki";
+  if ((window.location.hash || '').startsWith('#workflow')) return 'workflow';
+  const hash = window.location.hash || "";
+  if (hash.startsWith("#wiki")) return "wiki";
+  if (hash.startsWith("#agent")) return "agent";
+  return "wiki";
+};
 
 export default function App() {
   const [section, setSection] = useState(currentSection);
+  useEffect(() => {
+    try { localStorage.setItem("selfWikiSection", section); } catch { /* ignore */ }
+  }, [section]);
+  useEffect(() => {
+    if (lanGuest || (window.location.hash || "").startsWith("#")) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const last = localStorage.getItem("selfWikiSection");
+        if (last !== "agent") { if (!cancelled && !window.location.hash) window.location.hash = "wiki"; return; }
+        const result = await request("/api/elements?pageSize=1&scope=library");
+        if (cancelled) return;
+        window.location.hash = result.pagination?.total > 0 ? "agent" : "wiki";
+      } catch {
+        if (!cancelled && !window.location.hash) window.location.hash = "wiki";
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const [chatMounted, setChatMounted] = useState(section === "agent");
   const [visited, setVisited] = useState(() => new Set([section]));
   const workspaceScroll = useRef({});
@@ -30,9 +66,16 @@ export default function App() {
   const [sourcePreview, setSourcePreview] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState("general");
   const [usageOpen, setUsageOpen] = useState(false);
   const [organizationOpen, setOrganizationOpen] = useState(false), [organizationBusy, setOrganizationBusy] = useState(false);
-  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || "paper");
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || "auto");
+  useEffect(() => {
+    // Toolbar "…" menus are <details>; close an open one when the pointer goes elsewhere.
+    const close = (event) => { for (const menu of document.querySelectorAll("details.library-menu[open]")) if (!menu.contains(event.target)) menu.open = false; };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     // Cookies preserve preferences across the desktop backend's changing ports.
@@ -67,8 +110,33 @@ export default function App() {
     const frame = requestAnimationFrame(() => window.scrollTo(0, workspaceScroll.current[section] || 0));
     return () => cancelAnimationFrame(frame);
   }, [section]);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false), [searchRequest, setSearchRequest] = useState(null);
+  const shortcutState = useRef({});
+  shortcutState.current = { section, docked, uploading };
+  useEffect(() => {
+    function keydown(event) {
+      if (event.defaultPrevented || event.isComposing || event.altKey) return;
+      const { section: current, docked: dockOpen, uploading: busy } = shortcutState.current;
+      const typing = isEditableTarget(event.target);
+      const searchKey = (event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "k";
+      if (searchKey || (event.key === "/" && !typing && !event.ctrlKey && !event.metaKey)) {
+        if (overlayOpen() || busy) return;
+        event.preventDefault();
+        if (current !== "wiki") window.location.hash = "wiki";
+        setSearchRequest({});
+        return;
+      }
+      if (event.key === "?" && !typing && !event.ctrlKey && !event.metaKey && !overlayOpen()) { event.preventDefault(); setShortcutsOpen(true); return; }
+      if (event.key === "Escape" && dockOpen && current !== "agent" && !overlayOpen() && event.target.closest?.(".chat-panel")) {
+        // Esc inside the docked agent panel closes it (dialogs and menus inside handle Esc first).
+        if (!event.target.closest("textarea, input") || !event.target.value) { event.preventDefault(); closeDock(); }
+      }
+    }
+    window.addEventListener("keydown", keydown);
+    return () => window.removeEventListener("keydown", keydown);
+  }, []);
   const [agentSelection, setAgentSelection] = useState(null);
-  const referenceTray = useReferenceTray(!readOnly, wikiRevision);
+  const referenceTray = useReferenceTray(!lanGuest, wikiRevision);
   const { references, setReferences, collapsed: referencesCollapsed, setCollapsed: setReferencesCollapsed } = referenceTray;
   const [referenceError, setReferenceError] = useState(""), [referenceBusy, setReferenceBusy] = useState(false);
   const referenceStarting = useRef(false);
@@ -77,7 +145,7 @@ export default function App() {
     if (element.kind === "video") return;
     setReferencesCollapsed(false); setReferenceError("");
     if (references.some((entry) => entry.id === element.id)) return;
-    if (references.length >= 12) { setReferenceError("最多加入 12 份参考，请先移除部分内容。"); return; }
+    if (references.length >= 12) { setReferenceError("最多加入 12 份资料，请先移除部分内容。"); return; }
     setReferences((current) => current.some((entry) => entry.id === element.id) ? current : [...current, element].slice(0, 12));
   }
   async function startReferenceChat() {
@@ -104,35 +172,60 @@ export default function App() {
     else setSourcePreview(id);
   }
   function browseSource(id, contextId) { setOpenRequest({ id, contextId }); setSourcePreview(null); workspaceScroll.current.wiki = 0; window.location.hash = "wiki"; }
+  useEffect(() => {
+    const open = (event) => {
+      setSettingsSection(event.detail?.section || "general");
+      setSettingsOpen(true);
+    };
+    window.addEventListener("self-wiki-open-settings", open);
+    return () => window.removeEventListener("self-wiki-open-settings", open);
+  }, []);
   const workspaceNavigation = <>
       <div className="workspace-footer">
-        {!readOnly && <button className="text-button workspace-settings" disabled={uploading} onClick={() => setOrganizationOpen(true)}><History size={17} />整理历史</button>}
-        {!readOnly && <button className="text-button workspace-settings" onClick={() => setUsageOpen(true)}>Token 用量</button>}
-        {!readOnly && <button className="text-button workspace-settings" onClick={() => setSettingsOpen(true)}><Settings size={17} />设置</button>}
-        {readOnly && <span className="workspace-local"><i />局域网 · 只读浏览</span>}
+        <button className="text-button workspace-settings workspace-shortcuts" aria-keyshortcuts="Shift+?" onClick={() => setShortcutsOpen(true)}><Keyboard size={17} />快捷键</button>
+        {!lanGuest && <button className="text-button workspace-settings" onClick={() => { setSettingsSection("general"); setSettingsOpen(true); }}><Settings size={17} />设置</button>}
+        {!lanGuest && <details className="workspace-tools-more">
+          <summary>用量与整理</summary>
+          <div className="workspace-tools-more-body">
+            <button className="text-button workspace-settings" disabled={uploading} onClick={() => setOrganizationOpen(true)}><History size={17} />整理历史</button>
+            <button className="text-button workspace-settings" onClick={() => setUsageOpen(true)}>Token 用量</button>
+          </div>
+        </details>}
+        {lanGuest && <span className="workspace-local"><i />{readOnly ? "局域网 · 只读浏览" : "局域网 · 可编辑"}</span>}
       </div>
     </>;
   return <>
+    <a className="skip-link" href="#main-content" onClick={(event) => {
+      event.preventDefault();
+      const main = document.getElementById("main-content");
+      if (!main?.offsetParent) { document.querySelector(".chat-panel textarea")?.focus(); return; }
+      // Focusable only while targeted, so clicks inside the page never move focus to <main>.
+      main.setAttribute("tabindex", "-1"); main.focus();
+      main.addEventListener("blur", () => main.removeAttribute("tabindex"), { once: true });
+    }}>跳到主要内容</a>
     <div className={`app-layout ${section === "agent" ? "agent-home" : docked ? "agent-docked" : ""}`}>
     <div className="app-workspace">
     {visited.has("wiki") && <Activity mode={section === "wiki" ? "visible" : "hidden"}>
-      <WikiApp readOnly={readOnly} tabRequest={wikiTabRequest} onTabChange={wikiTabChanged} onBusyChange={setUploading} workspaceNavigation={workspaceNavigation}
-        onAddReference={addReference} onAskAgent={askAgent} agentOpen={docked} onContextChange={setWikiContext} externalRevision={wikiRevision} onChanged={refreshWiki} openRequest={openRequest} />
+      <WikiApp readOnly={readOnly} tabRequest={wikiTabRequest} onTabChange={wikiTabChanged} onBusyChange={setUploading} workspaceNavigation={workspaceNavigation} searchRequest={searchRequest}
+        onAddReference={lanGuest ? undefined : addReference} onAskAgent={lanGuest ? undefined : askAgent} agentOpen={docked} onContextChange={setWikiContext} externalRevision={wikiRevision} onChanged={refreshWiki} openRequest={openRequest} />
     </Activity>}
     {section === "agent" && <WikiSidebar activeTab="agent" onChooseTab={(key) => { setWikiTabRequest({ key }); if (key !== wikiCurrentTab.current) workspaceScroll.current.wiki = 0; window.location.hash = "wiki"; }}>{workspaceNavigation}</WikiSidebar>}
+    {section === "shares" && <div className="wiki-shell"><WikiSidebar activeTab="shares" readOnly={lanGuest} onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = "wiki"; }}>{workspaceNavigation}</WikiSidebar><TemporaryShares local={!lanGuest} /></div>}
+    {visited.has('workflow') && !lanGuest && <Activity mode={section === 'workflow' ? 'visible' : 'hidden'}><div className="wiki-shell"><WikiSidebar activeTab="workflow" onChooseTab={(key) => { setWikiTabRequest({ key }); window.location.hash = 'wiki'; }}>{workspaceNavigation}</WikiSidebar><Suspense fallback={<p role="status">正在打开工作流…</p>}><WorkflowApp /></Suspense></div></Activity>}
     </div>
-    {chatMounted && !readOnly && <Suspense fallback={section === "agent" || docked ? <section className="agent-loading" role="status">正在打开 Wiki Agent…</section> : null}>
+    {chatMounted && !lanGuest && <Suspense fallback={section === "agent" || docked ? <section className="agent-loading" role="status">正在打开对话…</section> : null}>
       <ChatPanel selection={agentSelection} onSelectionConsumed={selectionConsumed} presentation={section === "agent" ? "page" : "dock"} visible={section === "agent" || docked} currentIds={section === "wiki" ? wikiContext : []}
         externalBusy={uploading} onOpen={openSource} onChanged={refreshWiki} onClose={closeDock} onExpand={() => { window.location.hash = "agent"; }} />
     </Suspense>}
     </div>
-    {!readOnly && (references.length > 0 || referenceTray.error) && <ReferenceTray elements={references} collapsed={referencesCollapsed} onCollapse={setReferencesCollapsed} busy={referenceBusy || uploading} loading={referenceTray.loading} error={referenceTray.error || referenceError} onRetry={referenceTray.error ? referenceTray.retry : undefined} startDisabled={referenceTray.loading || referenceTray.unresolved || !references.length} docked={section !== "agent" && docked}
+    {!lanGuest && (references.length > 0 || referenceTray.error) && <ReferenceTray elements={references} collapsed={referencesCollapsed} onCollapse={setReferencesCollapsed} busy={referenceBusy || uploading} loading={referenceTray.loading} error={referenceTray.error || referenceError} onRetry={referenceTray.error ? referenceTray.retry : undefined} startDisabled={referenceTray.loading || referenceTray.unresolved || !references.length} docked={section !== "agent" && docked}
       onRemove={(id) => { setReferences((current) => current.filter((element) => element.id !== id)); setReferenceError(""); }} onClear={() => { setReferences([]); setReferenceError(""); }}
       onOpen={openSource} onStart={startReferenceChat} />}
     {sourcePreview !== null && <AgentSourcePreview key={sourcePreview} id={sourcePreview} onClose={() => setSourcePreview(null)} onBrowse={browseSource} onReference={(element) => { selectForAgent(element); setSourcePreview(null); }} onAddReference={(element) => { addReference(element); setSourcePreview(null); }} />}
-    {settingsOpen && !readOnly && <SettingsDialog theme={theme} onThemeChange={setTheme} cardTagDisplay={cardTagDisplay} onCardTagDisplayChange={setCardTagDisplay} onChanged={refreshWiki} onClose={() => setSettingsOpen(false)} />}
-    {usageOpen && !readOnly && <TokenUsagePanel onClose={() => setUsageOpen(false)} />}
-    {organizationOpen && !readOnly && <Dialog open label="整理历史" className="wiki-dialog organization-dialog organization-library-dialog" onClose={() => !organizationBusy && setOrganizationOpen(false)}>
+    {settingsOpen && !lanGuest && <SettingsDialog key={settingsSection} initialSection={settingsSection} theme={theme} onThemeChange={setTheme} cardTagDisplay={cardTagDisplay} onCardTagDisplayChange={setCardTagDisplay} onChanged={refreshWiki} onClose={() => setSettingsOpen(false)} />}
+    {shortcutsOpen && <KeyboardShortcuts onClose={() => setShortcutsOpen(false)} />}
+    {usageOpen && !lanGuest && <TokenUsagePanel onClose={() => setUsageOpen(false)} />}
+    {organizationOpen && !lanGuest && <Dialog open label="整理历史" className="wiki-dialog organization-dialog organization-library-dialog" onClose={() => !organizationBusy && setOrganizationOpen(false)}>
       <header className="wiki-dialog-header"><div><h2>整理历史</h2><p className="wiki-muted">查看 AI 为哪些内容补充了标签和关联。</p></div><button className="icon-only" aria-label="关闭整理历史" disabled={organizationBusy} onClick={() => setOrganizationOpen(false)}><X size={18} /></button></header>
       <OrganizationPanel mode="history" onBusyChange={setOrganizationBusy} onChanged={refreshWiki} onOpen={(id) => { setOrganizationOpen(false); browseSource(id); }} />
     </Dialog>}

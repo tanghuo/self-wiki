@@ -1,12 +1,17 @@
 import { elementError } from "./elements.js";
-import { imageExecutorDefinition } from "./imageGeneration.js";
+import { imageExecutorDefinition, grokAspectRatios } from "./imageGeneration.js";
 
 export function chatImageOptions(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)
       || typeof value.executor !== "string" || new TextEncoder().encode(JSON.stringify(value)).length > 32000
-      || Object.keys(value).some((key) => !["executor", "direct", "workflowId", "prompt", "outputNodeId", "parameters"].includes(key))) throw elementError("无效的会话生图选项");
+      || Object.keys(value).some((key) => !["executor", "direct", "workflowId", "prompt", "outputNodeId", "parameters", "aspectRatio"].includes(key))) throw elementError("无效的会话生图选项");
   const definition = imageExecutorDefinition(value.executor);
   if (typeof value.direct !== "boolean" || value.direct && !definition.directInput) throw elementError("此生图方式不支持原文直发");
+  if (definition.id === "grok-build") {
+    const aspectRatio = value.aspectRatio ?? "auto";
+    if (!grokAspectRatios.includes(aspectRatio)) throw elementError("无效的 Grok 图片比例");
+    return { executor: definition.id, direct: value.direct, aspectRatio };
+  }
   if (definition.id !== "comfyui") return { executor: definition.id, direct: value.direct };
   const { workflowId = null, prompt = null, outputNodeId = "", parameters = [] } = value;
   if (workflowId !== null && (!Number.isSafeInteger(workflowId) || workflowId < 1)) throw elementError("无效的 ComfyUI 工作流");

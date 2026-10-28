@@ -12,7 +12,7 @@ node src/cli/main.js visual search --element-id 42
 node src/cli/main.js visual search --q '雨夜街道'
 ```
 
-`run` 默认继续未完成的分析；`--restart` 创建新分析批次，保留人工修改。`accept/reject` 使用结果的 revision 防止覆盖并发修改。`visual index` 恢复缺失向量；模型或修订变化会使用独立空间。分析服务和视觉模型依赖配置见 README 的视频章节。
+`run` 默认继续未完成的分析；`--restart` 创建新分析批次，保留人工修改。`accept/reject` 使用结果的 revision 防止覆盖并发修改。`visual index` 恢复缺失向量；模型或修订变化会使用独立空间。分析服务和视觉模型依赖配置见 [视频自动标注与相似素材](usage.md#视频自动标注与相似素材)。
 
 CLI 通过本地 HTTP 接口操作运行中的 self-wiki。它复用桌面端的业务校验，不直接打开数据库，不触发离线迁移。需要 Node.js 24+。读取、写入、图片与视频导入均不依赖桌面点击操作。
 

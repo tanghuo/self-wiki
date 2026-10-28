@@ -1,4 +1,16 @@
-const apiBase = (new URLSearchParams(window.location.search).get("api") || "").replace(/\/+$/, "");
+// `?api=` lets the Vite dev server talk to a separately started backend. Production builds
+// always use their own origin, and only loopback backends are accepted at all.
+function devApiBase() {
+  if (!import.meta.env?.DEV) return "";
+  const requested = new URLSearchParams(window.location.search).get("api");
+  if (!requested) return "";
+  try {
+    const url = new URL(requested);
+    if (!["http:", "https:"].includes(url.protocol) || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) return "";
+    return url.origin;
+  } catch { return ""; }
+}
+const apiBase = devApiBase();
 
 export function apiUrl(path) {
   return `${apiBase}${path.startsWith("/") ? path : `/${path}`}`;

@@ -1,0 +1,57 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { chromium } from "playwright-core";
+import { resolveBrowserPath } from "../resolveBrowserPath.js";
+import { chooseOption, selectedValue } from "../ui-select.js";
+import { createServer } from "../../src/server/server.js";
+import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
+
+const browserPath = resolveBrowserPath();
+test("Grok settings probe and composer ratio survive reload and produce a traceable image", { timeout: 40000, skip: !browserPath && "Browser required" }, async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "wiki-grok-ui-"));
+  const previous = process.env.GROK_HOME; process.env.GROK_HOME = root;
+  const config = defaultOrganizationConfig();
+  config.executor.codexCli.executable = path.join(root, "missing-codex.exe");
+  config.imageGeneration.grokBuild.executable = path.join(root, "grok.mjs");
+  await writeFile(config.imageGeneration.grokBuild.executable, await readFile(new URL("../fixtures/grok-build.txt", import.meta.url)));
+  await writeFile(path.join(root, "organization.json"), JSON.stringify(config));
+  const app = await createServer({ port: 0, dataDir: root });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => {
+    await browser.close(); await app.close();
+    if (previous === undefined) delete process.env.GROK_HOME; else process.env.GROK_HOME = previous;
+    assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith("wiki-grok-ui-"));
+    await rm(root, { recursive: true, force: true, maxRetries: 3 });
+  });
+  const page = await browser.newPage({ viewport: { width: 1360, height: 1000 } }); page.setDefaultTimeout(10000);
+  const errors = []; page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(app.url);
+  await page.getByRole("button", { name: "设置", exact: true }).click();
+  await page.getByRole("button", { name: /自动整理与检索/ }).click();
+  const settings = page.locator("#settings-agent-org");
+  await settings.locator("summary").filter({ hasText: "Grok Build 连接" }).click();
+  assert.equal(await settings.getByLabel("Grok Build 程序路径").inputValue(), config.imageGeneration.grokBuild.executable);
+  await settings.getByRole("button", { name: "检测 Grok Build", exact: true }).click();
+  await page.getByText(/程序可启动；登录、额度与生图能力/).waitFor();
+  await page.goto(`${app.url}#agent?new=1`); await page.reload();
+  await chooseOption(page, "生图方式", "grok-build");
+  await chooseOption(page, "Grok 图片比例", "9:19.5");
+  await page.getByLabel("原文直发生图", { exact: true }).check();
+  await page.getByLabel("会话消息").fill("原样生成橘猫");
+  await page.getByRole("button", { name: "发送消息", exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('.chat-process[data-state="completed"]')).catch(async (error) => {
+    throw new Error(JSON.stringify({ errors, body: (await page.locator("body").innerText()).slice(-2500) }), { cause: error });
+  });
+  await page.locator(".chat-tools > summary").click();
+  await page.getByRole("button", { name: "查看详情", exact: true }).click();
+  await page.getByText("Grok 图片工具实际调用", { exact: true }).waitFor();
+  await page.getByText("Grok 会话与用量", { exact: true }).waitFor();
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('[aria-label="Grok 图片比例"]')?.getAttribute("data-value") === "9:19.5");
+  assert.equal(await selectedValue(page, "生图方式"), "grok-build");
+  assert.equal(await selectedValue(page, "Grok 图片比例"), "9:19.5");
+  assert.deepEqual(errors, []);
+});

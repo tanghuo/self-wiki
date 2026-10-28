@@ -1,0 +1,20 @@
+.temporary-shares { flex: 1; min-width: 0; padding: 32px; max-width: 1100px; margin: 0 auto; width: 100%; }
+.temporary-shares > header { display: flex; gap: 14px; align-items: center; margin-bottom: 24px; }
+.temporary-shares h1 { margin: 0; font-size: 26px; }
+.temporary-shares h2 { font-size: 17px; margin: 0 0 12px; }
+.share-create, .share-card { border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-bottom: 16px; background: var(--panel); }
+.share-create label { display: grid; gap: 6px; margin: 12px 0; }
+.share-create input, .share-link input { width: 100%; min-width: 0; }
+.share-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.share-actions button, .share-download { display: inline-flex; align-items: center; gap: 6px; }
+.share-download { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); color: inherit; text-decoration: none; }
+.share-card-title { display: flex; align-items: flex-start; gap: 10px; }
+.share-card-title h2 { overflow-wrap: anywhere; }
+.share-card[data-focused="true"] { outline: 2px solid var(--accent); }
+.share-link { margin-top: 16px; }
+.wiki-share-entry { display: flex; align-items: center; gap: 10px; padding: 10px 12px; color: inherit; text-decoration: none; border-radius: 8px; }
+.wiki-share-entry.active { background: var(--accent-soft); font-weight: 600; }
+.temporary-shares .primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.wiki-share-entry { flex-shrink: 0; white-space: nowrap; }
+@media (max-width: 720px) { .wiki-share-entry { order: 3; } }
+@media (max-width: 700px) { .temporary-shares { padding: 18px 14px; } .share-create, .share-card { padding: 16px; } }

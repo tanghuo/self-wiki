@@ -37,6 +37,6 @@ export default function ElementUsagePanel({ onClose }) {
         </tr>)}</tbody></table></div>}
       </>}
     </div>
-    <footer className="wiki-dialog-footer"><p className="wiki-muted">使用次数 = 引用次数 + 复制次数。展示前 50 条。复制成功、加入参考栏时记录；重复加入和恢复参考栏不计。时间按本地时区显示，自定义时段不含结束时刻。历史未记录的操作不补算；永久删除内容会清除其记录。</p></footer>
+    <footer className="wiki-dialog-footer"><p className="wiki-muted">使用次数 = 引用次数 + 复制次数。展示前 50 条。复制成功、加入资料篮时记录；重复加入和恢复资料篮不计。时间按本地时区显示，自定义时段不含结束时刻。历史未记录的操作不补算；永久删除内容会清除其记录。</p></footer>
   </Dialog>;
 }

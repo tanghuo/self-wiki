@@ -7,8 +7,13 @@ const flags = process.argv.slice(2);
 const enabled = (name) => flags.some((flag, index) => flag === "--enable" && flags[index + 1] === name);
 const disabled = (name) => flags.some((flag, index) => flag === "--disable" && flags[index + 1] === name);
 if (!enabled("code_mode_host") || disabled("code_mode_host")) throw new Error("code-mode host is disabled");
-for (const name of ["shell_tool", "unified_exec", "apps", "plugins", "skill_search", "view_image"]) {
+for (const name of ["apps", "plugins", "skill_search", "view_image"]) {
   if (!enabled(name) || disabled(name)) throw new Error(`Missing useful capability: ${name}`);
+}
+// Shell access is an explicit opt-in; both shell features must agree.
+const shellEnabled = enabled("shell_tool");
+for (const name of ["shell_tool", "unified_exec"]) {
+  if (enabled(name) === disabled(name) || enabled(name) !== shellEnabled) throw new Error(`Choose one shell capability state: ${name}`);
 }
 if (enabled("image_generation") === disabled("image_generation")) throw new Error("Choose one image capability state");
 let n = 0, current, resumed = false;
@@ -361,7 +366,7 @@ readline.createInterface({ input: process.stdin }).on("line", async (line) => {
       : { data: [{ id: "picker-fast", model: "fixture-fast", displayName: "快速模型", isDefault: true, defaultReasoningEffort: "medium", supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"].map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort })) }, { id: "hidden", model: "fixture-hidden", hidden: true }], nextCursor: "page-2" };
   }
   else if (m.method === "thread/start") {
-    if (m.params.dynamicTools?.[0]?.name !== "wiki_cli" || m.params.config?.mcp_servers || m.params.sandbox !== "workspace-write" || m.params.config?.["sandbox_workspace_write.network_access"] !== true) { send({ id: m.id, error: { message: "Invalid wiki tool configuration" } }); return; }
+    if (m.params.dynamicTools?.[0]?.name !== "wiki_cli" || m.params.config?.mcp_servers || m.params.sandbox !== "workspace-write" || m.params.config?.["sandbox_workspace_write.network_access"] !== shellEnabled) { send({ id: m.id, error: { message: "Invalid wiki tool configuration" } }); return; }
     for (const name of ["list_files", "read_file", "search_files"]) if (!m.params.dynamicTools.some((tool) => tool.name === name)) { send({ id: m.id, error: { message: `Missing file tool: ${name}` } }); return; }
     const id = `fixture-thread-${++n}`;
     // A real new thread can return its rollout path before creating the file.

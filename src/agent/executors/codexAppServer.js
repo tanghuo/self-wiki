@@ -5,6 +5,20 @@ import { codexEnvironment, codexMcpOverrides } from "./codexEnvironment.js";
 import { localCodexAuth, rejectLocalCodexAuth, codexAuthError, isCodexAuthError } from "./codexLocalAuth.js";
 import { imageExecutorDefinition } from "../../shared/domain/imageGeneration.js";
 
+// Chat sessions run with approvalPolicy "never", so shell access is opt-in:
+// without codexCli.allowShell the agent works only through Wiki tools.
+export function chatShellAllowed(config) {
+  return config?.codexCli?.allowShell === true;
+}
+
+export function chatFeatureArgs(config) {
+  const args = [];
+  for (const feature of ["code_mode_host", "apps", "plugins", "skill_search", "view_image", "multi_agent"]) args.push("--enable", feature);
+  for (const feature of ["shell_tool", "unified_exec"]) args.push(chatShellAllowed(config) ? "--enable" : "--disable", feature);
+  args.push(imageExecutorDefinition(config.imageGeneration?.executor).mode === "native" ? "--enable" : "--disable", "image_generation");
+  return args;
+}
+
 export async function startCodexAppServer(config, { cwd, onNotification, onToolCall, onExit, configurationOnly = false, restricted = false, signal }) {
   signal?.throwIfAborted();
   const command = await resolveCodexCommand(config);
@@ -15,10 +29,7 @@ export async function startCodexAppServer(config, { cwd, onNotification, onToolC
   if (restricted) {
     args.push("-c", "project_doc_max_bytes=0", ...await codexMcpOverrides(env));
     for (const feature of ["shell_tool", "unified_exec", "apps", "plugins", "hooks", "multi_agent", "browser_use", "in_app_browser", "image_generation", "skill_search", "view_image"]) args.push("--disable", feature);
-  } else if (!configurationOnly) {
-    for (const feature of ["code_mode_host", "shell_tool", "unified_exec", "apps", "plugins", "skill_search", "view_image", "multi_agent"]) args.push("--enable", feature);
-    args.push(imageExecutorDefinition(config.imageGeneration?.executor).mode === "native" ? "--enable" : "--disable", "image_generation");
-  }
+  } else if (!configurationOnly) args.push(...chatFeatureArgs(config));
   const child = spawn(command.executable, args, { cwd, shell: false, windowsHide: true,
     env, stdio: ["pipe", "pipe", "pipe"] });
   const decoder = new StringDecoder("utf8"), pending = new Map();

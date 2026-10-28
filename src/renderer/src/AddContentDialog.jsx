@@ -80,7 +80,7 @@ export default function AddContentDialog({ value, onChange, onChooseFiles, onClo
       <header className="wiki-dialog-header"><div><h2>新增内容</h2><p>图片、视频和文字可以放在一起，每一项独立保存。</p></div>
         <button type="button" className="icon-only" aria-label="关闭新增内容" disabled={busy} onClick={requestClose}><X size={18} /></button></header>
       <div className="wiki-form-fields">
-        <label className="wiki-material-filter"><input type="checkbox" checked={material} disabled={busy || saved.length > 0} onChange={(event) => setMaterial(event.target.checked)} />本次内容用作素材</label>
+        <label className="wiki-material-filter"><input type="checkbox" checked={material} disabled={busy || saved.length > 0} onChange={(event) => setMaterial(event.target.checked)} />本次内容用作资料</label>
         <div className="wiki-composer-tags"><TagInput label="本次标签" value={value.tags} disabled={busy || saved.length > 0}
           onChange={(tags) => { onChange((current) => ({ ...current, tags })); setError(""); }} />
           <p className="wiki-muted">这些标签会加到本次所有内容上，每项也可以单独补充。</p></div>

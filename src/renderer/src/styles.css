@@ -7,32 +7,35 @@
 }
 * { box-sizing: border-box; }
 html, body, #root { min-height: 100%; }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; font-size: 14px; line-height: 1.5; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-sans); font-size: var(--text-md); line-height: var(--leading-normal); }
 body:has(dialog[open]) { overflow: hidden; }
 h1, h2, h3, p { margin: 0; }
 button, input, select, textarea { font: inherit; }
 button, a.button {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; gap: 7px;
-  min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+  min-height: var(--control-md); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel);
   color: var(--muted); padding: 0 12px; font-weight: 500; white-space: nowrap; cursor: pointer;
-  transition: background 150ms ease, color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
 }
 button:hover:not(:disabled), a.button:hover { border-color: var(--line); background: var(--bg); color: var(--ink); }
-button.primary, a.button.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+button.primary, a.button.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); box-shadow: var(--shadow-sm); }
 button.primary:hover:not(:disabled), a.button.primary:hover { border-color: var(--accent-hover); background: var(--accent-hover); color: var(--on-accent); }
-button.icon-only { width: 36px; padding: 0; }
+button.icon-only { width: var(--control-md); padding: 0; }
+button.button-sm, a.button.button-sm { min-height: var(--control-sm); padding: 0 10px; border-radius: var(--radius-sm); font-size: var(--text-sm); }
 button.full { width: 100%; }
 button.text-button { border-color: transparent; background: transparent; }
 button.text-button:hover:not(:disabled) { border-color: transparent; background: var(--panel-2); }
 button.danger-quiet { color: var(--bad); }
-button.danger-quiet:hover:not(:disabled) { background: var(--bg); color: var(--bad); }
+button.danger-quiet:hover:not(:disabled) { border-color: color-mix(in srgb, var(--bad) 35%, var(--line)); background: var(--bad-soft); color: var(--bad); }
 button:disabled, input:disabled, select:disabled { opacity: .45; cursor: not-allowed; }
 a { color: inherit; text-decoration: none; }
 button svg, a.button svg { flex-shrink: 0; }
-:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
-input, select, textarea { width: 100%; min-height: 39px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); padding: 0 11px; transition: border-color 150ms ease, box-shadow 150ms ease; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+:focus:not(:focus-visible) { outline: none; }
+input, select, textarea { width: 100%; min-height: 39px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--panel); color: var(--ink); padding: 0 11px; transition: border-color 150ms ease, box-shadow 150ms ease; }
 input::placeholder, textarea::placeholder { color: var(--muted); }
-input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--bad); }
 input[type="checkbox"] { width: 16px; height: 16px; min-height: 16px; margin: 0; accent-color: var(--accent); }
 input[type="range"] { min-height: 16px; accent-color: var(--accent); padding: 0; box-shadow: none; }
 select { cursor: pointer; }
@@ -40,14 +43,33 @@ select { cursor: pointer; }
 .library-menu > summary { display: flex; align-items: center; justify-content: center; gap: 6px; width: 30px; min-height: 30px; border-radius: 7px; list-style: none; color: var(--muted); cursor: pointer; }
 .library-menu > summary::-webkit-details-marker { display: none; }
 .library-menu > summary:hover, .library-menu[open] > summary { background: var(--panel-2); }
-.menu-panel { position: absolute; top: calc(100% + 7px); right: 0; z-index: 8; display: grid; gap: 3px; width: 218px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 6px; box-shadow: 0 8px 28px rgb(40 49 65 / 0.078); }
-.menu-panel > button { justify-content: flex-start; min-height: 37px; border: 0; background: transparent; padding: 0 10px; font-size: 12px; }
+.menu-panel { position: absolute; top: calc(100% + 7px); right: 0; z-index: 8; display: grid; gap: 3px; width: 218px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); padding: 6px; box-shadow: var(--shadow-lg); }
+.menu-panel > button { justify-content: flex-start; min-height: 37px; border: 0; background: transparent; padding: 0 10px; font-size: var(--text-sm); }
 
 /* Native dialogs keep keyboard focus inside the active surface. */
-.dialog { color: var(--ink); border: 1px solid var(--line); background: var(--panel); padding: 0; }
+.dialog { color: var(--ink); border: 1px solid var(--line); background: var(--panel); padding: 0; box-shadow: var(--shadow-lg); }
+.dialog[open] { animation: dialog-in var(--duration) var(--ease-out); }
+@keyframes dialog-in { from { opacity: 0; } }
 .dialog:not([open]) { display: none; }
-.dialog::backdrop { background: rgb(40 49 65 / 0.412); backdrop-filter: blur(3px); }
+.dialog::backdrop { background: var(--overlay); backdrop-filter: blur(3px); }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Shared UI primitives */
+.skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; padding: 8px 14px; border-radius: var(--radius-md); background: var(--accent); color: var(--on-accent); font-size: var(--text-sm); transform: translateY(-160%); transition: transform var(--duration) var(--ease-out); }
+.skip-link:focus { transform: none; }
+kbd, .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--radius-xs); background: var(--panel); color: var(--muted); font-family: var(--font-sans); font-size: var(--text-2xs); font-weight: 600; line-height: 1; white-space: nowrap; }
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -3px; }
+.skeleton { position: relative; overflow: hidden; border-radius: var(--radius-xl); background: var(--panel-2); }
+.skeleton::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--panel) 70%, transparent), transparent); animation: shimmer 1.4s ease-in-out infinite; }
+@keyframes shimmer { to { transform: translateX(100%); } }
+.toast-region { position: fixed; left: 50%; bottom: 24px; z-index: var(--z-toast); display: flex; flex-direction: column-reverse; align-items: center; gap: var(--space-2); width: min(640px, calc(100vw - 32px)); transform: translateX(-50%); pointer-events: none; }
+.toast-region:empty { display: none; }
+.toast-region > * { pointer-events: auto; animation: toast-in var(--duration) var(--ease-out); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; }
 }
+
+.wiki-purge-confirm { display: grid; gap: 6px; margin: 12px 0 0; font-size: 13px; font-weight: 600; }
+.wiki-purge-confirm input { min-height: 40px; padding: 0 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: inherit; font-weight: 500; }
+.wiki-purge-confirm input:focus { outline: none; border-color: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 18%, transparent); }

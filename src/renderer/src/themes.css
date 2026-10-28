@@ -1,22 +1,54 @@
-/* The same tokens paint the application and the theme previews in Settings. */
-:root, [data-theme="paper"] {
+/* Design tokens. Colors are per theme below; scale tokens are shared by every theme.
+   Components use these instead of raw values so spacing, type and depth stay consistent. */
+:root {
+  --font-sans: "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Consolas, "Noto Sans Mono CJK SC", monospace;
+  --text-2xs: 11px; --text-xs: 11px; --text-sm: 12px; --text-base: 14px; --text-md: 14px; --text-lg: 16px; --text-xl: 18px; --text-2xl: 22px; --text-3xl: 26px;
+  --title-page: 30px; --title-detail: 24px; --title-section: 17px; --text-card: 14px;
+  --leading-tight: 1.35; --leading-normal: 1.5; --leading-relaxed: 1.75;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-10: 40px;
+  --radius-xs: 5px; --radius-sm: 6px; --radius-md: 8px; --radius-lg: 10px; --radius-xl: 12px; --radius-2xl: 16px; --radius-full: 999px;
+  --control-sm: 30px; --control-md: 36px; --control-lg: 40px;
+  --shadow-color: 40 49 65;
+  --shadow-sm: 0 1px 2px rgb(var(--shadow-color) / 0.06), 0 1px 1px rgb(var(--shadow-color) / 0.04);
+  --shadow-md: 0 4px 14px rgb(var(--shadow-color) / 0.08), 0 1px 3px rgb(var(--shadow-color) / 0.06);
+  --shadow-lg: 0 14px 40px rgb(var(--shadow-color) / 0.16), 0 3px 10px rgb(var(--shadow-color) / 0.08);
+  --overlay: rgb(var(--shadow-color) / 0.41);
+  --ease-out: cubic-bezier(.2, .7, .2, 1); --duration-fast: 120ms; --duration: 180ms;
+  --z-sticky: 5; --z-menu: 20; --z-toast: 40;
+}
+/* Color tokens per theme. 暖纸 (paper) is the light default and 夜幕 (night) the dark one;
+   "auto" follows the operating system between the two. The same tokens paint the theme previews. */
+:root, [data-theme="paper"], [data-theme="auto"] {
   color-scheme: light;
-  --bg: #eee8dc;
-  --panel: #f6f1e7;
-  --panel-2: #e8e0d2;
-  --sidebar: #e5ddcf;
-  --ink: #39362f;
-  --muted: #635c50;
-  --line: #d8cfbf;
-  --line-strong: #afa28d;
-  --accent: #725b3e;
-  --accent-hover: #5d482e;
-  --accent-soft: #e2d6c2;
+  --bg: #f3eee4;
+  --panel: #fffdf8;
+  --panel-2: #efe8dc;
+  --sidebar: #e6dccb;
+  --ink: #2b2620;
+  --muted: #675d4f;
+  --line: #e3d9c8;
+  --line-strong: #bfae93;
+  --accent: #80522a;
+  --accent-hover: #6f4620;
+  --accent-soft: #f2e4cf;
   --on-accent: #fffaf2;
-  --focus: #987344;
-  --good: #416f52;
-  --bad: #a13f3b;
-  --warn: #876022;
+  --focus: #a8743f;
+  --good: #3d6b4c;
+  --bad: #a33a35;
+  --warn: #7d5a1c;
+  --good-soft: #e2ecdf;
+  --bad-soft: #f6dfda;
+  --warn-soft: #f3e6c9;
+  --shadow-color: 80 60 30;
+  --card-border: #ebe2d3;
+  --media-bg: #efe8dc;
+  --tag-overlay: rgb(255 253 248 / .92);
+  --tag-overlay-ink: #675d4f;
+  --strip-text: #c98b4a;
+  --strip-material: #5f8a52;
+  --edge: #a08d72;
+  --sidebar-line: #d8cbb4;
 }
 [data-theme="sage"] {
   color-scheme: light;
@@ -36,25 +68,17 @@
   --good: #386b49;
   --bad: #a33f3b;
   --warn: #805e27;
-}
-[data-theme="night"] {
-  color-scheme: dark;
-  --bg: #1e2329;
-  --panel: #282e35;
-  --panel-2: #303842;
-  --sidebar: #191e24;
-  --ink: #dce2e8;
-  --muted: #aab5c1;
-  --line: #3b4551;
-  --line-strong: #677686;
-  --accent: #abc4df;
-  --accent-hover: #c1d5eb;
-  --accent-soft: #35475a;
-  --on-accent: #1e2b39;
-  --focus: #aac7e8;
-  --good: #93c8ae;
-  --bad: #f0a09a;
-  --warn: #dfbf81;
+  --good-soft: #d3e3d4;
+  --bad-soft: #f1d9d6;
+  --warn-soft: #ebdfc5;
+  --card-border: var(--line);
+  --media-bg: var(--panel-2);
+  --tag-overlay: color-mix(in srgb, var(--panel) 94%, transparent);
+  --tag-overlay-ink: var(--muted);
+  --strip-text: var(--line-strong);
+  --strip-material: var(--good);
+  --edge: var(--line-strong);
+  --sidebar-line: var(--line);
 }
 [data-theme="light"] {
   color-scheme: light;
@@ -74,4 +98,79 @@
   --good: #3c796b;
   --bad: #b64040;
   --warn: #9d722f;
+  --good-soft: #e3f0ec;
+  --bad-soft: #f8e1e1;
+  --warn-soft: #f6ecd9;
+  --card-border: var(--line);
+  --media-bg: var(--panel-2);
+  --tag-overlay: color-mix(in srgb, var(--panel) 94%, transparent);
+  --tag-overlay-ink: var(--muted);
+  --strip-text: var(--line-strong);
+  --strip-material: var(--good);
+  --edge: var(--line-strong);
+  --sidebar-line: var(--line);
+}
+[data-theme="night"] {
+  color-scheme: dark;
+  --bg: #141518;
+  --panel: #1f2126;
+  --panel-2: #282b31;
+  --sidebar: #0e0f11;
+  --ink: #eceef1;
+  --muted: #a3a8b1;
+  --line: #2d3037;
+  --line-strong: #4a4e57;
+  --accent: #ff6b7f;
+  --accent-hover: #ff8a9a;
+  --accent-soft: #3a2027;
+  --on-accent: #1c0a0e;
+  --focus: #ff8a9a;
+  --good: #6fd1ad;
+  --bad: #ff8f86;
+  --warn: #f0c674;
+  --good-soft: #16302a;
+  --bad-soft: #3b1f20;
+  --warn-soft: #2f2818;
+  --shadow-color: 0 0 0;
+  --card-border: transparent;
+  --media-bg: #000;
+  --tag-overlay: rgb(10 11 13 / .72);
+  --tag-overlay-ink: #e4e6ea;
+  --strip-text: #ff6b7f;
+  --strip-material: #58c4a4;
+  --edge: #8a909b;
+  --sidebar-line: #22252b;
+}
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] {
+    color-scheme: dark;
+    --bg: #141518;
+    --panel: #1f2126;
+    --panel-2: #282b31;
+    --sidebar: #0e0f11;
+    --ink: #eceef1;
+    --muted: #a3a8b1;
+    --line: #2d3037;
+    --line-strong: #4a4e57;
+    --accent: #ff6b7f;
+    --accent-hover: #ff8a9a;
+    --accent-soft: #3a2027;
+    --on-accent: #1c0a0e;
+    --focus: #ff8a9a;
+    --good: #6fd1ad;
+    --bad: #ff8f86;
+    --warn: #f0c674;
+    --good-soft: #16302a;
+    --bad-soft: #3b1f20;
+    --warn-soft: #2f2818;
+    --shadow-color: 0 0 0;
+    --card-border: transparent;
+    --media-bg: #000;
+    --tag-overlay: rgb(10 11 13 / .72);
+    --tag-overlay-ink: #e4e6ea;
+    --strip-text: #ff6b7f;
+    --strip-material: #58c4a4;
+    --edge: #8a909b;
+    --sidebar-line: #22252b;
+  }
 }

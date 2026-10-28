@@ -39,7 +39,7 @@ export default function RelationRenameDialog({ relation, relations, currentId, b
       <div className="wiki-form-fields">
         {batch && <p className="wiki-muted">将修改这组的 {relations.length} 条关联。</p>}
         {batch || relation.type === "title" ? <label>关联名称<input autoFocus value={name} maxLength={60} disabled={busy} onChange={(event) => setName(event.target.value)} /></label>
-          : <RelationFields nameLabel="关联名称" value={semantics} onChange={setSemantics} disabled={busy} currentLabel={currentId === undefined ? `内容 #${relation.sourceId}` : "当前内容"} targetLabel={relation.targetTag ? `#${relation.targetTag} 下的内容` : currentId === undefined ? `内容 #${relation.targetId}` : "对方内容"} />}
+          : <RelationFields defaultSimple={false} nameLabel="关联名称" value={semantics} onChange={setSemantics} disabled={busy} currentLabel={currentId === undefined ? `内容 #${relation.sourceId}` : "当前内容"} targetLabel={relation.targetTag ? `#${relation.targetTag} 下的内容` : currentId === undefined ? `内容 #${relation.targetId}` : "对方内容"} />}
         <p className="wiki-muted">{batch ? "仅修改正向名称，每条关系的方向和反向名称保持不变。" : "双向同名关系可留空；有方向的关系需填写两端名称。"}</p>
         {tags.length > 0 && <p className="wiki-muted">此修改会应用到 {tags.map((tag) => `#${tag}`).join("、")} 下所有内容的对应标签关联，包括未在当前画布显示的内容及以后加入的内容。</p>}
         {error && <p className="wiki-error" role="alert">{error}</p>}

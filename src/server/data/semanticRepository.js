@@ -8,7 +8,14 @@ export function semanticSpace(config) {
     config.model, config.modelRevision, config.dimensions])).digest("hex");
 }
 
-export function createSemanticRepository(db) {
+// Filter deleted/stale/other-model rows before scoring; stale rows cannot crowd out valid hits.
+// SQLite's single min() aggregate takes the bare excerpt column from a row achieving that minimum.
+const searchSql = `SELECT v.element_id AS elementId,v.text AS excerpt,min(vec_distance_cosine(v.embedding,?)) AS distance
+  FROM semantic_vectors v JOIN semantic_documents d ON d.element_id=v.element_id JOIN elements e ON e.id=v.element_id
+  WHERE v.space_key=? AND v.revision=d.revision AND d.state=2 AND e.deleted_at IS NULL AND e.id!=?
+  GROUP BY v.element_id ORDER BY distance,v.element_id LIMIT ?`;
+
+export function createSemanticRepository(db, { vectorQueries } = {}) {
   function transaction(fn) {
     db.exec("BEGIN IMMEDIATE");
     try { const result = fn(); db.exec("COMMIT"); return result; }
@@ -111,12 +118,12 @@ export function createSemanticRepository(db) {
         ORDER BY v.chunk_index`).all(id, spaceKey).map((r) => r.embedding);
     },
     search(vector, spaceKey, excludeId, limit) {
-      // Filter deleted/stale/other-model rows before scoring; stale rows cannot crowd out valid hits.
-      // SQLite's single min() aggregate takes the bare excerpt column from a row achieving that minimum.
-      return db.prepare(`SELECT v.element_id AS elementId,v.text AS excerpt,min(vec_distance_cosine(v.embedding,?)) AS distance
-        FROM semantic_vectors v JOIN semantic_documents d ON d.element_id=v.element_id JOIN elements e ON e.id=v.element_id
-        WHERE v.space_key=? AND v.revision=d.revision AND d.state=2 AND e.deleted_at IS NULL AND e.id!=?
-        GROUP BY v.element_id ORDER BY distance,v.element_id LIMIT ?`).all(vector, spaceKey, excludeId || 0, limit);
+      return db.prepare(searchSql).all(vector, spaceKey, excludeId || 0, limit);
+    },
+    // Same query, scored off the event loop when a vector worker is available.
+    searchAsync(vector, spaceKey, excludeId, limit) {
+      const params = [vector, spaceKey, excludeId || 0, limit];
+      return vectorQueries ? vectorQueries.all(searchSql, params) : Promise.resolve().then(() => db.prepare(searchSql).all(...params));
     },
   };
 }

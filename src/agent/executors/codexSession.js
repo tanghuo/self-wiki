@@ -1,4 +1,4 @@
-import { startCodexAppServer } from "./codexAppServer.js";
+import { chatShellAllowed, startCodexAppServer } from "./codexAppServer.js";
 import { imageErrorMessage } from "./codexImageErrors.js";
 import { imageExecutorDefinition } from "../../shared/domain/imageGeneration.js";
 
@@ -77,7 +77,8 @@ export async function openCodexSession(config, { cwd, signal, onEvent, onToolCal
         && (previous.imageExecutor || "codex-cli") === imageExecutor.id
         && previous.toolsetVersion === toolsetVersion && previous.turn?.params?.threadId === continuation.threadId);
       const options = { cwd, sandbox: "workspace-write", approvalPolicy: "never", developerInstructions: instructions,
-        config: { "sandbox_workspace_write.network_access": true }, model };
+        // Sandbox network access only matters for shell commands; keep it with the shell opt-in.
+        config: { "sandbox_workspace_write.network_access": chatShellAllowed(config) }, model };
       const request = { method: resumed ? "thread/resume" : "thread/start",
         params: resumed ? { ...options, threadId: continuation.threadId } : { ...options, dynamicTools: tools, ephemeral }, delivery: "attempted" };
       onRequest(request, { contextFormat: "content-only", toolsetVersion, contextMode: resumed ? "resumed" : "replayed" });

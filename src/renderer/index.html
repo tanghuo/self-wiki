@@ -10,8 +10,8 @@
       // Restore before the first paint, including when the desktop port changes.
       try {
         const theme = document.cookie.split(";").map((entry) => entry.trim()).find((entry) => entry.startsWith("selfWikiTheme="))?.slice("selfWikiTheme=".length);
-        document.documentElement.dataset.theme = ["paper", "sage", "night", "light"].includes(theme) ? theme : "paper";
-      } catch { document.documentElement.dataset.theme = "paper"; }
+        document.documentElement.dataset.theme = ["auto", "paper", "sage", "night", "light"].includes(theme) ? theme : "auto";
+      } catch { document.documentElement.dataset.theme = "auto"; }
     </script>
   </head>
   <body>

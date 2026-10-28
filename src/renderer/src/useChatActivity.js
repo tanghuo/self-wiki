@@ -65,7 +65,8 @@ export default function useChatActivity(selectedId, visible) {
     window.addEventListener("focus", focus);
     document.addEventListener("visibilitychange", focus);
     void load();
-    const timer = setInterval(load, 1500);
+    // Background tabs/windows do not poll; visibilitychange/focus refreshes immediately on return.
+    const timer = setInterval(() => { if (!document.hidden) void load(); }, 1500);
     return () => {
       controller.abort(); clearInterval(timer); poll.current = null;
       window.removeEventListener("focus", focus);

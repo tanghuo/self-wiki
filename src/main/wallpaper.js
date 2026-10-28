@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import sharp from "sharp";
+import { pruneCache } from "./cacheCleanup.js";
 import { maxImageBytes } from "../shared/domain/elements.js";
 
 export async function prepareWallpaperFile(elementId, backendUrl, cacheRoot) {
@@ -33,7 +34,9 @@ export async function prepareWallpaperFile(elementId, backendUrl, cacheRoot) {
     await writeFile(temporary, bytes, { flag: "wx" });
     await rename(temporary, file);
   } finally { await rm(temporary, { force: true }); }
-  // Windows must still be able to read the wallpaper after the library image is deleted.
+  // Windows must still be able to read the wallpaper after the library image is deleted;
+  // keep the current file and a few recent ones, drop older conversions.
+  await pruneCache(cacheRoot, { keep: 1, maxEntries: 5, protect: [file] }).catch(() => {});
   return file;
 }
 

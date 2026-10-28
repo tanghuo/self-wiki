@@ -1,3 +1,4 @@
+import { StringDecoder } from "node:string_decoder";
 import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -16,11 +17,15 @@ function failure(message, code = "EXECUTOR_ERROR", retryable = false) {
   return Object.assign(new Error(message), { code, retryable });
 }
 
+export function runCodexProcess(cmd, args, options) { return run(cmd, args, options); }
+
 function run(cmd, args, { env, cwd, input = "", signal, onLine }) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) { reject(failure("执行已取消", "CANCELLED")); return; }
     const child = spawn(cmd.executable, [...cmd.prefix, ...args], { env, cwd, shell: false, windowsHide: true,
       detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"] });
+    // Decode across chunk boundaries so multi-byte (e.g. Chinese) characters are never split.
+    const out = new StringDecoder("utf8"), err = new StringDecoder("utf8");
     let stdout = "", stderr = "", pending = "", stopped;
     function stop(error) {
       if (stopped) return;
@@ -36,16 +41,17 @@ function run(cmd, args, { env, cwd, input = "", signal, onLine }) {
     signal?.addEventListener("abort", abort, { once: true });
     child.on("error", (error) => { signal?.removeEventListener("abort", abort); reject(failure(`无法启动 Codex CLI：${error.code || "进程错误"}`)); });
     child.stdout.on("data", (chunk) => {
-      const text = chunk.toString("utf8"); stdout += text; pending += text;
+      const text = out.write(chunk); stdout += text; pending += text;
       if (stdout.length > 4 * 1024 * 1024) { stop(failure("Codex 输出超过限制", "INVALID_OUTPUT")); return; }
       const lines = pending.split("\n"); pending = lines.pop();
       for (const line of lines) onLine?.(line);
     });
-    child.stderr.on("data", (chunk) => { stderr = (stderr + chunk.toString("utf8")).slice(-8000); });
+    child.stderr.on("data", (chunk) => { stderr = (stderr + err.write(chunk)).slice(-8000); });
     child.stdin.on("error", (error) => { if (error.code !== "EPIPE") stop(failure("无法传入整理内容")); });
     child.stdin.end(input);
     child.on("close", (code) => {
       signal?.removeEventListener("abort", abort);
+      const tail = out.end(); stdout += tail; pending += tail; stderr = (stderr + err.end()).slice(-8000);
       if (pending) onLine?.(pending);
       if (stopped) reject(stopped); else resolve({ code, stdout, stderr });
     });

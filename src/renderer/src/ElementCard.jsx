@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { ImageIcon, RotateCcw } from "lucide-react";
+import { Copy, ImageIcon, RotateCcw } from "lucide-react";
 import { preloadImage } from "./imagePreload.js";
 import VideoCardPreview from "./VideoCardPreview.jsx";
 import { apiUrl } from "./api.js";
@@ -62,7 +62,8 @@ export default function ElementCard({ element, onOpen, onRestore, onSelect, sele
           : <div className="wiki-card-text"><p>{element.body || "打开查看关联内容"}</p></div>}
       {element.tags?.length > 0 && <div className="wiki-card-tags" title={element.tags.join(" · ")}>{element.tags.slice(0, 2).map((tag) => <span className="wiki-tag" key={tag}>{tag}{element.aiTags?.some((a) => a.name === tag) && <span className="ai-source" title="AI 添加，打开内容查看整理记录">AI</span>}</span>)}{element.tags.length > 2 && <span className="wiki-card-tag-count">+{element.tags.length - 2}</span>}</div>}
     </button>
-    {element.material && <span className="wiki-material-badge">素材</span>}
+    {element.copyCount > 0 && <div className="wiki-card-copy-count" title="累计复制成功次数；历史未记录的操作不计入，相似堆叠仅显示当前封面内容的次数。"><Copy size={12} aria-hidden="true" />复制 {element.copyCount} 次</div>}
+    {element.material && <span className="wiki-material-badge">资料</span>}
     {preview === "error" && <button className="wiki-preview-retry" disabled={disabled} onClick={() => { setAttempt((value) => value + 1); setPreview("loading"); }}>重试预览</button>}
     {element.deletedAt && <div className="wiki-trash-meta">{image && <strong title={element.image.originalName}>{element.image.originalName}</strong>}<time dateTime={element.deletedAt}>删除于 {new Date(element.deletedAt).toLocaleString("zh-CN")}</time></div>}
     {element.deletedAt && <button className="wiki-restore" disabled={disabled} onClick={() => onRestore(element.id)}><RotateCcw size={14} />恢复内容</button>}

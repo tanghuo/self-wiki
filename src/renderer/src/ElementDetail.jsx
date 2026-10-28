@@ -18,11 +18,9 @@ import Dialog from "./Dialog.jsx";
 import RelatedContent from "./RelatedContent.jsx";
 import ImageDescription from "./ImageDescription.jsx";
 import DetailImage from "./DetailImage.jsx";
-import VideoPlayer from "./VideoPlayer.jsx";
-import VideoMarkers from "./VideoMarkers.jsx";
 import VideoMarkerReferences from "./VideoMarkerReferences.jsx";
-import VideoAnalysisPanel from "./VideoAnalysisPanel.jsx";
 import VisualMatches from "./VisualMatches.jsx";
+import VideoDetailBlocks from "./features/video-analysis/VideoDetailBlocks.jsx";
 
 export default function ElementDetail({ id, contextId, markerId, videoPosition, navigation, prepared, relationPage: page, onRelationPage: setPage, restoreScroll = 0, externalRevision = 0, externalBusy = false, onBusyChange, onBack, onOpen, onChanged, onTrashed, onAddReference, onContentContextMenu, readOnly = false }) {
   const [revision, setRevision] = useState(0);
@@ -104,7 +102,7 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
     setBusy(true); setError(""); setMessage("");
     try {
       await request("/api/elements/material", { method: "PATCH", body: JSON.stringify({ ids: [id], material }) });
-      refresh(); setMessage(material ? "已设为素材" : "已取消素材标记");
+      refresh(); setMessage(material ? "已设为资料" : "已取消资料标记");
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
@@ -129,12 +127,17 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
     </div>
     <div className="wiki-detail-toolbar" inert={navigation?.switching || undefined}>
       {element && <div className="wiki-actions">{!readOnly && !element.record && <button onClick={() => setModal("edit")} disabled={busy || externalBusy}><Pencil size={15} />编辑</button>}
-        {!readOnly && !element.localOnly && ["text", "image", "video"].includes(element.kind) && <label className="wiki-material-filter"><input type="checkbox" checked={Boolean(element.material)} disabled={busy || externalBusy} onChange={(event) => setMaterial(event.target.checked)} />用作素材</label>}
-        {!readOnly && onAddReference && element.kind !== "video" && <button disabled={busy || externalBusy} onClick={() => onAddReference(element)}><Plus size={15} />加入参考</button>}
+        {!readOnly && !element.localOnly && ["text", "image", "video"].includes(element.kind) && <label className="wiki-material-filter"><input type="checkbox" checked={Boolean(element.material)} disabled={busy || externalBusy} onChange={(event) => setMaterial(event.target.checked)} />用作资料{element.kind === "video" && <span className="wiki-material-note">（仅库内筛选；视频不能发给 Agent）</span>}</label>}
+        {!readOnly && onAddReference && element.kind !== "video" && <button disabled={busy || externalBusy} onClick={() => onAddReference(element)}><Plus size={15} />加入资料</button>}
         {element.kind === "image" && <a className="button" href={apiUrl(`/api/elements/${id}/download`)} download><Download size={15} />保存原图</a>}
-        {!readOnly && element.kind === "image" && window.wikiDesktop?.setWallpaper && <button disabled={busy || externalBusy} onClick={setWallpaper}><Monitor size={15} />设为桌面壁纸</button>}
         {element.kind === "video" && <a className="button" href={apiUrl(`/api/elements/${id}/download`)} download><Download size={15} />保存原视频</a>}
-        {!readOnly && <button className="danger-quiet" aria-label="移入回收站" title="移入回收站" onClick={() => mutate(`/api/elements/${id}`, "DELETE", () => onTrashed(element))} disabled={busy || externalBusy}><Trash2 size={15} /><span>移入回收站</span></button>}
+        {!readOnly && <details className="library-menu wiki-detail-menu" onKeyDown={(event) => { if (event.key === "Escape" && event.currentTarget.open) { event.stopPropagation(); event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}>
+          <summary aria-label="更多内容操作" title="更多操作"><MoreHorizontal size={18} /></summary>
+          <div className="menu-panel">
+            {element.kind === "image" && window.wikiDesktop?.setWallpaper && <button disabled={busy || externalBusy} onClick={setWallpaper}><Monitor size={15} />设为桌面壁纸</button>}
+            <button className="danger-quiet" aria-label="移入回收站" onClick={(event) => { event.currentTarget.closest("details").open = false; mutate(`/api/elements/${id}`, "DELETE", () => onTrashed(element)); }} disabled={busy || externalBusy}><Trash2 size={15} /><span>移入回收站</span></button>
+          </div>
+        </details>}
       </div>}
     </div>
     <div className="wiki-detail-body" inert={navigation?.switching || undefined}>
@@ -159,7 +162,7 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
           {element.kind === "image" ? <DetailImage key={`${id}:${element.image.url}:${imageAttempt}`} src={apiUrl(`${element.image.url}?attempt=${imageAttempt}`)} alt={elementLabel(element)}
             onContextMenu={(event) => { if (!busy && !externalBusy) onContentContextMenu?.(event, element); }}
             onLoad={() => { setImageReady(true); setImageFailed(false); }} onError={() => { setImageReady(true); setImageFailed(true); }} />
-            : element.kind === "video" ? <><VideoPlayer key={id} element={element} playerRef={videoPlayer} /><VideoAnalysisPanel key={`analysis-${id}`} videoId={id} revision={`${revision}:${externalRevision}`} onChanged={refresh} onSeek={setSeekPosition} onFindSimilar={(frameId) => { setVisualFrameRequest({ frameId }); requestAnimationFrame(() => visualMatches.current?.scrollIntoView({ block: "nearest" })); }} onBusyChange={setBusy} disabled={externalBusy} readOnly={readOnly} /><VideoMarkers videoId={id} playerRef={videoPlayer} initialMarkerId={markerId} initialPosition={seekPosition} revision={`${revision}:${externalRevision}`} onChanged={refresh} onOpen={onOpen} onBusyChange={setBusy} disabled={externalBusy} readOnly={readOnly} /></> : element.kind === "session" ? <SessionPreview element={element} contextId={contextId} /> : <div className="wiki-text-document">
+            : element.kind === "video" ? <VideoDetailBlocks id={id} element={element} videoPlayer={videoPlayer} revision={revision} externalRevision={externalRevision} refresh={refresh} setSeekPosition={setSeekPosition} setVisualFrameRequest={setVisualFrameRequest} visualMatchesRef={visualMatches} seekPosition={seekPosition} markerId={markerId} onOpen={onOpen} setBusy={setBusy} externalBusy={externalBusy} readOnly={readOnly} /> : element.kind === "session" ? <SessionPreview element={element} contextId={contextId} /> : <div className="wiki-text-document">
               <div className="wiki-text-actions">{!readOnly && !element.record && <button className="text-button" onClick={() => setModal("edit")} disabled={busy || externalBusy}><Pencil size={15} />编辑文字</button>}<button className="text-button" onClick={copy}><Copy size={15} />复制文字</button></div>
               {element.body ? <pre>{element.body}</pre> : <p className="wiki-muted">{readOnly ? "暂无正文" : "可以关联图片或文字。"}</p>}
             </div>}

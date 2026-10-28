@@ -212,7 +212,8 @@ export async function handleElementRoute(wiki, req, res, url, semantic, { allowT
     // Always revalidate permissions/lifecycle before allowing browser cache reuse.
     const etag = `"${createHash("sha256").update(result.bytes).digest("hex")}"`;
     const unchanged = req.headers["if-none-match"] === etag;
-    res.writeHead(unchanged ? 304 : 200, { "content-type": result.contentType, "cache-control": "private, no-cache", etag, "x-content-type-options": "nosniff" });
+    // Trash previews must disappear on restore/purge, so they are never stored.
+    res.writeHead(unchanged ? 304 : 200, { "content-type": result.contentType, "cache-control": trash ? "no-store" : "private, no-cache", etag, "x-content-type-options": "nosniff" });
     res.end(unchanged ? undefined : result.bytes);
   } else if (action === "relations" && method === "GET") json(res, 200, wiki.relations(id, elementQuery(url.searchParams)));
   else if (action === "tag-relations" && method === "GET") json(res, 200, wiki.tagRelations(id));

@@ -1,4 +1,5 @@
 import { elementError } from "./elements.js";
+import { validExecutable } from "./executablePath.js";
 
 export function defaultVideoAnalysisConfig() {
   return { enabled: false, applyMode: "suggest", ffmpeg: "ffmpeg", ffprobe: "ffprobe", frameIntervalMs: 2000,
@@ -16,7 +17,7 @@ export function videoAnalysisConfig(input) {
   const value = { ...defaults, ...input, visual: { ...defaults.visual, ...input.visual } };
   if (typeof value.enabled !== "boolean" || typeof value.visual.enabled !== "boolean" || !["suggest", "auto"].includes(value.applyMode)) throw elementError("视频分析模式无效");
   for (const name of ["ffmpeg", "ffprobe"]) {
-    if (typeof value[name] !== "string" || !value[name].trim() || value[name].length > 2048 || /[\r\n\0]/.test(value[name])) throw elementError("请填写有效的 FFmpeg/ffprobe 可执行文件路径");
+    if (!validExecutable(value[name], 2048)) throw elementError("请填写有效的本机 FFmpeg/ffprobe 可执行文件路径（不支持网络路径）");
     value[name] = value[name].trim();
   }
   for (const [name, min, max] of [["frameIntervalMs", 250, 10000], ["maxFrames", 8, 1000], ["maxBatches", 1, 200], ["timeoutMs", 1000, 600000]]) {

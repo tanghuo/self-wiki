@@ -10,6 +10,7 @@ export async function startBackendProcess({ nodeBinary, appDir, dataDir, port = 
     windowsHide: true,
   });
   let exited = false;
+  let closing = false;
   let stderr = "";
   const finished = new Promise((resolve) => {
     child.once("exit", () => { exited = true; resolve(); });
@@ -24,6 +25,7 @@ export async function startBackendProcess({ nodeBinary, appDir, dataDir, port = 
   let closePromise;
   function close() {
     closePromise ||= (async () => {
+      closing = true;
       if (exited) return;
       if (child.connected) child.send({ type: "shutdown" }, () => {});
       else child.kill();
@@ -54,7 +56,13 @@ export async function startBackendProcess({ nodeBinary, appDir, dataDir, port = 
       child.once("error", onError);
       child.once("exit", onExit);
     });
-    return { url, close };
+    // After readiness, an unexpected exit must be surfaced instead of leaving a dead window.
+    function onExit(listener) {
+      const notify = (code, signal) => { if (!closing) listener({ code, signal, stderr: stderr.trim() }); };
+      if (exited) notify(child.exitCode, child.signalCode);
+      else child.once("exit", notify);
+    }
+    return { url, close, onExit, pid: child.pid };
   } catch (error) {
     await close();
     throw error;

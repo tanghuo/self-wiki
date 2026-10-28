@@ -30,7 +30,7 @@ export function createElementService(repo, imageStore, cleanupHistory, videoStor
       })();
       return warming;
     },
-    async closePreviews() { stopWarming = true; await warming; },
+    async closePreviews() { stopWarming = true; await warming?.catch(() => {}); },
     async prepareImages() {
       for (const file of repo.unhashedImages()) {
         try {
@@ -123,16 +123,18 @@ export function createElementService(repo, imageStore, cleanupHistory, videoStor
       importing++;
       try {
         const file = await imageStore.save(bytes, originalName);
+        let result;
         try {
           file.contentHash = createHash("sha256").update(bytes).digest("hex");
           const existing = repo.findImageByHash(file.contentHash);
           const missingStorageKey = existing && !existing.deleted_at && !await imageStore.exists(existing.storage_key) ? existing.storage_key : undefined;
-          const result = repo.importImage({ tags, material, creationSource: "manual" }, file, missingStorageKey);
-          if (!result.keepFile) await imageStore.remove(file.storageKey);
-          else for (const width of [400, 800]) await imageStore.thumbnail(file.storageKey, width).catch(() => {});
-          return result.element;
+          result = repo.importImage({ tags, material, creationSource: "manual" }, file, missingStorageKey);
         }
-        catch (error) { await imageStore.remove(file.storageKey); throw error; }
+        catch (error) { await imageStore.remove(file.storageKey).catch(() => {}); throw error; }
+        // The import is committed: a failed cleanup of the duplicate copy must not report failure.
+        if (!result.keepFile) await imageStore.remove(file.storageKey).catch((error) => console.error("[self-wiki] duplicate image cleanup failed:", error.message));
+        else for (const width of [400, 800]) await imageStore.thumbnail(file.storageKey, width).catch(() => {});
+        return result.element;
       } finally { importing--; }
     },
     async image(id) {
@@ -154,15 +156,17 @@ export function createElementService(repo, imageStore, cleanupHistory, videoStor
           const existing = repo.findVideoByHash(file.contentHash);
           const missingStorageKey = existing && !existing.deleted_at && !await videoStore.exists(existing.storage_key) ? existing.storage_key : undefined;
           result = repo.importVideo({ tags, material, creationSource: "manual" }, file, missingStorageKey);
-        } catch (error) { await videoStore.remove(file.storageKey); throw error; }
-        if (!result.keepFile) await videoStore.remove(file.storageKey);
+        } catch (error) { await videoStore.remove(file.storageKey).catch(() => {}); throw error; }
+        // Committed: a failed cleanup of the duplicate upload must not turn success into an error.
+        if (!result.keepFile) await videoStore.remove(file.storageKey).catch((error) => console.error("[self-wiki] duplicate video cleanup failed:", error.message));
         return result.element;
       } finally { importingVideos--; }
     },
     async video(id) {
       const file = repo.video(id);
-      return { handle: await videoStore.open(file.storageKey), contentType: file.mimeType, byteSize: file.byteSize };
+      return { handle: await videoStore.open(file.storageKey), contentType: file.mimeType, byteSize: file.byteSize, contentHash: file.contentHash };
     },
+    videoStorage: (id) => repo.video(id),
     videoCover: (id) => videoStore.cover(repo.video(id).storageKey),
     async videoFirstFrame(id, options) {
       const { storageKey } = repo.video(id);

@@ -77,8 +77,8 @@ export const commands = [
   { name: "canvas get", description: "Read a bounded graph; inspect response limits before assuming completeness", method: "GET", route: "/api/canvas", options: { q: filters.q, tag: filters.tag, view: choice("Canvas view", ["flat", "tags"]), ids: string("Comma-separated element IDs"), "group-ids": string("Comma-separated tag group IDs"), expand: integer("Expand direct relations of this element"), limit: integer("Additional nodes to load (default 100)", 0, 100) } },
   { name: "canvas save", description: "Save element positions", method: "PUT", route: "/api/canvas/layout", action: "input", options: input, example: { positions: [{ id: 1, x: 100, y: 200 }] } },
   { name: "sharing status", description: "Read local-network sharing configuration and runtime state", method: "GET", route: "/api/lan-sharing" },
-  { name: "sharing configure", description: "Save sharing port and auto-start preference", method: "PUT", route: "/api/lan-sharing", action: "input", options: input, example: { port: 8766, autoStart: false } },
-  { name: "sharing enable", description: "Enable unauthenticated read-only access on the local network", method: "POST", route: "/api/lan-sharing", action: "sharing", value: true },
+  { name: "sharing configure", description: "Save sharing port, auto-start, LAN editing and pairing preferences", method: "PUT", route: "/api/lan-sharing", action: "input", options: input, example: { port: 8766, autoStart: false } },
+  { name: "sharing enable", description: "Enable paired (read-only by default) access on the local network", method: "POST", route: "/api/lan-sharing", action: "sharing", value: true },
   { name: "sharing disable", description: "Close the local-network sharing listener", method: "POST", route: "/api/lan-sharing", action: "sharing", value: false },
 ];
 

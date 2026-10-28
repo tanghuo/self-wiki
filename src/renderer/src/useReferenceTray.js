@@ -30,7 +30,7 @@ export default function useReferenceTray(enabled, revision = 0) {
       document.cookie = `${cookie}; Path=/; Max-Age=31536000; SameSite=Strict`;
       if (!document.cookie.split(";").some((entry) => entry.trim() === cookie)) throw new Error("Cookie storage unavailable");
       setSaveError("");
-    } catch { setSaveError("参考列表暂未保存，请重试保存后再关闭应用。"); }
+    } catch { setSaveError("资料篮暂未保存，请重试保存后再关闭应用。"); }
   }
   function update(field, value) {
     const next = { ...current.current, [field]: typeof value === "function" ? value(current.current[field]) : value };
@@ -67,7 +67,7 @@ export default function useReferenceTray(enabled, revision = 0) {
     }));
     const failed = new Set(current.current.elements.filter((element) => requested.get(element.id) === element && !loaded.has(element.id)).map((element) => element.id));
     setFailedIds(failed);
-    if (failed.size) setLoadError("部分参考暂时无法读取，列表已保留，请重试。");
+    if (failed.size) setLoadError("部分资料暂时无法读取，列表已保留，请重试。");
     setLoading(false);
     return current.current.elements.every((element) => loaded.get(element.id) === element) ? current.current.elements : null;
   }

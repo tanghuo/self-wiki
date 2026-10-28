@@ -17,7 +17,7 @@ export async function createOrganizationService({ repo, dataDir, semantic, recor
   await semantic.configure({ ...(configError ? defaultOrganizationConfig() : config), executor: executionConfig() });
 
   function executionConfig() {
-    return structuredClone({ ...config.executor, imageGeneration: config.imageGeneration,
+    return structuredClone({ ...config.executor, imageGeneration: config.imageGeneration, chat: config.chat,
       codexCli: { ...config.executor.codexCli, codexHome: config.executor.codexCli.codexHome || defaultCodexHome,
         reuseLocalAuth: config.executor.codexCli.reuseLocalAuth ?? !config.executor.codexCli.codexHome } });
   }

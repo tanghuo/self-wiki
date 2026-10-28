@@ -36,14 +36,21 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
   const hasVideos = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='element_videos'").get());
   const hasMarkers = Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='video_markers'").get());
   const hasDimensions = db.prepare("PRAGMA table_info(element_images)").all().some((column) => column.name === "width");
-  let listStamp, stackCache;
+  let listStamp, stackStamp, stackCache;
   const groupedLists = new Map();
+  const libraryClock = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='organization_state'").get()
+    ? db.prepare("SELECT epoch FROM organization_state WHERE id=1") : null;
   function cachedStacks() {
-    // Includes changes through other repositories/connections and rolled-back writes.
-    const stamp = `${db.prepare("SELECT total_changes() AS n").get().n}:${db.prepare("PRAGMA data_version").get().data_version}`;
-    if (stamp !== listStamp || db.isTransaction) {
-      listStamp = db.isTransaction ? null : stamp; stackCache = null; groupedLists.clear();
-    }
+    // Grouped list pages depend on everything a list can sort or filter by (including usage),
+    // so they follow every change through other repositories/connections and rolled-back writes.
+    const dataVersion = db.prepare("PRAGMA data_version").get().data_version;
+    const stamp = `${db.prepare("SELECT total_changes() AS n").get().n}:${dataVersion}`;
+    if (stamp !== listStamp || db.isTransaction) { listStamp = db.isTransaction ? null : stamp; groupedLists.clear(); }
+    // Similar stacks only depend on elements, relations and vocabulary, all of which advance the
+    // library clock; chat traces, usage stats or job heartbeats no longer force a recomputation.
+    const clock = libraryClock?.get()?.epoch;
+    const nextStackStamp = clock === undefined ? stamp : `${clock}:${dataVersion}`;
+    if (nextStackStamp !== stackStamp || db.isTransaction) { stackStamp = db.isTransaction ? null : nextStackStamp; stackCache = null; }
     return stackCache ||= similarStacks(db, { publicOnly });
   }
   const selectElement = `SELECT e.*, ${hasDimensions ? "i.width AS image_width,i.height AS image_height," : ""} ${hasVideos ? "coalesce(i.mime_type,v.mime_type) AS mime_type, coalesce(i.byte_size,v.byte_size) AS byte_size, coalesce(i.original_name,v.original_name) AS original_name" : "i.mime_type, i.byte_size, i.original_name"}, rec.data AS record_data,
@@ -69,6 +76,14 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
 
   function get(id) {
     return present(db.prepare(`${selectElement} WHERE e.id = ? AND e.deleted_at IS NULL${visibility}`).get(id));
+  }
+
+  function presentList(rows) {
+    if (publicOnly || !rows.length) return rows.map(present);
+    const copies = new Map(db.prepare(`SELECT element_id,count(*) AS copies FROM element_usage_events
+      WHERE element_id IN(SELECT value FROM json_each(?)) AND action=1 GROUP BY element_id`)
+      .all(JSON.stringify(rows.map((row) => row.id))).map((row) => [row.element_id, row.copies]));
+    return rows.map((row) => ({ ...present(row), copyCount: copies.get(row.id) || 0 }));
   }
 
   function tagMembers(tagId, sourceId, { page = 1, pageSize = 36 } = {}) {
@@ -384,7 +399,7 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         const lastPage = Math.min(throughPage, Math.max(page, Math.ceil(grouped.groups.length / pageSize)));
         const pageGroups = grouped.groups.slice((page - 1) * pageSize, lastPage * pageSize);
         const rows = db.prepare(`${selectElement} WHERE e.id IN(SELECT value FROM json_each(?))`).all(JSON.stringify(pageGroups.map(({ row }) => row.id)));
-        const elements = new Map(rows.map((row) => [row.id, present(row)]));
+        const elements = new Map(presentList(rows).map((element) => [element.id, element]));
         return {
           elements: pageGroups.map(({ row, count }) => ({ ...elements.get(row.id), ...(count > 1 ? { similarStack: { count } } : {}) })),
           pagination: pagination(grouped.groups.length, lastPage, pageSize), totalElements: grouped.total,
@@ -398,7 +413,7 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
       const rows = db.prepare(`${selectElement} WHERE ${where}
         ORDER BY ${stackOf ? stackOrder : order} LIMIT ? OFFSET ?`)
         .all(...values, ...(stackOf ? [] : orderValues), (lastPage - page + 1) * pageSize, (page - 1) * pageSize);
-      return { elements: rows.map(present), pagination: pagination(total, lastPage, pageSize) };
+      return { elements: presentList(rows), pagination: pagination(total, lastPage, pageSize) };
     },
     createText(content) {
       return transaction(() => { const id = insert("text", content); addTags(id, content.tags); return get(id); });
@@ -504,7 +519,15 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
         const row = db.prepare("SELECT deleted_at FROM elements WHERE id = ?").get(id);
         if (!row) return null; // Retrying an already completed deletion is safe.
         if (!row.deleted_at) throw elementError("只能永久删除回收站中的内容", 409);
-        if (db.prepare("SELECT 1 FROM chat_turns WHERE state=0").get()) throw elementError("请等待当前会话结束后永久删除，以免历史记录被在途任务重新写入", 409);
+        // Only generations that can write this element back into chat history block the purge:
+        // turns citing it, its own saved conversation, and sessions whose output became this element.
+        if (db.prepare(`SELECT 1 FROM chat_turns t WHERE t.state=0 AND (
+            EXISTS (SELECT 1 FROM json_each(t.sources) WHERE json_extract(value,'$.id')=?1)
+            OR EXISTS (SELECT 1 FROM json_each(t.input_sources) WHERE coalesce(json_extract(value,'$.id'),value)=?1)
+            OR t.session_id IN (SELECT session_id FROM chat_session_elements WHERE element_id=?1)
+            OR t.session_id IN (SELECT o.session_id FROM chat_turns o JOIN chat_element_bindings b ON b.turn_id=o.id WHERE b.element_id=?1)
+            OR t.session_id IN (SELECT o.session_id FROM chat_turns o JOIN chat_prompt_jobs j ON o.id IN (j.turn_id,j.extraction_turn_id) WHERE j.element_id=?1)
+          ) LIMIT 1`).get(id)) throw elementError("此内容正被进行中的会话使用，请等待生成结束后再永久删除", 409);
         deleteChatHistory(db, id);
         const image = db.prepare("SELECT storage_key FROM element_images WHERE element_id = ?").get(id);
         const video = db.prepare("SELECT storage_key FROM element_videos WHERE element_id=?").get(id);
@@ -532,9 +555,9 @@ export function createElementRepository(db, { publicOnly = false } = {}) {
     },
     video(id) {
       get(id);
-      const row = db.prepare("SELECT storage_key,mime_type,byte_size FROM element_videos WHERE element_id=?").get(id);
+      const row = db.prepare("SELECT storage_key,mime_type,byte_size,content_hash FROM element_videos WHERE element_id=?").get(id);
       if (!row) throw elementError("此内容没有视频", 404);
-      return { storageKey: row.storage_key, mimeType: row.mime_type, byteSize: row.byte_size };
+      return { storageKey: row.storage_key, mimeType: row.mime_type, byteSize: row.byte_size, contentHash: row.content_hash };
     },
     relate(a, b, type = "related", inputName, semantics = {}) {
       return relateWithChange(a, b, type, inputName, semantics).relation;

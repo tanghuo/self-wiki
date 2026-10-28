@@ -1,0 +1,69 @@
+import readline from 'node:readline';
+import { mkdir, readFile, writeFile, appendFile } from 'node:fs/promises';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+let thread, cwd, mcp, state, hooks, hanging;
+const pending = new Map(); let sequence = 0;
+const send = (value) => process.stdout.write(JSON.stringify({jsonrpc:'2.0', ...value})+'\n');
+const respond = (id,result) => send({id,result});
+const request = (method,params) => new Promise(resolve => {const id='client-'+(++sequence);pending.set(id,resolve);send({id,method,params});});
+const update = (value) => send({method:'session/update',params:{sessionId:thread,update:value}});
+const models = [{modelId:'grok-4.6',name:'Grok 4.6',_meta:{reasoningEffort:'high',reasoningEfforts:[{id:'high',value:'high',label:'High'}]}}];
+const folder = () => path.join(process.env.GROK_HOME,'sessions',encodeURIComponent(cwd),thread);
+const save = async () => {await mkdir(folder(),{recursive:true});await writeFile(path.join(folder(),'state.json'),JSON.stringify(state));};
+async function gate(toolName,toolInput={}) {
+  if (!hooks?.pre_tool_use?.[0]?.hookCallbackIds?.length) throw new Error('client hooks missing');
+  return request('_x.ai/hooks/run',{sessionId:thread,hookCallbackId:'self-wiki-tools',hookEventName:'pre_tool_use',toolName,toolInput});
+}
+async function handle(value) {
+  if(!value.method){const resolve=pending.get(value.id);if(resolve){pending.delete(value.id);resolve(value.result);}return;}
+  if(value.method==='initialize')return respond(value.id,{protocolVersion:1,agentCapabilities:{loadSession:true,promptCapabilities:{image:true},mcpCapabilities:{http:true},_meta:{'x.ai/hooks':{blockingEvents:['pre_tool_use']}}},authMethods:[{id:'cached_token'}],_meta:{agentVersion:'1.0.70',modelState:{availableModels:models}}});
+  if(value.method==='authenticate')return respond(value.id,{});
+  if(value.method==='session/new'||value.method==='session/load'){
+    cwd=value.params.cwd;mcp=value.params.mcpServers[0];hooks=value.params._meta['x.ai/hooks'];
+    thread=value.params.sessionId||randomUUID();
+    if(value.method==='session/load')state=JSON.parse(await readFile(path.join(folder(),'state.json'),'utf8'));else{state={};await save();}
+    await appendFile(path.join(process.env.GROK_HOME,'acp-requests.ndjson'),JSON.stringify({method:value.method,thread,cwd,mcpUrl:mcp.url})+'\n');
+    // Loaded transcripts must not leak into the new turn.
+    if(value.method==='session/load')update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'REPLAY_SHOULD_BE_IGNORED'}});
+    return respond(value.id,{sessionId:thread,models:{availableModels:models}});
+  }
+  if(value.method==='session/set_config_option'){
+    if(typeof value.params.value!=='string')throw new Error('Invalid params');return respond(value.id,{configOptions:[]});
+  }
+  if(value.method==='session/cancel'){if(hanging){respond(hanging,{stopReason:'cancelled'});hanging=undefined;}return;}
+  if(value.method!=='session/prompt')throw new Error('unsupported method');
+  const text=value.params.prompt.filter(p=>p.type==='text').map(p=>p.text).join('\n');
+  await appendFile(path.join(process.env.GROK_HOME,'acp-inputs.ndjson'),JSON.stringify({thread,prompt:value.params.prompt})+'\n');
+  let answer='fixture Grok reply';
+  if(text.startsWith('HANG')){hanging=value.id;return;}
+  if(text.startsWith('REMEMBER ')){state.word=text.split('\n')[0].slice(9);await save();answer='remembered';}
+  if(text.startsWith('RECALL'))answer=state.word||'missing';
+  if(text.startsWith('DENY_SHELL')){const decision=await gate('run_terminal_command',{command:'echo forbidden'});answer=decision.decision==='deny'?'SHELL_BLOCKED':'SHELL_ALLOWED';}
+  if(text.startsWith('WIKI')){
+    const decision=await gate('self_wiki__wiki_cli');if(decision.decision==='deny')throw new Error(decision.reason);
+    const id='mcp-1';update({sessionUpdate:'tool_call',toolCallId:id,status:'pending',_meta:{'x.ai/tool':{name:'self_wiki__wiki_cli'}},rawInput:{}});
+    const response=await fetch(mcp.url,{method:'POST',headers:{'content-type':'application/json',...Object.fromEntries(mcp.headers.map(h=>[h.name,h.value]))},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'wiki_cli',arguments:{args:['schema'],stdin:''}}})});
+    const result=await response.json();if(result.error)throw new Error(result.error.message);answer='WIKI_OK';
+    update({sessionUpdate:'tool_call_update',toolCallId:id,status:'completed',rawOutput:{content:result.result.content}});
+  }
+  if(text.startsWith('GENERATE_CAT')||text.startsWith('EDIT_CAT')||text.startsWith('BAD_IMAGE')){
+    const editing=text.startsWith('EDIT_CAT'), tool=editing?'image_edit':'image_gen';
+    const input={prompt:editing?'white cat':'orange cat',...(editing&&{image:[JSON.parse(/可读原图路径：(\".*?\")。/.exec(text)?.[1]||'null')]})};
+    if(editing&&!input.image[0])throw new Error('previous image was not automatically supplied');
+    if(editing)await readFile(input.image[0]);
+    const decision=await gate(tool,input);if(decision.decision==='deny')throw new Error(decision.reason);
+    const id='image-1';update({sessionUpdate:'tool_call',toolCallId:id,status:'pending',kind:'image_gen',rawInput:input,_meta:{'x.ai/tool':{name:tool}}});
+    const dir=path.join(folder(),'images');await mkdir(dir,{recursive:true});
+    const file=path.join(dir,editing?'2.png':'1.png');
+    await writeFile(file,Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64'));
+    state.image=file;await save();
+    update({sessionUpdate:'tool_call_update',toolCallId:id,status:'completed',rawOutput:{type:editing?'ImageEdit':'ImageGen',path:text.startsWith('BAD_IMAGE')?path.join(process.env.GROK_HOME,'outside.png'):file}});
+    answer=editing?'edited cat':'generated cat';
+  }
+  update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:answer}});
+  respond(value.id,{stopReason:'end_turn'});
+}
+const rl=readline.createInterface({input:process.stdin});
+rl.on('line',line=>{let value;try{value=JSON.parse(line);}catch{return;}handle(value).catch(error=>send({id:value.id,error:{code:-32602,message:error.message}}));});
+rl.on('close',()=>process.exit(0));

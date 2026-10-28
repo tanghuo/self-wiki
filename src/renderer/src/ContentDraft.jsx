@@ -16,7 +16,7 @@ export default function ContentDraft({ entry, index, busy, saving, onChange, onR
     const url = URL.createObjectURL(entry.file); setPreview(url);
     return () => URL.revokeObjectURL(url);
   }, [entry.file]);
-  return <article className="wiki-content-draft" aria-label={`${label}元素 ${index + 1}`}>
+  return <article className="wiki-content-draft" aria-label={`${label}内容 ${index + 1}`}>
     <header><span>{video ? <Video size={16} /> : image ? <ImageIcon size={16} /> : <FileText size={16} />}{label} {index + 1}</span>
       {entry.saved ? <span className="wiki-draft-saved"><Check size={15} />{savedContentStatus(entry.saved)}</span>
         : <button type="button" className="icon-only" disabled={busy} aria-label={`移除待保存内容 ${index + 1}`} onClick={onRemove}><X size={15} /></button>}

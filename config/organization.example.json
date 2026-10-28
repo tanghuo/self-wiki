@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "enabled": false,
   "applyMode": "suggest",
+  "chat": { "engine": "codex", "grokBuild": { "executable": "grok", "model": "grok-4.6" } },
   "executor": {
     "type": "codex-cli",
     "timeoutMs": 180000,
@@ -14,6 +15,7 @@
   "imageGeneration": {
     "executor": "codex-cli",
     "chatgptWeb": { "python": "python", "browser": "chrome-use", "profile": "relay" },
+    "grokBuild": { "executable": "grok", "model": "grok-4.6", "aspectRatio": "auto" },
     "comfyui": {
       "baseUrl": "http://127.0.0.1:8188",
       "workflowName": "",
