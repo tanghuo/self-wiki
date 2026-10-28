@@ -5,7 +5,7 @@ import sharp from 'sharp';
 import { workflowError } from '../../shared/domain/workflow/contracts.js';
 
 export function createWorkflowStore(dataDir) {
-  const root = path.join(dataDir, 'workflow-artifacts'), workspace = path.join(dataDir, 'workflow-workspace');
+  const root = path.join(dataDir, 'workflow-artifacts'), workspace = path.join(dataDir, 'workflow-workspace'), inputs = path.join(dataDir, 'workflow-input-images');
   const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
   function location(key) {
     if (!/^[a-f0-9]{64}\.(png|jpeg|webp)$/.test(key)) throw workflowError('非法工作流存储键');
@@ -17,7 +17,20 @@ export function createWorkflowStore(dataDir) {
     if (bytes.length !== artifact.byteSize || hash(bytes) !== artifact.hash) throw workflowError('工作流产物损坏', 410);
     return bytes;
   }
-  return {
+  const store = {
+    async saveInputImage(bytes, originalName) {
+      const artifact = await store.saveImage(bytes, { originalName });
+      await mkdir(inputs, { recursive: true });
+      await writeFile(path.join(inputs, `${artifact.id}.json`), JSON.stringify(artifact), { flag: 'wx' });
+      return { attachmentId: artifact.id };
+    },
+    async inputImage(id) {
+      if (typeof id !== 'string' || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id)) throw workflowError('无效的工作流附件 ID');
+      let artifact;
+      try { artifact = JSON.parse(await readFile(path.join(inputs, `${id}.json`), 'utf8')); }
+      catch (error) { if (error.code === 'ENOENT') throw workflowError('工作流附件不存在', 404); throw error; }
+      return { artifact, bytes: await read(artifact) };
+    },
     async saveImage(bytes, metadata = {}) {
       if (!Buffer.isBuffer(bytes) || !bytes.length || bytes.length > 25 * 1024 * 1024) throw workflowError('图片须在 25 MiB 以内');
       let info;
@@ -44,4 +57,5 @@ export function createWorkflowStore(dataDir) {
       await writeFile(target, await read(artifact)); return target;
     },
   };
+  return store;
 }

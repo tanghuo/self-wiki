@@ -1,6 +1,6 @@
-import { dependencies, outputType, matchesType, summarizeRun, workflowLimits, loopItems } from '../../../shared/domain/workflow/contracts.js';
+import { dependencies, outputType, outputBindingType, matchesType, summarizeRun, workflowLimits, loopItems } from '../../../shared/domain/workflow/contracts.js';
 
-export function createWorkflowScheduler({ repo, nodes, store, interval = 100 }) {
+export function createWorkflowScheduler({ repo, nodes, store, interval = 1000 }) {
   const active = new Map();
   let timer, closed = false, ticking = false, started = false;
   const graphFor = (run, i) => i.scope === 'root' ? run.definition : run.definition.nodes.find((n) => n.id === i.context.foreachId)?.config.body;
@@ -65,6 +65,7 @@ export function createWorkflowScheduler({ repo, nodes, store, interval = 100 }) 
       const captures = Object.fromEntries(Object.entries(values).filter(([key]) => key !== 'items'));
       while (expanded < values.items.length && unfinished < 8) {
         repo.expand(parent, body, expanded, values.items[expanded], captures);
+        wake();
         unfinished++; expanded++;
       }
     }
@@ -74,7 +75,7 @@ export function createWorkflowScheduler({ repo, nodes, store, interval = 100 }) 
       const state = group.every((i) => i.state === 'succeeded') ? 'succeeded' : group.some((i) => i.state === 'failed') ? 'failed' : group.some((i) => i.state === 'cancelled') ? 'cancelled' : 'failed';
       for (const [port, binding] of Object.entries(body.outputs || {})) {
         const source = group.find((i) => i.nodeId === binding.nodeId);
-        if (source?.state === 'succeeded') outputs[port] = { artifactRef: source.outputs[binding.port], type: outputType(body.nodes.find((n) => n.id === binding.nodeId)), path: binding.path || [] };
+        if (source?.state === 'succeeded') outputs[port] = { artifactRef: nodes.outputArtifact(source.outputs, binding.port), type: outputBindingType(body.nodes.find((n) => n.id === binding.nodeId), binding), path: binding.path || [] };
       }
       return { itemId: `${run.id}:${n.id}:${index}`, index, status: state, outputs, error: group.find((i) => i.error)?.error || null };
     });

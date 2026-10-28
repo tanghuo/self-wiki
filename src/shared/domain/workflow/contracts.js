@@ -72,6 +72,56 @@ export function outputType(node) {
   if (node.type === 'model') return node.config?.outputType || 'text';
   return node.config?.valueType || 'text';
 }
+// Public variable names are independent of the historical artifact storage ports.
+export function outputVariables(node) {
+  const primary = outputType(node);
+  const roots = node.type === 'model'
+    ? [{ name: 'text', type: 'text', port: 'text', path: [] }, ...(primary === 'json' ? [{ name: 'structured_output', type: 'json', port: 'structured_output', path: [] }] : [])]
+    : [{ name: node.type === 'image.generate' ? 'images' : 'value', type: primary, port: node.type === 'image.generate' ? 'images' : 'value', path: [] }];
+  const fields = [];
+  function visit(schema, path, depth = 0) {
+    if (!schema || depth > 24) return;
+    for (const [key, field] of Object.entries(schema.properties || {})) {
+      if (['__proto__', 'prototype', 'constructor'].includes(key)) continue;
+      const next = [...path, key], type = schemaValueType(field);
+      fields.push({ name: `structured_output.${next.join('.')}`, type, port: 'structured_output', path: next });
+      visit(field, next, depth + 1);
+    }
+  }
+  if (node.type === 'model' && primary === 'json') visit(node.config.jsonSchema, []);
+  return [...roots, ...fields];
+}
+function schemaValueType(schema) {
+  const type = ({ string: 'text', number: 'number', integer: 'number', boolean: 'boolean' })[schema?.type];
+  if (type) return type;
+  if (schema?.type === 'array') return `list<${schemaValueType(schema.items).replace(/^list<.*>$/, 'json')}>`;
+  return 'json';
+}
+export function outputBindingType(node, binding) {
+  if (!node) return undefined;
+  const type = binding.port === 'value' ? outputType(node) : node.type === 'model' && ['text', 'raw'].includes(binding.port) ? 'text'
+    : node.type === 'model' && binding.port === 'structured_output' && outputType(node) === 'json' ? 'json'
+    : node.type === 'image.generate' && binding.port === 'images' ? 'list<image>' : undefined;
+  if (!binding.path?.length) return type;
+  if (type !== 'json') return undefined;
+  if (node.type === 'model' && node.config.jsonSchema) {
+    let schema = node.config.jsonSchema;
+    for (const key of binding.path) {
+      if (schema?.type === 'array' && /^(0|[1-9]\d*)$/.test(String(key))) schema = schema.items;
+      else if (Object.hasOwn(schema?.properties || {}, key)) schema = schema.properties[key];
+      else return undefined;
+    }
+    return schemaValueType(schema);
+  }
+  return 'json';
+}
+export function outputVariableName(node, binding) {
+  return [outputPortName(node, binding.port), ...(binding.path || [])].join('.');
+}
+export function outputPortName(node, port) {
+  if (node?.type === 'model') return port === 'raw' ? 'text' : port === 'value' ? outputType(node) === 'json' ? 'structured_output' : 'text' : port;
+  return node?.type === 'image.generate' && port === 'value' ? 'images' : port;
+}
 export function inputPorts(node) {
   const c = node.config || {};
   switch (node.type) {
@@ -139,7 +189,7 @@ export function validateDefinition(definition, { limits = workflowLimits } = {})
         if (parent) add(node.id, 'type', '循环内请使用 item 或显式捕获');
         if (!validName(c.parameter) || parameters.has(c.parameter)) add(node.id, 'config.parameter', '参数名无效或重复');
         parameters.add(c.parameter);
-        const ref = (v) => !!v && typeof v === 'object' && Object.keys(v).length === 1 && Number.isSafeInteger(v.elementId) && v.elementId > 0;
+        const ref = (v) => !!v && typeof v === 'object' && Object.keys(v).length === 1 && (Number.isSafeInteger(v.elementId) && v.elementId > 0 || outputType(node).includes('image') && typeof v.attachmentId === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(v.attachmentId));
         const libraryValue = node.type === 'element' && (['text', 'image'].includes(outputType(node)) ? ref(c.default) : outputType(node) === 'list<image>' && Array.isArray(c.default) && c.default.every(ref));
         if (Object.hasOwn(c, 'default') && !matchesType(c.default, outputType(node)) && !libraryValue) add(node.id, 'config.default', '内容类型错误');
       }
@@ -167,10 +217,7 @@ export function validateDefinition(definition, { limits = workflowLimits } = {})
         } else if (b.kind === 'output') {
           const source = ids.get(b.nodeId);
           if (!b.nodeId) add(node.id, field, '等待手动连线');
-          else if (!source || b.port !== 'value') add(node.id, field, '引用节点或输出端口不存在（仅允许同作用域）');
-          else type = outputType(source);
-          if (b.path?.length && type !== 'json') add(node.id, field, '字段路径只能读取 json，请使用字段提取节点');
-          if (b.path?.length) type = 'json';
+          else if (!(type = outputBindingType(source, b))) add(node.id, field, '引用节点、输出变量或字段不存在（仅允许同作用域）');
         } else if (parent && ['item', 'index', 'itemId', 'capture'].includes(b.kind)) {
           type = b.kind === 'item' ? listItemType(parent.config?.itemsType || 'list<image>') : b.kind === 'index' ? 'number' : b.kind === 'itemId' ? 'text' : parent.config?.captureTypes?.[b.name];
           if (!type) add(node.id, field, '捕获输入不存在');
@@ -198,7 +245,7 @@ export function validateDefinition(definition, { limits = workflowLimits } = {})
     }
     for (const id of ids.keys()) visit(id);
     orders[name] = ordered;
-    for (const b of Object.values(graph.outputs || {})) if (b?.kind !== 'output' || !ids.has(b.nodeId) || b.port !== 'value') add(parent?.id, 'outputs', '作用域输出必须引用本作用域节点');
+    for (const b of Object.values(graph.outputs || {})) if (b?.kind !== 'output' || !outputBindingType(ids.get(b.nodeId), b) || b.path !== undefined && (!Array.isArray(b.path) || b.path.length > 32 || b.path.some((key) => ['__proto__', 'prototype', 'constructor'].includes(String(key))))) add(parent?.id, 'outputs', '作用域输出必须引用本作用域节点的有效变量');
   }
   scope(definition, 'root');
   if (total > limits.nodes) add('', 'nodes', '整个定义最多 300 个节点');

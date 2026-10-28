@@ -6,6 +6,7 @@ const nodeStates = ['pending', 'running', 'waiting_review', 'succeeded', 'failed
 const runStates = ['queued', 'running', 'paused', 'waiting_review', 'needs_attention', 'succeeded', 'partial_failed', 'failed', 'cancelled'];
 export const workflowDigest = (v) => createHash('sha256').update(typeof v === 'string' ? v : JSON.stringify(v)).digest('hex');
 const parse = (v) => JSON.parse(v);
+const presentAttempt = (a) => ({ id: a.id, number: a.number, state: nodeStates[a.state], dispatchStarted: !!a.dispatch_started, request: parse(a.request), remoteId: a.remote_id, error: a.error, data: parse(a.data), createdAt: a.created_at });
 export function createWorkflowRepository(db) {
   const wiki = createElementRepository(db);
   let generation;
@@ -248,7 +249,13 @@ export function createWorkflowRepository(db) {
     },
     hasAccess(runId, artifactId) { return !!db.prepare('SELECT 1 FROM workflow_artifact_refs WHERE run_id=? AND artifact_id=?').get(runId, artifactId); },
     events(runId, after = 0) { run(runId); return db.prepare('SELECT * FROM workflow_events WHERE run_id=? AND id>? ORDER BY id LIMIT 200').all(runId, after).map((r) => ({ id: r.id, type: r.type, instanceId: r.instance_id, attemptId: r.attempt_id, data: parse(r.data), createdAt: r.created_at })); },
-    attempts(instId) { return db.prepare('SELECT * FROM workflow_node_attempts WHERE instance_id=? ORDER BY number').all(instId).map((a) => ({ id: a.id, number: a.number, state: nodeStates[a.state], dispatchStarted: !!a.dispatch_started, request: parse(a.request), remoteId: a.remote_id, error: a.error, data: parse(a.data), createdAt: a.created_at })); },
+    attempts(instId) { return db.prepare('SELECT * FROM workflow_node_attempts WHERE instance_id=? ORDER BY number').all(instId).map(presentAttempt); },
+    attemptsFor(instIds) {
+      const result = new Map(instIds.map((id) => [id, []]));
+      if (!instIds.length) return result;
+      for (const row of db.prepare('SELECT * FROM workflow_node_attempts WHERE instance_id IN (SELECT value FROM json_each(?)) ORDER BY instance_id,number').all(JSON.stringify([...result.keys()]))) result.get(row.instance_id).push(presentAttempt(row));
+      return result;
+    },
     saveLibrary(instId, artifactId, { file, body, tags, source }) {
       return transaction(() => {
         const prior = db.prepare('SELECT element_id FROM workflow_save_receipts WHERE instance_id=? AND artifact_id=?').get(instId, artifactId);

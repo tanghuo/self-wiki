@@ -1,12 +1,23 @@
-import { json, text, readJson, httpError } from './http.js';
+import { json, text, readJson, readImage, httpError } from './http.js';
 
 export async function handleWorkflowRoute(workflow, req, res, url, access) {
-  if (!/^\/api\/(?:workflows|workflow-node-types|workflow-runs|workflow-artifacts)(?:\/|$)/.test(url.pathname)) return false;
+  if (!/^\/api\/(?:workflows|workflow-node-types|workflow-runs|workflow-artifacts|workflow-input-images)(?:\/|$)/.test(url.pathname)) return false;
   if (access !== 'local') throw httpError(403, '工作流定义、运行、事件与产物仅限本机');
   const method = req.method, p = url.pathname;
   const body = () => readJson(req, { maxBytes: 1024 * 1024 });
   let match, result;
-  if (p === '/api/workflow-node-types' && method === 'GET') result = workflow.catalog();
+  if (p === '/api/workflow-input-images' && method === 'POST') {
+    let originalName;
+    try { originalName = decodeURIComponent(req.headers['x-file-name'] || '粘贴图片.png'); }
+    catch { throw httpError(400, '无效的文件名'); }
+    result = await workflow.addInputImage(await readImage(req), originalName);
+  }
+  else if ((match = /^\/api\/workflow-input-images\/([a-f0-9-]+)\/media$/.exec(p)) && method === 'GET') {
+    result = await workflow.inputImage(match[1]);
+    res.setHeader('cache-control', 'no-store'); res.setHeader('x-content-type-options', 'nosniff');
+    text(res, 200, result.bytes, result.contentType); return true;
+  }
+  else if (p === '/api/workflow-node-types' && method === 'GET') result = workflow.catalog();
   else if ((match = /^\/api\/workflows\/adapters\/([a-z0-9_-]+)\/([a-z0-9_-]+)$/.exec(p)) && ['GET', 'POST'].includes(method)) result = await workflow.adapterConfiguration(match[1], match[2], method === 'POST' ? await body() : undefined, method);
   else if ((match = workflow.adapterConfigurationRoute(p))) result = await workflow.adapterConfiguration(match.adapter, match.operation, method === 'POST' ? await body() : undefined, method);
   else if (p === '/api/workflows' && method === 'GET') result = { workflows: workflow.list() };

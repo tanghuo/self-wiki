@@ -1,5 +1,5 @@
 import { checkJsonSchema } from '../../../shared/domain/workflow/jsonSchema.js';
-import { nodeTypes, validateDefinition, matchesType, outputType, workflowError, downstreamClosure, workflowLimits, executionNode, preparedElements, isRuntimeElement, bindings, validTextParts, sampleDefinition, loopItems } from '../../../shared/domain/workflow/contracts.js';
+import { nodeTypes, validateDefinition, matchesType, outputType, outputPortName, workflowError, downstreamClosure, workflowLimits, executionNode, preparedElements, isRuntimeElement, bindings, validTextParts, sampleDefinition, loopItems } from '../../../shared/domain/workflow/contracts.js';
 import { blankWorkflow, describeImagesExample } from '../../../shared/domain/workflow/examples.js';
 import { elementTags } from '../../../shared/domain/elements.js';
 import { modelAdapters, rejectSecrets } from '../modelAdapters/index.js';
@@ -7,6 +7,7 @@ import { createWorkflowNodes } from './nodes.js';
 import { createWorkflowScheduler } from './scheduler.js';
 
 const idNumber = (id) => { const n = Number(id); if (!Number.isSafeInteger(n) || n < 1) throw workflowError('无效 ID'); return n; };
+const outputNames = (node, outputs) => Object.fromEntries(Object.keys(outputs).map((port) => [port, outputPortName(node, port)]));
 function draft(value, adapters = modelAdapters) {
   if (!value || value.schemaVersion !== 1 || !Array.isArray(value.nodes) || Buffer.byteLength(JSON.stringify(value)) > 1024 * 1024) throw workflowError('定义需要 schemaVersion: 1、nodes，且须在 1 MiB 以内');
   rejectSecrets(value);
@@ -53,6 +54,14 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw workflowError('运行输入须为对象');
     const inputs = {}, images = [], sourceCopies = new Map();
     async function image(value) {
+      if (value && typeof value === 'object' && Object.keys(value).length === 1 && typeof value.attachmentId === 'string') {
+        if (!sourceCopies.has(value.attachmentId)) {
+          const source = await store.inputImage(value.attachmentId);
+          const saved = await store.saveImage(source.bytes, { sourceAttachmentId: value.attachmentId, originalName: source.artifact.metadata.originalName });
+          images.push(saved); sourceCopies.set(value.attachmentId, { artifactId: saved.id });
+        }
+        return sourceCopies.get(value.attachmentId);
+      }
       if (value && typeof value === 'object' && Object.keys(value).length === 1 && Number.isSafeInteger(value.elementId) && value.elementId > 0) {
         if (!sourceCopies.has(value.elementId)) {
           const source = await wiki.image(value.elementId);
@@ -62,7 +71,7 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
         return sourceCopies.get(value.elementId);
       }
       if (matchesType(value, 'image') && parent && repo.hasAccess(parent.id, value.artifactId)) { const a = repo.artifact(value.artifactId); if (a.type !== 'image') throw workflowError('输入产物不是图片'); await store.read(a); return value; }
-      throw workflowError('图片输入只接受资料库 elementId 或父运行拥有的 artifactId，不接受文件路径');
+      throw workflowError('图片输入只接受工作流附件 attachmentId、资料库 elementId 或父运行拥有的 artifactId，不接受文件路径');
     }
     const parameters = new Set(definition.nodes.filter(isRuntimeElement).map((n) => n.config.parameter));
     if (Object.keys(payload).some((k) => !parameters.has(k))) throw workflowError('包含未声明的运行参数');
@@ -78,7 +87,7 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
         images.push({ type: 'text', value, metadata: { sourceElementId: source.id, parameter: c.parameter } });
       }
       if (value === undefined) {
-        if (!isRuntimeElement(n) || c.required !== false) throw workflowError(`请为「${n.name || n.id}」提供内容`);
+        if (!isRuntimeElement(n) || c.required !== false) throw workflowError(`请为${isRuntimeElement(n) ? '本次输入' : '固定素材'}「${n.name || n.id}」（${n.id}，${outputType(n)}）提供内容${isRuntimeElement(n) ? '' : '，可在运行准备页填写'}`);
         value = outputType(n).startsWith('list<') ? [] : outputType(n) === 'text' ? '' : outputType(n) === 'number' ? 0 : outputType(n) === 'boolean' ? false : {};
       }
       if (outputType(n) === 'image') value = await image(value);
@@ -97,11 +106,11 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
     if (!report.valid) throw workflowError(report.errors.map((e) => `${e.nodeId || ''} ${e.field}: ${e.message}`).join('；'));
     return d;
   }
-  function canRecover(run, instance) {
+  function canRecover(run, instance, attempts) {
     if (instance.state !== 'unknown') return false;
     const scope = instance.scope === 'root' ? 'root' : 'root/' + instance.context.foreachId;
     const snapshot = run.executors[scope + '/' + instance.nodeId];
-    const attempt = repo.attempts(instance.id).find((entry) => entry.id === instance.attemptId);
+    const attempt = (attempts || repo.attempts(instance.id)).find((entry) => entry.id === instance.attemptId);
     return !!adapters.recoveryTicket(snapshot, attempt);
   }
   function nodeAction(runId, instanceId, payload) {
@@ -140,6 +149,14 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
     return result;
   }
   return {
+    addInputImage(bytes, originalName) {
+      if (typeof originalName !== 'string' || originalName.length > 512) throw workflowError('图片文件名过长');
+      return store.saveInputImage(bytes, originalName);
+    },
+    async inputImage(id) {
+      const source = await store.inputImage(id);
+      return { bytes: source.bytes, contentType: source.artifact.metadata.mime };
+    },
     start: () => scheduler.start(), close: () => scheduler.close(),
     adapterConfiguration: (id, operation, payload, method) => adapters.configure(id, operation, executionConfig(), payload, method),
     adapterConfigurationRoute: (path) => adapters.configurationRoute(path),
@@ -176,11 +193,14 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
       id = idNumber(id);
       if (!Number.isSafeInteger(after) || after < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 200) throw workflowError('分页参数无效');
       const r = repo.run(id), instances = repo.instances(id, { after, limit });
+      const rootInstances = repo.instances(id, { scope: 'root' });
+      const byInstance = repo.attemptsFor([...rootInstances, ...instances].map((i) => i.id));
       const present = (i) => {
-        const attempts = repo.attempts(i.id);
-        return {  ...i, name: (i.scope === 'root' ? r.definition.nodes : r.definition.nodes.find((n) => n.id === i.context.foreachId)?.config.body.nodes)?.find((n) => n.id === i.nodeId)?.name, context: { index: i.context.index, parentInstanceId: i.context.parentInstanceId }, attempts, canRecover: canRecover(r, i) };
+        const attempts = byInstance.get(i.id) || [];
+        const node = (i.scope === 'root' ? r.definition.nodes : r.definition.nodes.find((n) => n.id === i.context.foreachId)?.config.body.nodes)?.find((n) => n.id === i.nodeId);
+        return { ...i, name: node?.name, outputNames: outputNames(node, i.outputs), context: { index: i.context.index, parentInstanceId: i.context.parentInstanceId }, attempts, canRecover: canRecover(r, i, attempts) };
       };
-      return { ...r, definition: adapters.normalizeDefinition(r.definition), inputArtifacts: repo.inputArtifacts(id), rootInstances: repo.instances(id, { scope: 'root' }).map(present), instances: instances.map(present), nextCursor: instances.at(-1)?.id || after };
+      return { ...r, definition: adapters.normalizeDefinition(r.definition), inputArtifacts: repo.inputArtifacts(id), rootInstances: rootInstances.map(present), instances: instances.map(present), nextCursor: instances.at(-1)?.id || after };
     },
     events(id, after) { if (!Number.isSafeInteger(after) || after < 0) throw workflowError('事件游标无效'); const events = repo.events(idNumber(id), after); return { events, cursor: events.at(-1)?.id || after }; },
     batch(id, instanceId, offset = 0) {
@@ -192,10 +212,12 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
       const completedRows = parent.outputs.value ? nodes.readValue(parent.outputs.value) : [];
       let items;
       try { items = loopItems(n, nodes.inputs(n, all.filter((i) => i.scope === 'root'), {}).items); } catch { return { items: [], total: 0, preparing: true }; }
+      const visibleInstances = all.filter((i) => i.context.parentInstanceId === parent.id && i.context.index >= offset && i.context.index < offset + 20);
+      const byInstance = repo.attemptsFor(visibleInstances.map((i) => i.id));
       return { total: items.length, offset, items: items.slice(offset, offset + 20).map((value, localIndex) => {
         const index = localIndex + offset, group = all.filter((i) => i.context.parentInstanceId === parent.id && i.context.index === index);
         const state = !group.length && completedRows[index] ? completedRows[index].status : group.some((i) => i.state === 'unknown') ? 'unknown' : group.some((i) => i.state === 'waiting_review') ? 'waiting_review' : group.some((i) => ['pending', 'running'].includes(i.state)) || !group.length ? 'pending' : group.some((i) => ['failed', 'blocked'].includes(i.state)) ? 'failed' : group.some((i) => i.state === 'cancelled') ? 'cancelled' : 'succeeded';
-        return { itemId: `${id}:${n.id}:${index}`, index, value, state, resultArtifacts: !group.length ? completedRows[index]?.outputs || {} : {}, instances: group.map((i) => ({ ...i, canRecover: canRecover(r, i), name: n.config.body.nodes.find((node) => node.id === i.nodeId)?.name, context: { index, parentInstanceId: parent.id }, attempts: repo.attempts(i.id) })) };
+        return { itemId: `${id}:${n.id}:${index}`, index, value, state, resultArtifacts: !group.length ? completedRows[index]?.outputs || {} : {}, instances: group.map((i) => ({ ...i, canRecover: canRecover(r, i, byInstance.get(i.id) || []), name: n.config.body.nodes.find((node) => node.id === i.nodeId)?.name, outputNames: outputNames(n.config.body.nodes.find((node) => node.id === i.nodeId), i.outputs), context: { index, parentInstanceId: parent.id }, attempts: byInstance.get(i.id) || [] })) };
       }) };
     },
     control(id, payload) {

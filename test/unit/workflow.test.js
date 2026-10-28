@@ -5,8 +5,65 @@ import { workflowNode as n, constant as c, output as o, describeImagesExample } 
 import { checkJsonSchema } from '../../src/shared/domain/workflow/jsonSchema.js';
 import { executionNode, editableDefinition, isRuntimeElement } from '../../src/shared/domain/workflow/contracts.js';
 import { inferGraphTypes, setNodeBinding } from '../../src/renderer/src/features/workflow/workflowBindings.js';
-import { textDocument, parseTextDocument } from '../../src/renderer/src/features/workflow/workflowText.js';
-import { bindings, bindingHandle, preparedElements } from '../../src/shared/domain/workflow/contracts.js';
+import { editableTextParts } from '../../src/renderer/src/features/workflow/workflowText.js';
+import { bindings, bindingHandle, preparedElements, outputVariables, outputBindingType } from '../../src/shared/domain/workflow/contracts.js';
+
+test('workflow attachments are image input references, never managed artifacts or text references', () => {
+  const attachment = { attachmentId: '00000000-0000-4000-8000-000000000000' };
+  const graph = (type, value) => ({ schemaVersion: 1, nodes: [n('source', 'element', { source: 'fixed', parameter: 'source', valueType: type, default: value })], outputs: {} });
+  assert.equal(validateDefinition(graph('image', attachment)).valid, true);
+  assert.equal(validateDefinition(graph('list<image>', [attachment, { elementId: 1 }])).valid, true);
+  assert.equal(validateDefinition(graph('text', attachment)).valid, false);
+  assert.equal(validateDefinition(graph('image', { attachmentId: '../file.png' })).valid, false);
+  assert.equal(validateDefinition(graph('image', { ...attachment, elementId: 1 })).valid, false);
+  assert.equal(matchesType(attachment, 'image'), false, 'attachments must be prepared into run-bound artifacts before execution');
+});
+
+test('model output variables retain raw text and infer nested schema fields without extraction nodes', () => {
+  const model = n('model', 'model', { outputType: 'json', jsonSchema: { type: 'object', properties: { title: { type: 'string' }, score: { type: 'number' }, details: { type: 'object', properties: { labels: { type: 'array', items: { type: 'string' } } } } } } }, { prompt: c('JSON') });
+  const ref = (path = [], port = 'value') => ({ ...o('model'), port, path });
+  assert.deepEqual(outputVariables(model).map((v) => [v.name, v.type]), [['text', 'text'], ['structured_output', 'json'], ['structured_output.title', 'text'], ['structured_output.score', 'number'], ['structured_output.details', 'json'], ['structured_output.details.labels', 'list<text>']]);
+  assert.equal(outputBindingType(model, ref([], 'raw')), 'text');
+  assert.equal(outputBindingType(model, ref(['title'])), 'text');
+  assert.equal(outputBindingType(model, ref(['missing'])), undefined);
+  const graph = { schemaVersion: 1, nodes: [model, n('answer', 'preview', { valueType: 'text' }, { value: ref(['title']) }), n('raw', 'preview', { valueType: 'text' }, { value: ref([], 'raw') })] };
+  assert.deepEqual(validateDefinition(graph).errors, []);
+  graph.nodes[1].inputs.value = ref(['score']);
+  assert.ok(validateDefinition(graph).errors.some((e) => e.message.includes('需要 text，实际 number')));
+  assert.equal(inferGraphTypes(graph).nodes[1].config.valueType, 'number');
+  graph.nodes[1].inputs.value = ref(['__proto__']);
+  assert.equal(validateDefinition(graph).valid, false);
+  const legacy = n('legacy', 'model', { outputType: 'text' });
+  assert.equal(outputBindingType(legacy, o('legacy')), 'text');
+  assert.deepEqual(outputVariables(legacy), [{ name: 'text', type: 'text', port: 'text', path: [] }]);
+  assert.equal(outputBindingType(legacy, { ...o('legacy'), port: 'text' }), 'text');
+  assert.equal(outputBindingType(model, { ...o('model'), port: 'text' }), 'text', 'the text variable retains its meaning when structured output is enabled');
+});
+
+test('wiring into text appends references while preserving text and existing connections', () => {
+  const original = n('combined', 'element', { source: 'fixed', valueType: 'text', parameter: 'combined', default: '前缀：' });
+  const connected = setNodeBinding(original, 'template:new', { ...o('model'), port: 'text' });
+  assert.equal(original.config.default, '前缀：');
+  assert.equal(Object.hasOwn(connected.config, 'default'), false);
+  assert.deepEqual(connected.config.parts, [{ kind: 'text', text: '前缀：' }, { kind: 'ref', ref: { ...o('model'), port: 'text' } }]);
+  const appended = setNodeBinding({ ...connected, config: { ...connected.config, parts: [...connected.config.parts, { kind: 'text', text: '后缀' }] } }, 'template:new', o('other'));
+  assert.equal(appended.config.parts.length, 4);
+  assert.equal(bindingHandle(bindings(appended)[1].field), 'template:3');
+  const disconnected = setNodeBinding(appended, 'template:1', null);
+  assert.equal(disconnected.config.parts[0].text, '前缀：');
+  assert.equal(disconnected.config.parts[2].text, '后缀');
+  assert.deepEqual(disconnected.config.parts[3], { kind: 'ref', ref: o('other') });
+  const reconnected = setNodeBinding(disconnected, 'template:1', o('replacement'));
+  assert.deepEqual(reconnected.config.parts[1], { kind: 'ref', ref: o('replacement') });
+  for (const config of [
+    { source: 'runtime', valueType: 'text', default: '运行时填写' },
+    { source: 'fixed', valueType: 'text', default: { elementId: 1 } },
+    { source: 'fixed', valueType: 'list<image>', default: [] },
+  ]) {
+    const node = n('excluded', 'element', config);
+    assert.equal(setNodeBinding(node, 'template:new', o('model')), node);
+  }
+});
 
 test('inline text references have real edges, exact handles, type checking and cycle detection', () => {
   const d = { schemaVersion: 1, nodes: [n('a', 'element', { source: 'fixed', valueType: 'text', parts: [{ kind: 'text', text: '请翻译 ' }, { kind: 'ref', ref: o('b') }] }), n('b', 'element', { source: 'runtime', valueType: 'text', parameter: 'b' })] };
@@ -20,13 +77,13 @@ test('inline text references have real edges, exact handles, type checking and c
   assert.ok(validateDefinition(d).errors.some((e) => e.message.includes('需要 text')));
 });
 
-test('text editing preserves literal braces and distinguishes references with the same display name', () => {
-  const parts = [{ kind: 'text', text: '{{同名}} 与 ' }, { kind: 'ref', ref: o('a') }, { kind: 'text', text: ' / ' }, { kind: 'ref', ref: o('b') }];
-  const document = textDocument(parts, () => '同名');
-  assert.equal(document.references.length, 2);
-  assert.notEqual(document.references[0].token, document.references[1].token);
-  assert.deepEqual(parseTextDocument(document.text, document.references), parts);
-  assert.deepEqual(parseTextDocument('{{未插入的变量}}', []), [{ kind: 'text', text: '{{未插入的变量}}' }]);
+test('text composition preserves literal braces, reference identities and order', () => {
+  const a = { kind: 'ref', ref: o('a') }, b = { kind: 'ref', ref: o('b') };
+  assert.deepEqual(editableTextParts([a, b]), [{ kind: 'text', text: '' }, a, { kind: 'text', text: '' }, b, { kind: 'text', text: '' }]);
+  const parts = [{ kind: 'text', text: '{{同名}} 与 ' }, a, { kind: 'text', text: ' / ' }, b];
+  assert.deepEqual(editableTextParts(parts), [...parts, { kind: 'text', text: '' }]);
+  assert.deepEqual(editableTextParts([{ kind: 'text', text: '{{未插入的变量}}' }]), [{ kind: 'text', text: '{{未插入的变量}}' }]);
+  assert.equal(parts.length, 4, 'opening the editor does not mutate the saved parts');
 });
 
 test('consumer and loop types follow connected content, including downstream edits', () => {

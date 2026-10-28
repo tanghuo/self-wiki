@@ -35,6 +35,93 @@ async function until(fn, predicate, timeout = 7000) {
 function create(service, d) { return service.create({ requestKey: key(), name: 'test', definition: d }); }
 async function run(service, w, inputs = {}) { return service.createRun(w.id, { requestKey: key(), revision: w.revision, inputs }); }
 
+test('uploaded workflow attachments persist outside the library and enter it only through a save node', async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-attachments-'));
+  let app = await createServer({ port: 0, dataDir: dir });
+  t.after(async () => { await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-attachments-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const post = (route, payload) => fetch(new URL(route, app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+  const libraryCount = async () => (await repoFetch(app, 'api/elements?pageSize=1')).pagination.total;
+  const before = await libraryCount();
+  const png = await sharp({ create: { width: 16, height: 12, channels: 3, background: '#446688' } }).png().toBuffer();
+  const response = await fetch(new URL('api/workflow-input-images', app.url), { method: 'POST', headers: { 'content-type': 'application/octet-stream', 'x-file-name': 'pasted.png' }, body: png });
+  assert.equal(response.status, 200);
+  const attachment = await response.json();
+  assert.deepEqual(Object.keys(attachment), ['attachmentId']);
+  assert.equal(await libraryCount(), before);
+  const mediaRoute = `api/workflow-input-images/${attachment.attachmentId}/media`;
+  let media = await fetch(new URL(mediaRoute, app.url));
+  assert.equal(media.status, 200); assert.equal(media.headers.get('content-type'), 'image/png');
+  assert.deepEqual(Buffer.from(await media.arrayBuffer()), png);
+  const invalid = await fetch(new URL('api/workflow-input-images', app.url), { method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: 'not an image' });
+  assert.equal(invalid.status, 400);
+  assert.equal((await fetch(new URL('api/workflow-input-images/00000000-0000-4000-8000-000000000000/media', app.url))).status, 404);
+  assert.equal((await fetch(new URL('api/workflow-input-images/not-a-uuid/media', app.url))).status, 404);
+  assert.equal((await fetch(new URL('api/workflow-input-images/aaaa/media', app.url))).status, 400);
+  const makeNodes = () => [n('fixed', 'element', { source: 'fixed', parameter: 'fixed', valueType: 'list<image>', default: [attachment] }), n('input', 'element', { source: 'runtime', parameter: 'input', valueType: 'list<image>' })];
+  const created = await post('api/workflows', { name: '附件隔离', requestKey: key(), definition: definition(makeNodes()) });
+  assert.equal(created.status, 200); const w = await created.json();
+  assert.equal((await (await post(`api/workflows/${w.id}/validate`, {})).json()).valid, true);
+  await app.close(); app = await createServer({ port: 0, dataDir: dir });
+  media = await fetch(new URL(mediaRoute, app.url));
+  assert.equal(media.status, 200); assert.deepEqual(Buffer.from(await media.arrayBuffer()), png, 'attachments survive restarting the server');
+  const started = await post(`api/workflows/${w.id}/runs`, { requestKey: key(), revision: w.revision, inputs: { input: [attachment] } });
+  assert.equal(started.status, 200); const runId = (await started.json()).id;
+  async function finished(id) {
+    for (let tries = 0; tries < 100; tries++) { const r = await repoFetch(app, `api/workflow-runs/${id}`); if (r.state === 'succeeded') return r; if (r.state === 'failed') assert.fail(JSON.stringify(r)); await new Promise((resolve) => setTimeout(resolve, 20)); }
+    assert.fail('workflow did not finish');
+  }
+  const done = await finished(runId);
+  assert.ok(done.inputs.fixed[0].artifactId); assert.deepEqual(done.inputs.fixed, done.inputs.input);
+  assert.equal(await libraryCount(), before, 'upload, restart and execution create no library entry');
+  const snapshot = await fetch(new URL(`api/workflow-artifacts/${done.inputs.input[0].artifactId}/media?runId=${runId}`, app.url));
+  assert.deepEqual(Buffer.from(await snapshot.arrayBuffer()), png);
+  const derivedResponse = await post(`api/workflow-runs/${runId}/derive`, { requestKey: key() });
+  assert.equal(derivedResponse.status, 200); await finished((await derivedResponse.json()).id);
+  assert.equal(await libraryCount(), before);
+  const saveWorkflow = await (await post('api/workflows', { name: '显式保存附件', requestKey: key(), definition: definition([...makeNodes(), n('save', 'library.save', { valueType: 'list<image>' }, { value: o('input') })]) })).json();
+  const savedRun = await (await post(`api/workflows/${saveWorkflow.id}/runs`, { requestKey: key(), revision: saveWorkflow.revision, inputs: { input: [attachment] } })).json();
+  await finished(savedRun.id);
+  assert.equal(await libraryCount(), before + 1, 'only an explicit library.save node inserts the image into the library');
+});
+
+test('structured model fields and raw text flow independently through consumers, saves and loop returns', async (t) => {
+  const raw = JSON.stringify({ title: '标题', score: 7 });
+  const { service, repo, db } = await fixture(t, { model: async (_snapshot, options) => { options.onRequest(); return { text: raw }; } });
+  const model = () => n('model', 'model', { adapterId: 'grok-text', outputType: 'json', jsonSchema: { type: 'object', properties: { title: { type: 'string' }, score: { type: 'number' } }, required: ['title', 'score'] } }, { prompt: c('返回 JSON') });
+  const title = { ...o('model'), port: 'structured_output', path: ['title'] }, text = { ...o('model'), port: 'text' };
+  const body = { nodes: [model()], outputs: { title, text } };
+  const w = create(service, definition([model(), n('save', 'library.save', { valueType: 'text' }, { value: title }), n('saveRaw', 'library.save', { valueType: 'text' }, { value: text }), n('title', 'preview', { valueType: 'text' }, { value: title }), n('score', 'preview', { valueType: 'number' }, { value: { ...o('model'), path: ['score'] } }), n('loop', 'foreach', { itemsType: 'list<text>', maxItems: 1, captureTypes: {}, body }, { items: c(['one']) })]));
+  const r = await run(service, w);
+  const done = await until(() => service.run(r.id), (v) => !['queued', 'running'].includes(v.state));
+  assert.equal(done.state, 'succeeded', JSON.stringify(done.instances));
+  const value = (id) => repo.artifact(done.rootInstances.find((i) => i.nodeId === id).outputs.value).value;
+  assert.equal(value('title'), '标题'); assert.equal(value('score'), 7);
+  const saved = value('save')[0], savedRaw = value('saveRaw')[0];
+  assert.notEqual(saved, savedRaw, 'a field save must not reuse the whole object artifact identity');
+  assert.equal(db.prepare('SELECT body FROM elements WHERE id=?').get(saved).body, '标题');
+  assert.equal(db.prepare('SELECT body FROM elements WHERE id=?').get(savedRaw).body, raw);
+  const row = value('loop')[0];
+  assert.equal(row.outputs.title.type, 'text'); assert.deepEqual(row.outputs.title.path, ['title']);
+  assert.equal(row.outputs.text.type, 'text');
+  assert.equal(repo.artifact(row.outputs.text.artifactRef).value, raw);
+  const nextDefinition = structuredClone(done.definition);
+  nextDefinition.nodes.push(n('newConsumer', 'preview', { valueType: 'text' }, { value: { ...o('model'), port: 'text' } }));
+  const derived = await service.derive(r.id, { requestKey: key(), definition: nextDefinition });
+  const next = await until(() => service.run(derived.id), (v) => v.state === 'succeeded');
+  assert.ok(next.rootInstances.find((i) => i.nodeId === 'model').data.reusedFrom, 'new named selectors can consume reused historical artifact ports');
+  assert.equal(repo.artifact(next.rootInstances.find((i) => i.nodeId === 'newConsumer').outputs.value).value, raw);
+});
+
+test('schema failures retain raw model text and block consumers of structured fields', async (t) => {
+  const { service, repo } = await fixture(t, { model: async (_snapshot, options) => { options.onRequest(); return { text: '{"title":42}' }; } });
+  const w = create(service, definition([n('model', 'model', { adapterId: 'grok-text', outputType: 'json', jsonSchema: { type: 'object', properties: { title: { type: 'string' } }, required: ['title'] } }, { prompt: c('JSON') }), n('title', 'preview', { valueType: 'text' }, { value: { ...o('model'), path: ['title'] } })]));
+  const r = await run(service, w), done = await until(() => service.run(r.id), (v) => ['failed', 'partial_failed'].includes(v.state));
+  const model = done.instances.find((i) => i.nodeId === 'model');
+  assert.equal(model.state, 'failed'); assert.equal(model.outputs.value, undefined);
+  assert.equal(repo.artifact(model.outputs.raw).value, '{"title":42}');
+  assert.equal(done.instances.find((i) => i.nodeId === 'title').state, 'blocked');
+});
+
 for (const inLoop of [false, true]) test(`registered adapters supply contracts, opaque snapshots and safe recovery without workflow provider branches (${inLoop ? 'loop' : 'root'})`, async (t) => {
   const { createAdapterRegistry } = await import('../../src/server/application/modelAdapters/index.js');
   let submitted = 0, recovered = 0, configured = 0, revision = 'original', png;
@@ -305,6 +392,24 @@ test('workflow input image copies are fixed; managed image outputs have run-boun
   await assert.rejects(service.artifact(artifact.id, 999), /不属于/);
   await assert.rejects(run(service, w, { images: [{ path: 'C:/sensitive.png' }] }), /不接受文件路径/);
 });
+test('saving workflow JPEG and WebP images preserves MIME, download names and deduplication', async (t) => {
+  let bytes;
+  const f = await fixture(t, { generate: async () => ({ bytes }) });
+  for (const [format, extension] of [['jpeg', 'jpg'], ['webp', 'webp']]) {
+    bytes = await sharp(f.png).toFormat(format).toBuffer();
+    const w = create(f.service, definition([
+      n('generate', 'image.generate', { executor: 'grok-build' }, { prompt: c('image'), images: c([]) }),
+      n('save', 'library.save', { valueType: 'list<image>' }, { value: o('generate') }),
+    ]));
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const r = await run(f.service, w);
+      await until(() => f.service.run(r.id), (v) => v.state === 'succeeded');
+    }
+    const rows = f.db.prepare('SELECT original_name,mime_type FROM element_images WHERE mime_type=?').all(`image/${format}`);
+    assert.equal(rows.length, 1);
+    assert.ok(rows[0].original_name.endsWith(`.${extension}`));
+  }
+});
 test('workflow restart recovers local claims and marks dispatched external claims unknown; stale attempts cannot replace current output', async (t) => {
   const { service, repo } = await fixture(t);
   await service.close();
@@ -323,7 +428,7 @@ test('workflow restart recovers local claims and marks dispatched external claim
   assert.equal(repo.artifact(repo.instance(remote.id).outputs.value).value, 'new');
 });
 test('workflow endpoints enforce revisions, HTTP body boundaries and LAN denial for every resource family', async (t) => {
-  for (const route of ['/api/workflows', '/api/workflows/1', '/api/workflow-node-types', '/api/workflow-runs/1/events', '/api/workflow-runs/1/actions', '/api/workflow-artifacts/a/media']) for (const method of ['GET', 'POST', 'PUT', 'HEAD']) assert.match(lanRestriction(method, route, { allowWrite: true }), /仅限本机/);
+  for (const route of ['/api/workflows', '/api/workflows/1', '/api/workflow-node-types', '/api/workflow-runs/1/events', '/api/workflow-runs/1/actions', '/api/workflow-artifacts/a/media', '/api/workflow-input-images', '/api/workflow-input-images/a/media']) for (const method of ['GET', 'POST', 'PUT', 'HEAD']) assert.match(lanRestriction(method, route, { allowWrite: true }), /仅限本机/);
   const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-api-'));
   const app = await createServer({ port: 0, dataDir: dir });
   t.after(async () => { await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-api-')); await rm(dir, { recursive: true, force: true }); });

@@ -8,14 +8,21 @@ export function createWorkflowNodes({ repo, store, imageStore, adapters = modelA
     const a = repo.artifact(id);
     return a.type === 'image' ? { artifactId: a.id } : a.value;
   }
+  function outputArtifact(outputs = {}, port) {
+    if (outputs[port]) return outputs[port];
+    const legacy = port === 'text' ? outputs.raw || outputs.value : ['structured_output', 'images'].includes(port) ? outputs.value : null;
+    const expected = { text: 'text', structured_output: 'json', images: 'list<image>' }[port];
+    return legacy && repo.artifact(legacy).type === expected ? legacy : undefined;
+  }
   function resolve(binding, siblings, context) {
     if (!binding) return undefined;
     if (binding.kind === 'constant') return binding.value;
     if (binding.kind === 'text') return binding.parts.map((part) => part.kind === 'text' ? part.text : resolve(part.ref, siblings, context)).join('');
     if (binding.kind === 'output') {
       const source = siblings.find((s) => s.nodeId === binding.nodeId);
-      if (!source?.outputs[binding.port]) throw workflowError('上游输出缺失');
-      return safePath(readValue(source.outputs[binding.port]), binding.path || []);
+      const id = outputArtifact(source?.outputs, binding.port);
+      if (!id) throw workflowError('上游输出缺失');
+      return safePath(readValue(id), binding.path || []);
     }
     if (binding.kind === 'capture') return context.captures?.[binding.name];
     return context[binding.kind];
@@ -72,14 +79,14 @@ export function createWorkflowNodes({ repo, store, imageStore, adapters = modelA
     return paths;
   }
   return {
-    readValue, resolve, inputs, resource: (snapshot) => adapters.resource(snapshot),
+    readValue, outputArtifact, resolve, inputs, resource: (snapshot) => adapters.resource(snapshot),
     async execute({ n, i, run, siblings, signal }) {
       const values = inputs(n, siblings, i.context), c = n.config;
       if (n.type === 'foreach') return { foreach: true, values };
       if (n.type === 'review') return { review: true, value: values.value };
       if (local[n.type]) return { value: await local[n.type]({ n, i, run, siblings, values }) };
-      const directory = await store.attemptDirectory(i.attemptId);
       if (['model', 'image.generate'].includes(n.type)) {
+        const directory = await store.attemptDirectory(i.attemptId);
         const scope = i.scope === 'root' ? 'root' : `root/${i.context.foreachId}`;
         const snapshot = run.executors[`${scope}/${n.id}`];
         if (!snapshot) throw workflowError('适配器快照缺失');
@@ -117,7 +124,7 @@ export function createWorkflowNodes({ repo, store, imageStore, adapters = modelA
         const inputBinding = n.inputs.value;
         if (c.valueType === 'text') {
           // Stable across a failed save attempt, regardless of the new attempt ID.
-          const upstream = inputBinding.kind === 'output' && siblings.find((s) => s.nodeId === inputBinding.nodeId)?.outputs.value;
+          const upstream = inputBinding.kind === 'output' && !inputBinding.path?.length && outputArtifact(siblings.find((s) => s.nodeId === inputBinding.nodeId)?.outputs, inputBinding.port);
           let artifactId = upstream;
           if (!artifactId) {
             const result = repo.attempts(i.id).flatMap((a) => Object.values(a.data.outputs || {})).find((id) => repo.artifact(id).metadata.role === 'save_input');
@@ -132,7 +139,9 @@ export function createWorkflowNodes({ repo, store, imageStore, adapters = modelA
             signal.throwIfAborted();
             if (!repo.hasAccess(run.id, ref.artifactId)) throw workflowError('无法保存其他运行的图片', 403);
             const a = repo.artifact(ref.artifactId), bytes = await store.read(a);
-            const file = await imageStore.save(bytes, `workflow-${run.id}-${a.id}.png`);
+            const extension = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[a.metadata.mime];
+            if (!extension) throw workflowError('不支持保存此图片格式');
+            const file = await imageStore.save(bytes, `workflow-${run.id}-${a.id}.${extension}`);
             file.contentHash = a.hash;
             try { ids.push(repo.saveLibrary(i.id, a.id, { file, tags, source })); }
             finally { if (!repo.libraryFileUsed(file.storageKey)) await imageStore.remove(file.storageKey).catch(() => {}); }

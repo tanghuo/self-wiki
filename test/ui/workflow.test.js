@@ -4,14 +4,199 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
+import sharp from 'sharp';
 import { resolveBrowserPath } from '../resolveBrowserPath.js';
 import { createServer } from '../../src/server/server.js';
 import { defaultOrganizationConfig } from '../../src/shared/domain/organization.js';
 import { workflowNode as n, constant as c, output as o } from '../../src/shared/domain/workflow/examples.js';
 
 const browserPath = resolveBrowserPath();
-async function connectHandles(page, source, target, port) {
-  const from = source.locator('.react-flow__handle.source');
+test('material picker exposes complete long text and large images before confirming selection', { timeout: 30000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-picker-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-picker-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const shared = '参考图提供主体、服装、构图和光线。';
+  const fullText = `# 图片反推要求\n\n${Array.from({ length: 70 }, (_, i) => `${i + 1}. ${shared}请保留分段，并逐项核对细节。`).join('\n')}\n\n全文最后一行：这一条要求保留窗外的雨滴。`;
+  const texts = [];
+  for (const body of [shared.repeat(20) + '另一个相似素材', fullText]) {
+    const result = await fetch(new URL('api/elements', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body }) });
+    assert.equal(result.status, 201); texts.push(await result.json());
+  }
+  const png = await sharp({ create: { width: 1000, height: 700, channels: 3, background: '#b48255' } }).png().toBuffer();
+  const imageResponse = await fetch(new URL('api/images', app.url), { method: 'POST', headers: { 'content-type': 'application/octet-stream', 'x-file-name': 'large-reference.png' }, body: png });
+  assert.equal(imageResponse.status, 201); const image = await imageResponse.json();
+  const nodes = [n('text', 'element', { source: 'runtime', parameter: 'text', valueType: 'text' }), n('images', 'element', { source: 'runtime', parameter: 'images', valueType: 'list<image>' })];
+  await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '素材预览测试', definition: { schemaVersion: 1, nodes, outputs: {} }, requestKey: 'picker-preview-create' }) });
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } }); page.setDefaultTimeout(8000);
+  await page.goto(`${app.url}#workflow`);
+  await page.locator('.workflow-list article').filter({ hasText: '素材预览测试' }).getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '从资料库选择文字', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '选择工作流素材', exact: true });
+  await dialog.getByRole('button', { name: `预览素材 #${texts[1].id}`, exact: true }).click();
+  const full = dialog.locator('.workflow-picker-full-text');
+  await page.waitForFunction((expected) => document.querySelector('.workflow-picker-full-text')?.textContent === expected, fullText);
+  assert.equal(await full.textContent(), fullText);
+  const preview = dialog.getByRole('region', { name: '文字全文预览' });
+  assert.ok((await preview.boundingBox()).width > 500, 'desktop text has a readable full-width column');
+  await preview.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+  assert.ok(await preview.evaluate((element) => element.scrollTop > 0), 'the full preview can scroll to the final paragraphs');
+  await dialog.getByRole('button', { name: `预览素材 #${texts[0].id}`, exact: true }).click();
+  await page.waitForFunction((expected) => document.querySelector('.workflow-picker-full-text')?.textContent === expected, shared.repeat(20) + '另一个相似素材');
+  await dialog.getByRole('button', { name: `预览素材 #${texts[1].id}`, exact: true }).click();
+  await page.waitForFunction((expected) => document.querySelector('.workflow-picker-full-text')?.textContent === expected, fullText);
+  await page.screenshot({ path: '.local/workflow-picker-text.png', fullPage: true });
+  await page.setViewportSize({ width: 480, height: 900 });
+  assert.equal(await dialog.evaluate((element) => element.scrollWidth > element.clientWidth), false);
+  assert.ok(await dialog.locator('.workflow-picker-text-list>button').first().evaluate((element) => {
+    const snippet = element.querySelector('span').getBoundingClientRect(), metadata = element.querySelector('small').getBoundingClientRect();
+    return metadata.top >= snippet.bottom && metadata.bottom <= element.getBoundingClientRect().bottom;
+  }), 'mobile text snippets and metadata must not overlap');
+  assert.ok((await preview.boundingBox()).height >= 170);
+  const footer = await dialog.getByRole('button', { name: '使用选中素材', exact: true }).boundingBox();
+  assert.ok(footer.y + footer.height <= 900, 'confirm stays visible on mobile');
+  await page.screenshot({ path: '.local/workflow-picker-text-mobile.png', fullPage: true });
+  await dialog.getByRole('button', { name: '使用选中素材', exact: true }).click();
+  await page.waitForFunction((expected) => document.querySelector('.workflow-preparation-card[data-node-id="text"] pre')?.textContent === expected, fullText);
+  await page.setViewportSize({ width: 1500, height: 1000 });
+  await page.getByRole('button', { name: '从资料库选择图片', exact: true }).click();
+  await dialog.getByRole('button', { name: `预览素材 #${image.id}`, exact: true }).click();
+  await page.waitForFunction(() => { const image = document.querySelector('.workflow-picker-large-image'); return image?.complete && image.naturalWidth === 1000; });
+  assert.ok((await dialog.locator('.workflow-picker-large-image').boundingBox()).width > 500);
+  assert.equal(await dialog.getByRole('link', { name: '查看原图 ↗' }).getAttribute('href'), `/api/elements/${image.id}/image`);
+  await page.screenshot({ path: '.local/workflow-picker-image.png', fullPage: true });
+  await dialog.getByRole('button', { name: '使用选中素材', exact: true }).click();
+  await page.getByText('已选择 1 张图片', { exact: true }).waitFor();
+});
+
+test('preparation inputs match canvas nodes and numbered plan steps, including upstream text', { timeout: 20000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-node-map-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-node-map-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const nodes = [
+    n('instruction', 'element', { source: 'fixed', parameter: 'instruction', valueType: 'text', default: '反推这张图的构图与光线' }),
+    n('reference', 'element', { source: 'fixed', parameter: 'reference', valueType: 'list<image>', default: [] }),
+    n('describe', 'model', { adapterId: 'grok-text', outputType: 'text' }, { prompt: o('instruction'), images: o('reference') }),
+    n('compose', 'element', { source: 'fixed', valueType: 'text', parts: [{ kind: 'ref', ref: { ...o('describe'), port: 'text' } }] }),
+    n('images', 'element', { source: 'runtime', parameter: 'images', valueType: 'list<image>' }),
+    n('generate', 'image.generate', { adapterId: 'grok-image' }, { prompt: o('compose'), images: o('images') }),
+    n('check', 'review', { valueType: 'list<image>' }, { value: o('generate') }),
+  ];
+  nodes.forEach((node) => { node.name = node.type === 'element' ? '元素' : node.type === 'model' ? '模型调用' : node.type === 'review' ? '人工检查' : '图片生成'; });
+  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '节点对应测试', definition: { schemaVersion: 1, nodes, outputs: {} }, requestKey: 'node-map-create' }) });
+  assert.equal(response.status, 200);
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); page.setDefaultTimeout(8000);
+  await page.goto(`${app.url}#workflow`);
+  await page.getByRole('button', { name: /节点对应测试/ }).click();
+  const canvasNames = {};
+  for (const [index, node] of nodes.entries()) {
+    const canvasNode = page.locator(`.react-flow__node[data-id="${node.id}"]`);
+    canvasNames[node.id] = await canvasNode.locator('.workflow-node>strong').textContent();
+    assert.equal(await canvasNode.locator('.workflow-canvas-step').textContent(), `第 ${index + 1} 步`);
+  }
+  await page.getByRole('button', { name: '运行', exact: true }).click();
+  assert.deepEqual(await page.locator('.workflow-preparation-card').evaluateAll((cards) => cards.map((card) => card.dataset.nodeId)), ['instruction', 'reference', 'images']);
+  for (const [index, node] of nodes.entries()) {
+    const step = page.locator(`.workflow-plan li[data-node-id="${node.id}"]`);
+    assert.equal(await step.locator('.workflow-plan-number').textContent(), String(index + 1));
+    assert.equal(await step.locator('.workflow-plan-locate, strong').textContent(), canvasNames[node.id]);
+  }
+  assert.equal(await page.locator('.workflow-preparation-card[data-node-id="compose"]').count(), 0, 'model-returned text must never appear as a human input');
+  const composed = page.locator('.workflow-plan li[data-node-id="compose"]');
+  await composed.getByText('运行时自动获取上游结果，无需填写', { exact: true }).waitFor();
+  await composed.getByText('来自：第 3 步 · 模型调用', { exact: true }).waitFor();
+  await composed.getByText('用于：第 6 步 · 图片生成', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: '定位第 4 步 · 文字', exact: true }).count(), 0);
+  assert.equal(await page.locator('.workflow-input-form').getByRole('combobox', { name: /插入引用/ }).count(), 0, 'run inputs cannot rewire upstream dependencies');
+  await page.getByRole('button', { name: '定位第 1 步 · 文字', exact: true }).click();
+  const instruction = page.locator('.workflow-preparation-card[data-node-id="instruction"]');
+  assert.equal(await instruction.getAttribute('data-active'), 'true');
+  assert.equal(await page.locator('.workflow-plan li[data-node-id="instruction"]').getAttribute('data-active'), 'true');
+  assert.equal(await instruction.locator('textarea').first().evaluate((element) => element === document.activeElement), true);
+  await page.screenshot({ path: '.local/workflow-node-map.png', fullPage: true });
+  await page.setViewportSize({ width: 480, height: 900 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.getByRole('button', { name: '定位第 2 步 · 图片', exact: true }).click();
+  assert.equal(await page.locator('.workflow-preparation-card[data-node-id="reference"]').getAttribute('data-active'), 'true');
+  await page.screenshot({ path: '.local/workflow-node-map-mobile.png', fullPage: true });
+});
+
+test('run preparation edits fixed text and images, pastes images, and loads real thumbnails', { timeout: 30000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-inputs-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-inputs-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const text = n('instruction', 'element', { source: 'fixed', parameter: 'instruction', valueType: 'text' }); text.name = '元素';
+  const fixed = n('reference', 'element', { source: 'fixed', parameter: 'reference', valueType: 'list<image>' }); fixed.name = '元素';
+  const images = n('images', 'element', { source: 'runtime', parameter: 'images', valueType: 'list<image>', allowEmpty: false }); images.name = '元素';
+  const definition = { schemaVersion: 1, nodes: [text, fixed, images], outputs: {} };
+  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '完整输入测试', definition, requestKey: 'complete-inputs-create' }) });
+  assert.equal(response.status, 200); const created = await response.json();
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); page.setDefaultTimeout(8000);
+  const errors = []; page.on('pageerror', (error) => errors.push(error.message));
+  const libraryCount = async () => (await (await fetch(new URL('api/elements?pageSize=1', app.url))).json()).pagination.total;
+  const beforeCount = await libraryCount();
+  await page.goto(`${app.url}#workflow`);
+  await page.locator('.workflow-list article').filter({ hasText: '完整输入测试' }).getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  await page.getByRole('alert').getByText('请填写流程素材：第 1 步 · 文字、第 2 步 · 图片', { exact: true }).waitFor();
+  await page.getByLabel('第 1 步 · 文字', { exact: true }).fill('补充的反推要求');
+  const png = await sharp({ create: { width: 24, height: 24, channels: 3, background: '#b48255' } }).png().toBuffer();
+  const fixedField = page.getByLabel('第 2 步 · 图片，可粘贴图片', { exact: true });
+  await fixedField.locator('input[type=file]').setInputFiles({ name: 'reference.png', mimeType: 'image/png', buffer: png });
+  await fixedField.getByText('已选择 1 张图片', { exact: true }).waitFor();
+  const runtime = page.getByLabel('第 3 步 · 图片，可粘贴图片', { exact: true });
+  await runtime.evaluate((element, base64) => {
+    const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+    const clipboardData = new DataTransfer(); clipboardData.items.add(new File([bytes], 'pasted.png', { type: 'image/png' }));
+    element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+  }, png.toString('base64'));
+  await runtime.getByText('已选择 1 张图片', { exact: true }).waitFor();
+  assert.equal(await libraryCount(), beforeCount, 'uploading and pasting workflow inputs must not create content library entries');
+  await page.waitForFunction(() => [...document.querySelectorAll('.workflow-input-form img')].length === 2 && [...document.querySelectorAll('.workflow-input-form img')].every((image) => image.complete && image.naturalWidth > 0));
+  assert.equal(await page.getByRole('dialog', { name: '新增内容' }).count(), 0, 'paste stays in the workflow field');
+  await page.screenshot({ path: '.local/workflow-complete-inputs.png', fullPage: true });
+  await page.setViewportSize({ width: 480, height: 900 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
+  await page.screenshot({ path: '.local/workflow-complete-inputs-mobile.png', fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  const saved = await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json();
+  assert.deepEqual(saved.definition.nodes.find((node) => node.id === 'instruction').config.parts, [{ kind: 'text', text: '补充的反推要求' }]);
+  const run = await (await fetch(new URL(`api/workflow-runs/${saved.runs[0].id}`, app.url))).json();
+  assert.equal(run.inputs.images.length, 1);
+  assert.equal(run.inputs.reference.length, 1);
+  assert.ok(saved.definition.nodes.find((node) => node.id === 'reference').config.default[0].attachmentId);
+  assert.equal(await libraryCount(), beforeCount, 'running without a library.save node must not create library entries');
+  await page.reload();
+  await page.locator('.workflow-list article').filter({ hasText: '完整输入测试' }).getByRole('button', { name: '运行', exact: true }).click();
+  await page.waitForFunction(() => { const image = document.querySelector('.workflow-preparation-card[data-node-id="reference"] img'); return image?.complete && image.naturalWidth > 0; });
+  assert.equal(await libraryCount(), beforeCount, 'saved workflow attachments survive reloading without entering the library');
+  assert.deepEqual(errors, []);
+});
+test('ungrouping selected nodes preserves unrelated groups and all content', { timeout: 15000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-groups-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-groups-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const nodes = ['a', 'b', 'c', 'd'].map((id, index) => n(id, 'element', { source: 'fixed', valueType: 'text', parts: [{ kind: 'text', text: id }] }, {}, { x: index * 300, y: 0 }));
+  const groups = [{ id: 'group1', name: '第一组', nodeIds: ['a', 'b'] }, { id: 'group2', name: '第二组', nodeIds: ['c', 'd'] }];
+  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '分组保留测试', definition: { schemaVersion: 1, nodes, outputs: {}, layout: { groups } }, requestKey: 'groups-create' }) });
+  assert.equal(response.status, 200); const created = await response.json();
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await page.goto(`${app.url}#workflow`);
+  await page.getByRole('button', { name: /分组保留测试/ }).click();
+  await page.locator('.react-flow__node[data-id="a"]').click();
+  await page.getByRole('button', { name: '取消分组', exact: true }).click();
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  const saved = await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json();
+  assert.deepEqual(saved.definition.layout.groups, [groups[1]]);
+  assert.equal(saved.definition.nodes.length, 4);
+});
+async function connectHandles(page, source, target, port, outputPort = 'value') {
+  const from = source.locator(`.react-flow__handle.source[data-handleid="${outputPort}"]`);
   const to = target.locator(`.react-flow__handle.target[data-handleid="${port}"]`);
   await from.waitFor(); await to.waitFor();
   await page.evaluate(() => new Promise(requestAnimationFrame));
@@ -28,6 +213,147 @@ async function clickEdge(page) {
   await page.locator('.react-flow__edge.selected').waitFor();
 }
 
+test('selected prompt reference has a visible delete button and supports undo', { timeout: 20000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-edge-delete-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-edge-delete-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const source = n('source', 'element', { source: 'fixed', valueType: 'text', parameter: 'subject', default: '人物描述' }, {}, { x: 0, y: 0 });
+  const target = n('target', 'model', { adapterId: 'grok-text', outputType: 'text' }, { prompt: { kind: 'text', parts: [{ kind: 'text', text: '前缀' }, { kind: 'ref', ref: o('source') }, { kind: 'text', text: '后缀' }] } }, { x: 500, y: 200 });
+  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '连线删除按钮测试', definition: { schemaVersion: 1, nodes: [source, target], outputs: {} }, requestKey: 'edge-delete-create' }) });
+  assert.equal(response.status, 200); const created = await response.json();
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  await page.goto(`${app.url}#workflow`); await page.getByRole('button', { name: /连线删除按钮测试/ }).click();
+  await page.locator('.react-flow__edge').waitFor();
+  assert.equal(await page.getByRole('button', { name: '× 删除连线', exact: true }).count(), 0);
+  await clickEdge(page);
+  await page.getByRole('button', { name: '× 删除连线', exact: true }).click();
+  await page.locator('.react-flow__edge').waitFor({ state: 'detached' });
+  assert.equal(await page.locator('.react-flow__node').count(), 2);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  const saved = await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json();
+  const prompt = saved.definition.nodes.find((node) => node.id === 'target').inputs.prompt;
+  assert.equal(prompt.parts.some((part) => part.kind === 'ref'), false);
+  assert.equal(prompt.parts.map((part) => part.text).join(''), '前缀后缀');
+  await page.getByRole('button', { name: '撤销', exact: true }).click();
+  await page.locator('.react-flow__edge').waitFor();
+});
+
+test('model text can be wired into editable text then into image generation', { timeout: 40000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-text-wire-ui-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-text-wire-ui-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const model = n('model', 'model', { adapterId: 'grok-text', outputType: 'text' }, { prompt: c('描述图片') }, { x: 0, y: 0 }); model.name = '模型输出';
+  const text = n('text', 'element', { source: 'fixed', valueType: 'text', parameter: 'combined', default: '请画：' }, {}, { x: 380, y: 0 }); text.name = '拼接文字';
+  const image = n('image', 'image.generate', { adapterId: 'grok-image' }, {}, { x: 760, y: 0 });
+  const replacement = n('replacement', 'element', { source: 'fixed', valueType: 'text', parameter: 'replacement', default: '替代文字' }, {}, { x: 0, y: 260 }); replacement.name = '替代说明';
+  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '文字连线测试', definition: { schemaVersion: 1, nodes: [model, text, image, replacement], outputs: {} }, requestKey: 'text-wire-ui-create' }) });
+  assert.equal(response.ok, true); const created = await response.json();
+  const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } }); page.setDefaultTimeout(8000);
+  const errors = []; page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto(`${app.url}#workflow`); await page.getByRole('button', { name: /文字连线测试/ }).click();
+  const source = page.locator('.react-flow__node[data-id="model"]'), middle = page.locator('.react-flow__node[data-id="text"]'), target = page.locator('.react-flow__node[data-id="image"]');
+  await connectHandles(page, source, middle, 'template:new', 'text');
+  const editor = page.getByLabel('内容', { exact: true });
+  await editor.waitFor();
+  assert.equal(await editor.inputValue(), '请画：');
+  assert.equal(await page.getByLabel('内容文字来源 1').locator('option:checked').textContent(), '模型输出 / 回答原文');
+  await page.getByLabel('内容补充文字 1', { exact: true }).fill('\n补充要求：水彩风格。');
+  await middle.locator('.react-flow__handle[data-handleid="template:1"]').waitFor();
+  await connectHandles(page, middle, target, 'prompt');
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 2);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  const saved = await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json();
+  assert.deepEqual(saved.definition.nodes.find((node) => node.id === 'text').config.parts, [
+    { kind: 'text', text: '请画：' }, { kind: 'ref', ref: { ...o('model'), port: 'text' } }, { kind: 'text', text: '\n补充要求：水彩风格。' },
+  ]);
+  assert.equal(saved.definition.nodes.find((node) => node.id === 'image').inputs.prompt.nodeId, 'text');
+  await page.reload(); await page.getByRole('button', { name: /文字连线测试/ }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 2);
+  await middle.click();
+  assert.equal(await editor.inputValue(), '请画：');
+  assert.equal(await page.getByLabel('内容补充文字 1', { exact: true }).inputValue(), '\n补充要求：水彩风格。');
+  await page.getByLabel('内容文字来源 1').selectOption({ label: '替代说明' });
+  await page.locator('.react-flow__edge[aria-label="Edge from replacement to text"]').waitFor();
+  assert.equal(await editor.inputValue(), '请画：');
+  assert.equal(await page.getByLabel('内容补充文字 1').inputValue(), '\n补充要求：水彩风格。');
+  await page.getByRole('button', { name: '撤销', exact: true }).click();
+  await page.locator('.react-flow__edge[aria-label="Edge from model to text"]').waitFor();
+  await connectHandles(page, source, middle, 'template:new', 'text');
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 3);
+  assert.equal(await page.locator('.workflow-text-variable').count(), 2);
+  await page.getByRole('button', { name: '断开 模型输出 / 回答原文', exact: true }).first().click();
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 2);
+  assert.equal(await page.locator('.workflow-text-variable').count(), 1, 'disconnect removes only the selected occurrence');
+  await page.getByRole('button', { name: '撤销', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 3);
+  await page.getByRole('button', { name: '撤销', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 2);
+  const inspector = page.locator('.workflow-inspector');
+  assert.equal(await inspector.locator('.workflow-input-hint').count(), 0);
+  assert.equal(await inspector.locator('.workflow-text-field small').count(), 0);
+  assert.equal(await page.getByLabel('内容来源').locator('option:checked').textContent(), '文字与上游结果');
+  await inspector.getByRole('button', { name: '断开 模型输出 / 回答原文', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 1);
+  assert.equal(await editor.inputValue(), '请画：\n补充要求：水彩风格。');
+  await page.getByRole('button', { name: '撤销', exact: true }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 2);
+  await page.screenshot({ path: '.local/workflow-text-connections.png' });
+  await editor.fill('前缀替换后缀 {{普通文字}}');
+  await editor.focus();
+  await editor.press('Home');
+  await editor.press('ArrowRight'); await editor.press('ArrowRight');
+  await editor.press('Shift+ArrowRight'); await editor.press('Shift+ArrowRight');
+  await page.getByLabel('内容插入引用').selectOption({ label: '模型输出 / 回答原文' });
+  assert.equal(await editor.inputValue(), '前缀');
+  assert.equal(await page.getByLabel('内容补充文字 1').inputValue(), '后缀 {{普通文字}}');
+  assert.equal(await page.locator('.workflow-text-variable').count(), 2);
+  assert.equal(await page.getByLabel('内容文字来源 1').getByRole('option', { name: '拼接文字', exact: true }).count(), 0, 'self references cannot be selected');
+  assert.deepEqual(errors, []);
+});
+
+test('model output ports and schema variables are visible, selectable and survive save and reopen', { timeout: 30000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-outputs-ui-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-outputs-ui-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const model = n('model', 'model', { adapterId: 'grok-text', outputType: 'json', jsonSchema: { type: 'object', properties: { title: { type: 'string' }, score: { type: 'number' } }, required: ['title', 'score'] } }, { prompt: c('返回 JSON') }, { x: 0, y: 0 }); model.name = '提取信息';
+  const save = n('save', 'library.save', { valueType: 'text' }, {}, { x: 400, y: 0 }); save.name = '保存标题';
+  const raw = n('raw', 'library.save', { valueType: 'text' }, {}, { x: 400, y: 250 }); raw.name = '保存原文';
+  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '输出变量测试', definition: { schemaVersion: 1, nodes: [model, save, raw], outputs: {} }, requestKey: 'outputs-ui-create' }) });
+  assert.equal(response.ok, true); const created = await response.json();
+  const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } }); page.setDefaultTimeout(8000);
+  const errors = []; page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto(`${app.url}#workflow`); await page.getByRole('button', { name: /输出变量测试/ }).click();
+  const source = page.locator('.react-flow__node[data-id="model"]');
+  await source.getByLabel('输出 text', { exact: true }).waitFor();
+  await source.getByLabel('输出 structured_output', { exact: true }).waitFor();
+  await source.click();
+  const inspector = page.locator('.workflow-inspector');
+  await inspector.getByText('structured_output.title', { exact: true }).waitFor();
+  const schema = page.getByLabel('结构化输出 Schema', { exact: true });
+  await schema.fill('{'); await page.getByRole('alert').filter({ hasText: 'Schema 未应用' }).waitFor();
+  const updatedSchema = { ...model.config.jsonSchema, properties: { ...model.config.jsonSchema.properties, summary: { type: 'string' } } };
+  await schema.fill(JSON.stringify(updatedSchema));
+  await inspector.getByText('structured_output.summary', { exact: true }).waitFor();
+  await page.locator('.react-flow__node[data-id="save"]').click();
+  await page.getByLabel('value输出变量', { exact: true }).selectOption({ label: '提取信息 / 结构化结果.title (文字)' });
+  assert.equal(await page.getByLabel('value输出变量').getByRole('option', { name: /结构化结果.score/ }).count(), 0, 'numeric fields cannot be selected for a text save');
+  await connectHandles(page, source, page.locator('.react-flow__node[data-id="raw"]'), 'value', 'text');
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 2);
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  const saved = await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json();
+  assert.deepEqual(saved.definition.nodes.find((n) => n.id === 'save').inputs.value, { ...o('model'), port: 'structured_output', path: ['title'] });
+  assert.equal(saved.definition.nodes.find((n) => n.id === 'raw').inputs.value.port, 'text');
+  assert.equal(saved.definition.nodes[0].config.jsonSchema.properties.summary.type, 'string');
+  await page.reload(); await page.getByRole('button', { name: /输出变量测试/ }).click();
+  await page.locator('.react-flow__node[data-id="save"]').click();
+  assert.equal(await page.getByLabel('value输出变量').locator('option:checked').textContent(), '提取信息 / 结构化结果.title (文字)');
+  await page.screenshot({ path: '.local/workflow-output-variables.png' });
+  assert.deepEqual(errors, []);
+});
+
 test('simplified configuration preserves drafts, creates loop captures by wiring and samples fixed lists', { timeout: 40000, skip: !browserPath && 'Browser required' }, async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-simplified-ui-'));
   const app = await createServer({ port: 0, dataDir: dir });
@@ -40,7 +366,8 @@ test('simplified configuration preserves drafts, creates loop captures by wiring
   const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } }); page.setDefaultTimeout(10000);
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${app.url}#workflow`); await page.getByRole('button', { name: /简化配置测试/ }).click();
-  await connectHandles(page, page.locator('.react-flow__node[data-id="source"]'), page.locator('.react-flow__node[data-id="loop"]'), 'capture:new');
+  await page.locator('.react-flow__node[data-id="loop"]').click();
+  await page.getByLabel('带入循环的内容', { exact: true }).selectOption({ label: '外部说明 / 内容' });
   await page.locator('.react-flow__node[data-id="loop"]').getByText('外部说明', { exact: true }).waitFor();
   await page.locator('.react-flow__node[data-id="loop"]').click();
   assert.equal(await page.getByRole('button', { name: '添加循环外的内容', exact: true }).count(), 0);
@@ -48,7 +375,7 @@ test('simplified configuration preserves drafts, creates loop captures by wiring
   const palette = page.locator('.workflow-palette');
   await palette.getByRole('button', { name: /^元素\s/ }).click();
   await page.getByLabel('内容插入引用', { exact: true }).selectOption({ label: '循环外：外部说明' });
-  assert.equal(await page.getByLabel('内容', { exact: true }).inputValue(), '{{循环外：外部说明}}');
+  assert.equal(await page.getByLabel('内容文字来源 1', { exact: true }).locator('option:checked').textContent(), '循环外：外部说明');
   await page.getByRole('button', { name: '主流程', exact: true }).click();
   await palette.getByRole('button', { name: /^数据处理\s/ }).click();
   await page.getByLabel('操作', { exact: true }).selectOption('list');
@@ -68,7 +395,7 @@ test('simplified configuration preserves drafts, creates loop captures by wiring
   await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 2);
   assert.equal(await page.locator('.react-flow__edge').count(), 2);
   await page.getByRole('button', { name: '首项试跑', exact: true }).click();
-  await page.getByText('首项试跑：每个批量循环只处理首项', { exact: true }).waitFor();
+  await page.locator('.workflow-step').getByText('首项试跑', { exact: true }).waitFor();
   await page.getByText(/逐项处理：任务列表的第 1 项/).waitFor();
   await page.screenshot({ path: '.local/workflow-simplified-sample.png' });
   await page.getByRole('button', { name: '开始试跑', exact: true }).click();
@@ -77,12 +404,13 @@ test('simplified configuration preserves drafts, creates loop captures by wiring
   assert.equal(await page.locator('.workflow-batch tbody tr').count(), 1);
   await page.getByRole('button', { name: '编辑草稿', exact: true }).click();
   await page.getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   assert.equal(await page.locator('.workflow-batch tbody tr').count(), 2);
   assert.deepEqual(errors, []);
 });
 
-test('upstream mode waits for manual wiring; real pointer actions disconnect, delete and reconnect image edges', { timeout: 40000, skip: !browserPath && 'Browser required' }, async (t) => {
+test('image source selection connects immediately; pointer actions disconnect, delete and reconnect edges', { timeout: 40000, skip: !browserPath && 'Browser required' }, async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-wiring-ui-'));
   const app = await createServer({ port: 0, dataDir: dir });
   const browser = await chromium.launch({ executablePath: browserPath, headless: true });
@@ -97,9 +425,12 @@ test('upstream mode waits for manual wiring; real pointer actions disconnect, de
   const source = page.locator('.react-flow__node[data-id="first"]'), target = page.locator('.react-flow__node[data-id="generate"]');
   await target.click();
   assert.equal(await page.getByLabel('images绑定方式', { exact: true }).count(), 0);
-  await page.getByText('可从画布中的图片来源连线，不需要时留空。', { exact: true }).waitFor();
+  await page.getByLabel('images输出变量', { exact: true }).waitFor();
   assert.equal(await page.locator('.react-flow__edge').count(), 0);
-  assert.equal(await page.getByLabel('images上游节点').count(), 0, 'source mode must not choose a node');
+  await page.getByLabel('images输出变量').selectOption({ label: '第一张 / 内容 (多张图片)' });
+  await page.locator('.react-flow__edge[aria-label="Edge from first to generate"]').waitFor();
+  await page.getByRole('button', { name: '断开参考图片', exact: true }).click();
+  await page.locator('.react-flow__edge').waitFor({ state: 'detached' });
   await connectHandles(page, source, target, 'images'); await page.locator('.react-flow__edge').waitFor();
   await page.getByRole('button', { name: '断开参考图片', exact: true }).click();
   await page.locator('.react-flow__edge').waitFor({ state: 'detached' });
@@ -142,6 +473,8 @@ test('content elements expose sources and typed run fields; normal model setting
   await page.getByRole('button', { name: '新建空白', exact: true }).click();
   const palette = page.locator('.workflow-palette'), inspector = page.locator('.workflow-inspector');
   await palette.getByRole('button', { name: /^元素\s/ }).click();
+  await page.locator('.react-flow__node').waitFor();
+  assert.equal(await page.locator('.react-flow__node').count(), 1, 'single click adds one node');
   await page.locator('.react-flow__node strong').filter({ hasText: /^文字$/ }).waitFor();
   assert.equal(await page.locator('.react-flow__node').getByText('固定内容', { exact: true }).count(), 0);
   assert.equal(await page.locator('.workflow-node-value-type').count(), 0);
@@ -162,14 +495,14 @@ test('content elements expose sources and typed run fields; normal model setting
   await page.screenshot({ path: '.local/workflow-adapter-fields.png' });
   await inspector.getByLabel('提示词', { exact: true }).fill('看看 ');
   await inspector.getByLabel('提示词插入引用', { exact: true }).selectOption({ label: '本次主题' });
-  assert.equal(await inspector.getByLabel('提示词', { exact: true }).inputValue(), '看看 {{本次主题}}');
+  assert.equal(await inspector.getByLabel('提示词', { exact: true }).inputValue(), '看看 ');
+  assert.equal(await inspector.getByLabel('提示词文字来源 1').locator('option:checked').textContent(), '本次主题');
   await page.locator('.react-flow__edge').waitFor();
   await connectHandles(page, page.locator('.react-flow__node').filter({ has: page.locator('strong').getByText('本次主题', { exact: true }) }), page.locator('.react-flow__node').filter({ has: page.locator('strong').getByText('模型调用', { exact: true }) }), 'prompt');
-  await inspector.getByText('来自：本次主题', { exact: true }).waitFor();
-  assert.equal(await inspector.getByLabel('提示词', { exact: true }).count(), 0, 'direct wiring shows a source block rather than template syntax');
-  assert.equal(await inspector.getByLabel('提示词插入引用', { exact: true }).count(), 0);
+  assert.equal(await inspector.getByLabel('提示词文字来源 1').locator('option:checked').textContent(), '本次主题');
+  assert.equal(await inspector.getByLabel('提示词', { exact: true }).inputValue(), '', 'wired text is a variable block with editable text on both sides');
   await page.screenshot({ path: '.local/workflow-connected-adapter.png' });
-  await inspector.getByRole('button', { name: '断开提示词', exact: true }).click();
+  await inspector.getByRole('button', { name: '断开 本次主题', exact: true }).click();
   await page.locator('.react-flow__edge').waitFor({ state: 'detached' });
   assert.equal(await inspector.getByLabel('提示词', { exact: true }).inputValue(), '');
   await page.getByRole('button', { name: '删除节点', exact: true }).click();
@@ -180,7 +513,8 @@ test('content elements expose sources and typed run fields; normal model setting
   await page.getByLabel('显示名称', { exact: true }).fill('带引用文字');
   await page.getByLabel('内容', { exact: true }).fill('请翻译：');
   await page.getByLabel('内容插入引用', { exact: true }).selectOption({ label: '本次主题' });
-  assert.equal(await page.getByLabel('内容', { exact: true }).inputValue(), '请翻译：{{本次主题}}');
+  assert.equal(await page.getByLabel('内容', { exact: true }).inputValue(), '请翻译：');
+  assert.equal(await page.getByLabel('内容文字来源 1').locator('option:checked').textContent(), '本次主题');
   await page.locator('.react-flow__edge').waitFor();
   assert.equal(await page.locator('.react-flow__edge').count(), 1);
   await page.locator('.react-flow__edge').focus();
@@ -194,9 +528,9 @@ test('content elements expose sources and typed run fields; normal model setting
   await page.screenshot({ path: '.local/workflow-text-inline.png' });
   await page.getByRole('button', { name: '运行', exact: true }).click();
   const form = page.locator('.workflow-input-form');
-  assert.equal(await form.locator('textarea').count(), 1);
-  assert.equal(await form.getByLabel('固定说明', { exact: true }).count(), 0);
-  await form.getByLabel('本次主题', { exact: true }).fill('本次填写的主题');
+  assert.equal(await form.locator('textarea').count(), 2);
+  assert.equal(await form.getByLabel(/第 [0-9]+ 步 · 固定说明$/).count(), 1);
+  await form.getByLabel(/第 [0-9]+ 步 · 本次主题$/).fill('本次填写的主题');
   await page.getByRole('button', { name: '开始运行', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   await page.locator('.workflow-result-heading').filter({ hasText: '本次主题' }).click();
@@ -288,7 +622,12 @@ test('workflow canvas creates from blank, binds outputs, saves, runs and restore
   await page.getByRole('button', { name: '运行', exact: true }).click();
   assert.equal(await page.locator('.workflow-input-form textarea').count(), 0);
   await page.locator('.workflow-input-form').getByRole('button', { name: '从资料库选择图片' }).waitFor();
-  await page.getByRole('button', { name: '关闭输入表单', exact: true }).click();
+  assert.equal(await page.locator('.workflow-editor:visible').count(), 0);
+  assert.equal(await page.locator('.workflow-toolbar').count(), 0);
+  assert.equal(await page.locator('.workflow-preparation-card>header').getByText('第 1 步 · 图片', { exact: true }).count(), 1);
+  await page.screenshot({ path: '.local/workflow-runtime-input.png' });
+  await page.getByRole('button', { name: '返回编辑', exact: true }).click();
+  await page.locator('.workflow-editor').waitFor();
   assert.equal(await page.getByLabel('图片数量', { exact: true }).count(), 0);
   assert.equal(await inspector.locator('textarea:visible').count(), 0);
   await page.screenshot({ path: '.local/workflow-elements-redesign.png' });
@@ -299,7 +638,6 @@ test('workflow canvas creates from blank, binds outputs, saves, runs and restore
   await page.getByLabel('内容', { exact: true }).fill('固定的中文提示词 {{不二次展开}}');
   await page.locator('.workflow-palette').getByRole('button', { name: '保存到内容库', exact: false }).click();
   assert.equal(await inspector.getByLabel('内容类型', { exact: true }).count(), 0);
-  await page.getByLabel('value绑定方式', { exact: true }).selectOption('output');
   assert.equal(await page.locator('.react-flow__edge').count(), 0);
   await connectHandles(page, page.locator('.react-flow__node').filter({ has: page.getByText('描述模板', { exact: true }) }), page.locator('.react-flow__node').filter({ has: page.getByText('保存到内容库', { exact: true }) }), 'value');
   await page.locator('.react-flow__edge').waitFor();
@@ -331,7 +669,7 @@ test('workflow canvas creates from blank, binds outputs, saves, runs and restore
   await page.getByText(/校验通过/).waitFor();
   await page.screenshot({ path: '.local/workflow-editor-ui.png' });
   await page.getByRole('button', { name: '运行', exact: true }).click();
-  assert.equal(await page.locator('.workflow-input-form').count(), 0);
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   await page.locator('.workflow-result-heading').first().click();
   await page.getByText('固定的中文提示词 {{不二次展开}}', { exact: true }).first().waitFor();
@@ -365,4 +703,66 @@ test('workflow human checks can be edited, accepted and persisted through the br
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   await page.locator('.workflow-result-heading').last().click();
   await page.getByText('修改后的文字', { exact: true }).first().waitFor();
+});
+
+test('workflow list runs directly, separates editing, and keeps review from saving to the library', { timeout: 40000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-ux-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-ux-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const topic = n('topic', 'element', { source: 'runtime', parameter: 'topic', valueType: 'text', required: true, default: '' }, {}, { x: 0, y: 0 });
+  topic.name = '元素';
+  const check = n('check', 'review', { valueType: 'text' }, { value: o('topic') }, { x: 340, y: 0 });
+  check.name = '核对文字';
+  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '直接运行测试', definition: { schemaVersion: 1, nodes: [topic, check], outputs: {} }, requestKey: 'ux-create' }) });
+  assert.equal(response.status, 200);
+  const before = await (await fetch(new URL('api/elements?pageSize=1', app.url))).json();
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } }); page.setDefaultTimeout(10000);
+  const errors = []; page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto(`${app.url}#workflow`);
+  const row = page.locator('.workflow-list article').filter({ hasText: '直接运行测试' });
+  assert.equal(await row.getByRole('button', { name: '最近运行', exact: true }).isDisabled(), true);
+  await row.getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('heading', { name: '准备本次素材', exact: true }).waitFor();
+  assert.equal(await page.locator('.workflow-editor:visible').count(), 0);
+  assert.equal(await page.locator('.workflow-preparation-card>header').getByText('第 1 步 · 文字', { exact: true }).count(), 1);
+  const plan = page.locator('.workflow-plan');
+  await plan.getByText('需要你确认的步骤：核对文字。运行到这里会暂停等待。', { exact: true }).waitFor();
+  assert.equal(await plan.getByRole('button', { name: '定位第 1 步 · 文字', exact: true }).count(), 1);
+  assert.equal(await plan.getByText('元素', { exact: true }).count(), 0);
+  assert.equal(await plan.getByText(/没有保存到内容库/).count(), 0);
+  const wideForm = await page.locator('.workflow-input-form').boundingBox();
+  const widePlan = await page.locator('.workflow-plan').boundingBox();
+  assert.ok(widePlan.x >= wideForm.x + wideForm.width - 2, 'desktop workbench places the plan beside the inputs');
+  await page.setViewportSize({ width: 480, height: 800 });
+  const narrowForm = await page.locator('.workflow-input-form').boundingBox();
+  const narrowPlan = await page.locator('.workflow-plan').boundingBox();
+  assert.ok(narrowPlan.y >= narrowForm.y + narrowForm.height - 2, 'narrow workbench stacks inputs before the plan');
+  await page.getByRole('button', { name: '返回编辑', exact: true }).click();
+  await page.locator('.workflow-editor').waitFor();
+  await page.locator('.react-flow__node[data-id="topic"]').click();
+  await page.getByLabel('显示名称', { exact: true }).fill('临时名称');
+  await page.getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '返回编辑', exact: true }).click();
+  assert.equal(await page.getByLabel('显示名称', { exact: true }).inputValue(), '临时名称');
+  await page.getByRole('button', { name: '撤销', exact: true }).click();
+  assert.equal(await page.getByLabel('显示名称', { exact: true }).inputValue(), '元素');
+  await page.getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByLabel('第 1 步 · 文字', { exact: true }).fill('待核对的说明');
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  await page.getByLabel('检查 check 的文字', { exact: true }).waitFor();
+  assert.equal(await page.locator('.workflow-execution-details .workflow-code:visible').count(), 0);
+  await page.getByText('接受不是保存', { exact: false }).waitFor();
+  await page.getByLabel('检查 check 的文字', { exact: true }).fill('改过的说明');
+  await page.getByRole('button', { name: '接受并继续', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  await page.getByText('改过的说明', { exact: true }).waitFor();
+  await page.getByText('节点产物', { exact: true }).waitFor();
+  const after = await (await fetch(new URL('api/elements?pageSize=1', app.url))).json();
+  assert.equal(after.pagination.total, before.pagination.total);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const snap = await page.locator('.workflow-run-snapshot').boundingBox();
+  const run = await page.locator('.workflow-run').boundingBox();
+  assert.ok(run.x >= snap.x + snap.width - 2, 'desktop run keeps the submitted inputs beside the results');
+  assert.deepEqual(errors, []);
 });

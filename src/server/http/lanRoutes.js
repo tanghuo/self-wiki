@@ -46,7 +46,7 @@ export function lanTokenMatches(candidate, token) {
 const lanReadPosts = new Set(["/api/organization/semantic/search"]);
 
 export function lanRestriction(method, pathname, { allowWrite = false } = {}) {
-  if (/^\/api\/(?:workflows|workflow-node-types|workflow-runs|workflow-artifacts)(?:\/|$)/.test(pathname)) return '工作流定义、运行、事件与产物仅限本机';
+  if (/^\/api\/(?:workflows|workflow-node-types|workflow-runs|workflow-artifacts|workflow-input-images)(?:\/|$)/.test(pathname)) return '工作流定义、运行、事件与产物仅限本机';
   const read = method === "GET" || method === "HEAD";
   if (pathname.startsWith("/api/chat/")) return "Agent 会话仅限本机使用";
   if (pathname === "/api/lan-sharing" && !read || pathname.startsWith("/api/lan-sharing/")) return "局域网共享设置仅限本机修改";

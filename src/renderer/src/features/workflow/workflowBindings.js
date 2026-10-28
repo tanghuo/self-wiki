@@ -1,6 +1,17 @@
-import { outputType, valueTypes, listItemType, matchesType } from '../../../../shared/domain/workflow/contracts.js';
+import { outputBindingType, valueTypes, listItemType, matchesType } from '../../../../shared/domain/workflow/contracts.js';
+
+export function canAppendTextReference(node) {
+  return node?.type === 'element' && node.config.source === 'fixed' && node.config.valueType === 'text'
+    && (Array.isArray(node.config.parts) || node.config.default == null || typeof node.config.default === 'string');
+}
 
 export function setNodeBinding(node, handle, binding) {
+  if (handle === 'template:new') {
+    if (!canAppendTextReference(node) || !binding) return node;
+    const config = { ...node.config, parts: [...(node.config.parts || [{ kind: 'text', text: node.config.default || '' }]), { kind: 'ref', ref: binding }] };
+    delete config.default;
+    return { ...node, config };
+  }
   if (node.type === 'foreach' && handle === 'capture:new' && binding?.kind === 'output') {
     let index = 1;
     while (Object.hasOwn(node.config.captureTypes || {}, `content_${index}`)) index++;
@@ -26,7 +37,7 @@ export function setNodeBinding(node, handle, binding) {
 export function bindingType(binding, graph, parent, fallback) {
   if (!binding) return undefined;
   if (binding.kind === 'text') return 'text';
-  if (binding.kind === 'output') return binding.path?.length ? 'json' : graph.nodes.find((n) => n.id === binding.nodeId) && outputType(graph.nodes.find((n) => n.id === binding.nodeId));
+  if (binding.kind === 'output') return outputBindingType(graph.nodes.find((n) => n.id === binding.nodeId), binding);
   if (binding.kind === 'item') return listItemType(parent?.config.itemsType);
   if (binding.kind === 'index') return 'number';
   if (binding.kind === 'itemId') return 'text';
