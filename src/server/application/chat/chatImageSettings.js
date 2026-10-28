@@ -47,7 +47,11 @@ export function createChatImageSettings(repo, organization) {
       if (options.executor === "grok-build") result.grokBuild = { ...config.grokBuild, aspectRatio: options.aspectRatio };
       if (options.executor !== "comfyui") return result;
       const record = repo.imageWorkflow(options.workflowId), workflow = structuredClone(record.workflow);
-      for (const parameter of options.parameters) workflow[parameter.nodeId].inputs[parameter.input] = parameter.value;
+      for (const parameter of options.parameters) {
+        const node = workflow[parameter.nodeId];
+        node.inputs[parameter.input] = parameter.value;
+        if (['seed', 'noise_seed'].includes(parameter.input)) node._meta = { ...node._meta, seedControls: { ...node._meta?.seedControls, [parameter.input]: { ...node._meta?.seedControls?.[parameter.input], mode: 'fixed' } } };
+      }
       result.comfyui = comfyuiConfig({ baseUrl: record.baseUrl, workflowName: record.name.replace(/[\r\n\0]/g, " ").slice(0, 240), workflow, prompt: options.prompt, outputNodeId: options.outputNodeId });
       return result;
     },

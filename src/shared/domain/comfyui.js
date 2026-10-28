@@ -22,6 +22,15 @@ export function comfyuiWorkflow(value) {
         || !node.inputs || typeof node.inputs !== "object" || Array.isArray(node.inputs)) {
       throw elementError(`ComfyUI 节点 ${id.slice(0, 128)} 不是有效的 API 节点`);
     }
+    if (node._meta?.seedControls !== undefined) {
+      const controls = node._meta.seedControls;
+      if (!controls || typeof controls !== 'object' || Array.isArray(controls)) throw elementError('无效的种子模式');
+      for (const [input, control] of Object.entries(controls)) {
+        if (!['seed', 'noise_seed'].includes(input) || !control || !['fixed', 'randomize', 'increment', 'decrement'].includes(control.mode)
+            || ['min', 'max'].some((key) => control[key] !== undefined && (!Number.isSafeInteger(control[key]) || control[key] < 0))
+            || control.min !== undefined && control.max !== undefined && control.min > control.max) throw elementError('无效的种子模式或范围');
+      }
+    }
   }
   return structuredClone(value);
 }

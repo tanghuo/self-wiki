@@ -132,7 +132,7 @@ export default function ChatImagePicker({ options, chatEngine, disabled, onChang
         </div>
         <div className="chat-workflow-parameters">{fields.filter((field) => primaryInputs.has(field.input)).map(renderField)}</div>
         <details><summary>更多参数（模型、负面提示词等）</summary><div className="chat-workflow-parameters">{fields.filter((field) => !primaryInputs.has(field.input)).map(renderField)}</div></details>
-        <p className="wiki-muted">选项保存在本会话中。发送时固定工作流和参数；更新工作流后需重新检查映射。每次应输出一张图片。</p>
+        <p className="wiki-muted">选项保存在本会话中。种子沿用工作流的随机或固定模式；手动修改种子后使用固定值，恢复工作流参数可恢复原模式。更新工作流后需重新检查映射。每次应输出一张图片。</p>
         <div className="chat-workflow-actions"><button type="button" disabled={locked} onClick={() => setDraft((current) => ({ ...current, parameters: [] }))}>恢复工作流参数</button><button type="button" className="primary" disabled={locked || !draft.prompt || !draft.outputNodeId} onClick={apply}>应用到本会话</button></div>
       </>}
       <details className="chat-workflow-import"><summary>备用：导入 API 工作流</summary><p className="wiki-muted">用于不支持自动转换的工作流。在 ComfyUI 导出 API 格式，再选取文件。</p><label>API 工作流文件<input type="file" accept=".json,application/json" disabled={locked} onChange={importFile} /></label></details>

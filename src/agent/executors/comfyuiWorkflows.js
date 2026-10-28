@@ -1,6 +1,7 @@
 import { comfyuiJson } from "./comfyuiApi.js";
-import { comfyuiConfig, comfyuiWorkflow, maxComfyWorkflowBytes } from "../../shared/domain/comfyui.js";
+import { comfyuiConfig, comfyuiWorkflow, configuredComfyuiWorkflow, maxComfyWorkflowBytes } from "../../shared/domain/comfyui.js";
 import { elementError } from "../../shared/domain/elements.js";
+import { expandComfyuiSubgraphs } from './comfyuiSubgraphs.js';
 
 function workflowPath(value) {
   if (typeof value !== "string" || value.length > 500 || /[\\\x00-\x1f]/.test(value)
@@ -23,12 +24,29 @@ export async function listComfyuiWorkflows(settings) {
   return { baseUrl: config.baseUrl, workflows };
 }
 
-function schemaInputs(info) {
-  return ["required", "optional"].flatMap((group) => {
+function* schemaInputs(info, node, currentValue = () => undefined, prefix = '', depth = 0) {
+  if (depth > 16) throw elementError('ComfyUI 动态输入嵌套过深');
+  for (const group of ["required", "optional"]) {
     const inputs = info.input?.[group] || {}, order = info.input_order?.[group] || Object.keys(inputs);
     if (order.length !== Object.keys(inputs).length || new Set(order).size !== order.length || order.some((key) => !Object.hasOwn(inputs, key))) throw new Error("节点输入顺序无效");
-    return order.map((name) => [name, inputs[name]]);
-  });
+    for (const key of order) {
+      const name = prefix + key, spec = inputs[key];
+      if (spec[0] === 'COMFY_DYNAMICCOMBO_V3') {
+        const options = spec[1]?.options;
+        if (!Array.isArray(options)) throw elementError('ComfyUI 动态选项定义无效');
+        yield [name, ['COMBO', { ...spec[1], default: spec[1]?.default ?? options[0]?.key, options: options.map((option) => option.key), dynamic: true }]];
+        const selected = options.find((option) => option.key === currentValue(name));
+        if (!selected) throw elementError(`ComfyUI 动态选项 ${name} 的值无效`);
+        yield* schemaInputs({ input: selected.inputs }, node, currentValue, name + '.', depth + 1);
+      } else if (spec[0] === 'COMFY_AUTOGROW_V3') {
+        const template = spec[1]?.template, fields = Object.values(template?.input?.required || {});
+        if (!Array.isArray(template?.names) || fields.length !== 1 || fieldType(fields[0])) throw elementError(`ComfyUI 动态输入 ${name} 的模板尚不支持`);
+        const names = new Set(template.names.map((entry) => `${name}.${entry}`));
+        const sockets = Array.isArray(node.inputs) ? node.inputs : Object.keys(node.inputs || {}).map((entry) => ({ name: entry }));
+        for (const socket of sockets) if (names.has(socket.name)) yield [socket.name, fields[0]];
+      } else yield [name, spec];
+    }
+  }
 }
 
 function fieldType(spec) {
@@ -62,6 +80,8 @@ function bypassInputSlot(node, outputSlot, targetType, info) {
 // convert graphs whose stored widgets have an unambiguous server-side schema.
 export function convertComfyuiWorkflow(value, infos) {
   if (!Array.isArray(value?.nodes)) return comfyuiWorkflow(value);
+  const expanded = expandComfyuiSubgraphs(value);
+  value = expanded.value;
   if (value.nodes.length > 1000 || !Array.isArray(value.links)) throw elementError("ComfyUI 画布的节点或连线无效");
   const nodes = new Map(), links = new Map(), result = {};
   for (const node of value.nodes) {
@@ -102,31 +122,43 @@ export function convertComfyuiWorkflow(value, infos) {
     if (!info) fail("服务缺少此节点，或节点使用了子图/前端扩展");
     const widgets = node.widgets_values || [], named = node.widgets_values_named;
     if (!Array.isArray(widgets)) fail("无法识别控件存储格式");
-    const inputs = {}, connections = node.inputs || [];
+    const inputs = {}, connections = node.inputs || [], seedControls = {};
     let index = 0;
-    for (const [name, spec] of schemaInputs(info)) {
+    for (const [name, spec] of schemaInputs(info, node, (name) => inputs[name])) {
       const slot = connections.findIndex((input) => input.name === name), socket = connections[slot];
       const hasWidget = fieldType(spec) && (!spec[1]?.forceInput || socket?.widget);
       if (hasWidget) {
         if (named) {
-          if (!Object.hasOwn(named, name)) fail(`命名控件缺少 ${name}`);
-          inputs[name] = named[name];
+          if (!Object.hasOwn(named, name) && spec[1]?.default === undefined) fail(`命名控件缺少 ${name}`);
+          inputs[name] = Object.hasOwn(named, name) ? named[name] : spec[1].default;
         }
         else {
-          if (index >= widgets.length) fail(`缺少参数 ${name} 的控件值`);
-          inputs[name] = widgets[index++];
+          if (index >= widgets.length) {
+            if (spec[1]?.default === undefined) fail(`缺少参数 ${name} 的控件值`);
+            inputs[name] = spec[1].default;
+          } else inputs[name] = widgets[index++];
           const control = spec[1]?.control_after_generate || ["seed", "noise_seed"].includes(name);
-          if (control && ["fixed", "increment", "decrement", "randomize"].includes(widgets[index])) index++;
+          if (control && ["fixed", "increment", "decrement", "randomize"].includes(widgets[index])) {
+            const mode = widgets[index++];
+            if (['seed', 'noise_seed'].includes(name)) seedControls[name] = { mode, min: spec[1]?.min ?? 0, max: Math.min(spec[1]?.max ?? Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER) };
+          }
         }
+      }
+      if (expanded.overrides.get(id)?.has(name)) inputs[name] = expanded.overrides.get(id).get(name);
+      if (['seed', 'noise_seed'].includes(name) && typeof inputs[name] === 'number') {
+        const mode = expanded.overrides.get(id)?.get(`${name}:control_after_generate`) ?? node.widgets_values_named?.control_after_generate;
+        seedControls[name] = { mode: mode ?? seedControls[name]?.mode ?? 'fixed', min: spec[1]?.min ?? 0, max: Math.min(spec[1]?.max ?? Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER) };
       }
       const connected = socket?.link == null ? null : connection(socket.link, id, slot, socket.type ?? fieldType(spec) ?? spec[0]);
       if (connected) inputs[name] = connected;
-      else if (!hasWidget && Object.hasOwn(info.input?.required || {}, name)) {
+      else if (!hasWidget && !Object.hasOwn(inputs, name) && !spec[1]?.socketless && Object.hasOwn(info.input?.required || {}, name)) {
         fail(`必填输入 ${name} 未连接${socket?.link != null ? "（上游静音或旁路后无有效输入）" : ""}`);
       }
     }
+    // ComfyUI's LoadImage persists the upload destination as a UI-only widget.
+    if (node.type === 'LoadImage' && info.input?.required?.image?.[1]?.image_upload && widgets.length === index + 1 && widgets[index] === 'image') index++;
     if (!named && index !== widgets.length) fail("控件数量与节点定义不符，可能使用了自定义序列化");
-    result[id] = { class_type: node.type, inputs, _meta: { title: node.title || info.display_name || node.type } };
+    result[id] = { class_type: node.type, inputs, _meta: { title: node.title || info.display_name || node.type, ...(Object.keys(seedControls).length && { seedControls }) } };
   }
   return comfyuiWorkflow(result);
 }
@@ -138,9 +170,9 @@ export function describeComfyuiWorkflow(workflow, infos) {
     if (!info) throw elementError(`ComfyUI 缺少节点：${node.class_type}`);
     const label = `${node._meta?.title || info.display_name || node.class_type} · #${nodeId}`;
     if (info.output_node) outputs.push({ nodeId, label });
-    for (const [input, spec] of schemaInputs(info)) {
+    for (const [input, spec] of schemaInputs(info, node, (name) => node.inputs[name])) {
       const type = fieldType(spec), value = node.inputs[input], options = Array.isArray(spec[0]) ? spec[0] : spec[1]?.options;
-      if (!type || !["string", "number", "boolean"].includes(typeof value)) continue;
+      if (!type || spec[1]?.dynamic || !["string", "number", "boolean"].includes(typeof value)) continue;
       fields.push({ nodeId, input, label: `${label} → ${input}`, type, value,
         ...(type === "COMBO" && { options: options.filter((option) => ["string", "number", "boolean"].includes(typeof option)) }),
         ...Object.fromEntries(["min", "max", "step", "multiline"].filter((key) => spec[1]?.[key] !== undefined).map((key) => [key, spec[1][key]])) });
@@ -157,7 +189,8 @@ export async function loadComfyuiWorkflow(settings, { path, workflow, name }) {
   const remotePath = path === undefined ? "" : workflowPath(path);
   const value = remotePath ? await comfyuiJson(config, `/userdata/${encodeURIComponent(`workflows/${remotePath}`)}`, { signal, maxBytes: maxComfyWorkflowBytes }) : comfyuiWorkflow(workflow);
   if (Buffer.byteLength(JSON.stringify(value)) > maxComfyWorkflowBytes) throw elementError("工作流最多 512 KiB");
-  const classes = [...new Set(Array.isArray(value.nodes) ? value.nodes.filter((node) => !["Note", "MarkdownNote", "Reroute", "PrimitiveNode"].includes(node.type) && node.mode !== 2 && node.mode !== 4).map((node) => node.type) : Object.values(value).map((node) => node.class_type))];
+  const expanded = expandComfyuiSubgraphs(value).value;
+  const classes = [...new Set(Array.isArray(expanded.nodes) ? expanded.nodes.filter((node) => !["Note", "MarkdownNote", "Reroute", "PrimitiveNode"].includes(node.type) && node.mode !== 2 && node.mode !== 4).map((node) => node.type) : Object.values(expanded).map((node) => node.class_type))];
   if (classes.length > 200 || classes.some((type) => typeof type !== "string" || type.length > 200)) throw elementError("工作流节点类型过多或无效");
   const infos = {};
   for (let index = 0; index < classes.length; index += 4) {

@@ -1,12 +1,45 @@
 import { mkdtemp, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, randomBytes } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import sharp from "sharp";
 import { withExternalResource } from './resourceGate.js';
 import { comfyuiRequest as request, comfyuiJson as json } from "./comfyuiApi.js";
 import { comfyuiConfig, configuredComfyuiWorkflow } from "../../shared/domain/comfyui.js";
 import { maxImageBytes } from "../../shared/domain/elements.js";
+import { loadComfyuiWorkflow } from './comfyuiWorkflows.js';
+
+async function prepareSeeds(config, workflow, signal) {
+  const missing = Object.entries(workflow).filter(([, node]) => ['seed', 'noise_seed'].some((key) => typeof node.inputs[key] === 'number' && !node._meta?.seedControls?.[key]));
+  // Older imports discarded the UI controls. Recover only controls from the
+  // original saved graph; never replace the user's prompt or parameter values.
+  if (missing.length && config.workflowName) {
+    signal?.throwIfAborted();
+    let saved;
+    try { saved = (await loadComfyuiWorkflow(config, { path: config.workflowName })).workflow; }
+    catch (error) { if (error.httpStatus !== 404) throw new Error(`无法恢复旧工作流的种子模式，请重新选择已保存的工作流：${error.message}`); }
+    for (const [id, node] of missing) if (saved?.[id]?.class_type === node.class_type && saved[id]._meta?.seedControls) {
+      node._meta = { ...node._meta, seedControls: saved[id]._meta.seedControls };
+    }
+  }
+  signal?.throwIfAborted();
+  const seeds = [];
+  for (const [nodeId, node] of Object.entries(workflow)) for (const input of ['seed', 'noise_seed']) {
+    if (typeof node.inputs[input] !== 'number') continue;
+    const control = node._meta?.seedControls?.[input] || { mode: 'fixed' };
+    if (!['fixed', 'randomize'].includes(control.mode)) throw new Error(`种子模式 ${control.mode} 暂不支持，请在生图参数中选择每次随机或固定`);
+    if (control.mode === 'randomize') {
+      const min = Math.max(0, Math.ceil(control.min ?? 0)), max = Math.min(Number.MAX_SAFE_INTEGER, Math.floor(control.max ?? Number.MAX_SAFE_INTEGER));
+      if (!Number.isSafeInteger(min) || !Number.isSafeInteger(max) || min > max) throw new Error('种子范围无效');
+      const span = BigInt(max) - BigInt(min) + 1n, limit = (1n << 64n) / span * span;
+      let sample;
+      do { sample = randomBytes(8).readBigUInt64BE(); } while (sample >= limit);
+      node.inputs[input] = Number(BigInt(min) + sample % span);
+    }
+    seeds.push({ nodeId, input, mode: control.mode, value: node.inputs[input] });
+  }
+  return seeds;
+}
 
 export const comfyuiImageExecutor = {
   tool: {
@@ -148,6 +181,7 @@ async function generateComfyuiUnlocked(value, { config: settings, workspace, sig
   }
   const config = comfyuiConfig(settings), workflow = configuredComfyuiWorkflow(config, { requirePrompt: !!value.prompt.trim() });
   const workflowSha256 = createHash("sha256").update(JSON.stringify(workflow)).digest("hex");
+  const seeds = await prepareSeeds(config, workflow, callerSignal);
   const promptSource = value.prompt.trim() ? "message" : "workflow";
   if (promptSource === "message") workflow[config.prompt.nodeId].inputs[config.prompt.input] = value.prompt;
   const prompt = config.prompt ? workflow[config.prompt.nodeId].inputs[config.prompt.input] : '';
@@ -170,7 +204,7 @@ async function generateComfyuiUnlocked(value, { config: settings, workspace, sig
   let promptId, remoteFinished = false, submissionAttempted = false;
   const report = (event) => { if (!signal.aborted) onProgress?.(event); };
   const metadata = { baseUrl: config.baseUrl, workflowName: config.workflowName, workflowSha256, clientId, requestedPromptId,
-    prompt: config.prompt, promptSource, outputNodeId: config.outputNodeId };
+    prompt: config.prompt, promptSource, outputNodeId: config.outputNodeId, seeds };
   report({ type: "metadata", metadata: { comfyui: metadata } });
   report({ type: "prepared_prompt", prompt });
   try {

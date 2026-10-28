@@ -26,8 +26,20 @@ export default function ComfyuiConfiguration({ value = {}, onChange, adapterId }
     let alive = true;
     describedGraph.current = value.workflow;
     setRecord(null);
-    request(`${endpoint}/load`, { method: 'POST', body: JSON.stringify({ workflow: value.workflow, name: value.workflowName }) }).then((result) => {
-      if (alive) setRecord({ ...result, workflow: value.workflow });
+    request(`${endpoint}/load`, { method: 'POST', body: JSON.stringify({ workflow: value.workflow, name: value.workflowName }) }).then(async (result) => {
+      if (!alive) return;
+      let restored = false;
+      const workflow = structuredClone(value.workflow);
+      const saved = value.workflowName ? await request(`${endpoint}/load`, { method: 'POST', body: JSON.stringify({ path: value.workflowName }) }).catch(() => null) : null;
+      if (!alive) return;
+      for (const [id, node] of Object.entries(workflow)) if (!node._meta?.seedControls && saved?.workflow[id]?.class_type === node.class_type && saved.workflow[id]._meta?.seedControls) {
+        node._meta = { ...node._meta, seedControls: saved.workflow[id]._meta.seedControls };
+        restored = true;
+      }
+      const nextWorkflow = restored ? workflow : value.workflow;
+      describedGraph.current = nextWorkflow;
+      setRecord({ ...result, workflow: nextWorkflow });
+      if (restored) onChange({ ...value, workflow: nextWorkflow });
     }).catch((failure) => { if (alive) setError(`读取参数定义失败：${failure.message}`); });
     return () => { alive = false; if (describedGraph.current === value.workflow) describedGraph.current = null; };
   }, [value.workflow, value.workflowName]);
@@ -57,6 +69,14 @@ export default function ComfyuiConfiguration({ value = {}, onChange, adapterId }
   const mappings = value.imageInputs || [];
   const patch = (fields) => onChange({ ...value, ...fields });
   const parameters = (record?.workflow === value.workflow ? record.fields : []).filter((field) => reachable[field.nodeId] && graph[field.nodeId]?.class_type !== 'LoadImage' && !(value.promptMode !== 'workflow' && value.prompt?.nodeId === field.nodeId && value.prompt.input === field.input));
+  const renderParameter = (field) => <div key={`${field.nodeId}:${field.input}`}><WorkflowParameter field={field} value={graph[field.nodeId].inputs[field.input]} onChange={(nextValue) => changeParameter(field, nextValue)} />{['seed', 'noise_seed'].includes(field.input) && <label>种子模式<select aria-label={`种子模式 ${field.label}`} value={graph[field.nodeId]._meta?.seedControls?.[field.input]?.mode || 'fixed'} onChange={(event) => changeSeedMode(field, event.target.value)}><option value="randomize">每次随机</option><option value="fixed">固定</option>{['increment', 'decrement'].includes(graph[field.nodeId]._meta?.seedControls?.[field.input]?.mode) && <option value={graph[field.nodeId]._meta.seedControls[field.input].mode}>递增/递减（请选择随机或固定）</option>}</select></label>}</div>;
+  function changeSeedMode(field, mode) {
+    const node = graph[field.nodeId];
+    const nextGraph = { ...graph, [field.nodeId]: { ...node, _meta: { ...node._meta, seedControls: { ...node._meta?.seedControls, [field.input]: { mode, min: Math.max(0, field.min ?? 0), max: Math.min(Number.MAX_SAFE_INTEGER, field.max ?? Number.MAX_SAFE_INTEGER) } } } } };
+    describedGraph.current = nextGraph;
+    setRecord((previous) => ({ ...previous, workflow: nextGraph }));
+    patch({ workflow: nextGraph });
+  }
   function changeParameter(field, nextValue) {
     const node = graph[field.nodeId];
     const nextGraph = { ...graph, [field.nodeId]: { ...node, inputs: { ...node.inputs, [field.input]: nextValue } } };
@@ -84,7 +104,7 @@ export default function ComfyuiConfiguration({ value = {}, onChange, adapterId }
       <details><summary>工作流参数（{parameters.length}）</summary>
         <p>修改当前节点保存的工作流参数。数字修改后离开输入框生效，超出范围会恢复原值。提示词替换字段与图片入口在上方配置。</p>
         {!record && !error && <p>正在读取参数定义…</p>}
-        {parameters.map((field) => <WorkflowParameter key={`${field.nodeId}:${field.input}`} field={field} value={graph[field.nodeId].inputs[field.input]} onChange={(nextValue) => changeParameter(field, nextValue)} />)}
+        {parameters.map(renderParameter)}
       </details>
     </>}
   </fieldset>;

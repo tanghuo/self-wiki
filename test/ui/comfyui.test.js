@@ -134,6 +134,31 @@ test("ComfyUI connection probe needs only an address; workflow loading checks no
   await assert.rejects(loadComfyuiWorkflow(f.config, { path: "文生图/水彩.json" }), /缺少节点：KSampler/);
 });
 
+test('random seed controls survive import and consecutive generations submit distinct recorded seeds', async (t) => {
+  const f = await fixture(t), graph = convertComfyuiWorkflow(canvas, nodeInfo);
+  const config = { ...f.config, workflow: graph }, before = structuredClone(config), events = [];
+  assert.equal(graph['3']._meta.seedControls.seed.mode, 'randomize');
+  for (let i = 0; i < 2; i++) await generateComfyui({ prompt: 'same prompt' }, { config, workspace: f.root, onProgress: (event) => events.push(event) });
+  const values = f.state.submissions.map((entry) => entry.prompt['3'].inputs.seed);
+  assert.notEqual(values[0], values[1]);
+  assert.ok(values.every((seed) => Number.isSafeInteger(seed) && seed >= 0));
+  assert.deepEqual(events.filter((event) => event.type === 'metadata' && !event.metadata.comfyui.promptId).map((event) => event.metadata.comfyui.seeds[0].value), values);
+  assert.deepEqual(config, before);
+  graph['3']._meta.seedControls.seed.mode = 'fixed';
+  for (let i = 0; i < 2; i++) await generateComfyui({ prompt: 'same prompt' }, { config, workspace: f.root });
+  assert.deepEqual(f.state.submissions.slice(2).map((entry) => entry.prompt['3'].inputs.seed), [42, 42]);
+});
+
+test('old imports recover seed controls without replacing local parameter overrides', async (t) => {
+  const f = await fixture(t), config = { ...f.config, workflowName: f.state.path };
+  config.workflow['3'].inputs.steps = 17;
+  const before = structuredClone(config);
+  for (let i = 0; i < 2; i++) await generateComfyui({ prompt: 'unchanged prompt' }, { config, workspace: f.root });
+  assert.notEqual(f.state.submissions[0].prompt['3'].inputs.seed, f.state.submissions[1].prompt['3'].inputs.seed);
+  assert.ok(f.state.submissions.every((entry) => entry.prompt['3'].inputs.steps === 17));
+  assert.deepEqual(config, before);
+});
+
 test("ComfyUI execution preserves literal prompts and template defaults, downloads one image and records the remote id", async (t) => {
   const f = await fixture(t), events = [], prompt = "  literal ` $() 中文\n保持原文  ";
   const config = { ...defaultImageGenerationConfig(), executor: "comfyui", comfyui: f.config };
@@ -307,6 +332,7 @@ test('workflow image nodes select saved ComfyUI workflows and explicitly map pro
   await page.getByText(/^工作流参数（/).click();
   const parameter = (name) => page.getByLabel(new RegExp(`^工作流参数 .*#3 → ${name}$`));
   await parameter('seed').fill('777'); await parameter('seed').blur();
+  await page.getByLabel(/^种子模式 /).selectOption('fixed');
   await parameter('steps').fill('12'); await parameter('steps').blur();
   await parameter('cfg').fill('4.5'); await parameter('cfg').blur();
   await parameter('sampler_name').selectOption(JSON.stringify('dpmpp_2m'));
@@ -389,6 +415,7 @@ test("ComfyUI keeps workflow prompts for blank input and uploads only to the rea
 test('explicit multi-image mappings route each image to its chosen node and preserve all other workflow values', async (t) => {
   const f = await fixture(t), events = [];
   f.config.workflow = convertComfyuiWorkflow(imageCanvas(), nodeInfo);
+  f.config.workflow['3']._meta.seedControls.seed.mode = 'fixed';
   f.config.workflow['73'] = { class_type: 'LoadImage', inputs: { image: 'second-original.png' } };
   f.config.workflow['74'] = { class_type: 'LoadImage', inputs: { image: 'keep-original.png' } };
   f.config.workflow['20'] = { class_type: 'ImageBlend', inputs: { image1: ['72', 0], image2: ['73', 0], blend_factor: 0.5 } };
@@ -659,7 +686,10 @@ test("settings only connect; the conversation discovers workflows, adjusts param
   assert.equal(await page.getByLabel("提示词写入字段", { exact: true }).inputValue(), JSON.stringify({ nodeId: "6", input: "text" }));
   await page.screenshot({ path: ".local/comfyui-conversation-workflow.png" });
   await page.getByRole("button", { name: "应用到本会话", exact: true }).click();
-  await page.getByLabel("原文直发生图", { exact: true }).check();
+  await page.getByRole("button", { name: "应用到本会话", exact: true }).waitFor({ state: "hidden" });
+  await page.getByRole("button", { name: "工作流与参数", exact: true }).filter({ hasText: "文生图/水彩.json" }).waitFor();
+  await page.getByText("原文直发生图", { exact: true }).click();
+  await page.waitForFunction(() => document.querySelector(".chat-direct-image input")?.checked);
   const input = page.getByRole("textbox", { name: "会话消息", exact: true });
   await input.fill("  一只纸鹤\n保留原文  "); await page.getByRole("button", { name: "发送消息", exact: true }).click();
   await page.locator(".chat-generated-image").first().waitFor();
