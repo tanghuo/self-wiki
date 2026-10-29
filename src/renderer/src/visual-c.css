@@ -1,0 +1,1636 @@
+/* Direction C「鲜沉浸」— layout + chrome. Narrow screens fall back toward the classic shell. */
+
+/* Primary becomes deep-ink (or apricot in dark) pill */
+button.primary, a.button.primary {
+  border-radius: var(--r-pill);
+  border-color: transparent;
+  background: var(--c-accent);
+  color: var(--c-on-accent);
+  box-shadow: 0 8px 20px -8px color-mix(in srgb, var(--c-accent) 55%, transparent);
+}
+button.primary:hover:not(:disabled), a.button.primary:hover {
+  border-color: transparent;
+  background: var(--c-accent-hover);
+  color: var(--c-on-accent);
+}
+button:not(.icon-only):not(.text-button):not(.danger):not(.danger-quiet):not(.primary),
+a.button:not(.primary):not(.text-button) {
+  border-radius: var(--r-pill);
+}
+
+/* —— Desktop floating chrome (preserve sidebar track width for masonry) —— */
+@media (min-width: 1101px) {
+  html {
+    background: var(--win-gradient);
+    background-attachment: fixed;
+  }
+  body { background: transparent; }
+  /* Keep classic 190px sidebar track + enough main width for 3 masonry cols at 320px. */
+  .wiki-shell,
+  .app-layout.agent-home {
+    background: transparent !important;
+    padding: 10px;
+    gap: 10px;
+    box-sizing: border-box;
+    min-height: 100dvh;
+    grid-template-columns: 190px minmax(0, 1fr);
+  }
+  .wiki-sidebar {
+    top: 10px;
+    height: calc(100dvh - 20px);
+    width: auto;
+    max-width: none;
+    padding: 12px 8px;
+    border: 0;
+    border-radius: var(--r-float);
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(18px) saturate(1.15);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    box-shadow: var(--e-float);
+    color: var(--glass-ink);
+  }
+  .wiki-sidebar .nav-item,
+  .wiki-sidebar .workspace-brand,
+  .wiki-sidebar .wiki-sidebar-heading,
+  .wiki-sidebar .workspace-footer,
+  .wiki-sidebar .workspace-local { color: inherit; }
+  .wiki-sidebar .wiki-sidebar-heading { opacity: .55; }
+  .wiki-sidebar .nav-item.active,
+  .wiki-sidebar .nav-item[aria-current="page"] {
+    background: var(--glass-bg-strong);
+    color: var(--ink);
+    box-shadow: 0 2px 10px -2px var(--c-float-shadow-soft);
+  }
+  .wiki-main,
+  .chat-panel.chat-page,
+  .temporary-shares,
+  .workflow-app,
+  .agent-workbench {
+    border-radius: var(--r-stage);
+    background: var(--panel);
+    box-shadow: 0 0 0 1px var(--glass-line), 0 24px 60px -20px var(--c-stage-shadow);
+    min-height: calc(100dvh - 20px);
+  }
+}
+
+/* Soft atmosphere: quieter window wash */
+html[data-atmosphere="soft"] {
+  background: var(--win-gradient-soft);
+}
+
+/* —— Library media wall cards —— */
+.wiki-card {
+  border: 0;
+  border-radius: var(--r-stage);
+  background: var(--panel-2);
+  box-shadow: var(--e-card-c);
+  overflow: hidden;
+}
+.wiki-card.is-image .wiki-card-image,
+.wiki-card.is-video .wiki-card-open {
+  border-radius: var(--r-stage);
+}
+.wiki-masonry .wiki-card.is-image .wiki-card-image img {
+  /* keep masonry absolute sizing; only cover in non-masonry grids */
+  object-fit: contain;
+}
+.wiki-grid:not(.wiki-masonry) .wiki-card.is-image .wiki-card-image img {
+  object-fit: cover;
+}
+.wiki-card-caption {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 2;
+  padding: 28px 12px 12px;
+  background: var(--media-title-scrim);
+  color: var(--on-media);
+  pointer-events: none;
+  text-shadow: 0 1px 3px rgb(var(--shadow-color) / 0.45);
+  opacity: 0;
+}
+.wiki-card-open:hover .wiki-card-caption,
+.wiki-card-open:focus-visible .wiki-card-caption {
+  opacity: 1;
+}
+.wiki-card-caption strong {
+  display: block;
+  font-size: var(--fs-body);
+  font-weight: 700;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wiki-card-caption span {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-caption);
+  opacity: .85;
+}
+.wiki-card.is-image .wiki-card-tags,
+.wiki-card.is-video .wiki-card-tags {
+  left: 10px;
+  bottom: auto;
+  top: 10px;
+  background: var(--c-white-22);
+  color: var(--on-media);
+  backdrop-filter: blur(4px);
+}
+.wiki-card.is-image .wiki-card-tags .wiki-tag + .wiki-tag,
+.wiki-card.is-video .wiki-card-tags .wiki-tag + .wiki-tag {
+  border-left-color: var(--c-white-35);
+}
+.wiki-card.is-text {
+  background: var(--note-tint, var(--note-neutral));
+}
+.wiki-card.is-text[data-note-tint="peach"] { --note-tint: var(--note-peach); }
+.wiki-card.is-text[data-note-tint="butter"] { --note-tint: var(--note-butter); }
+.wiki-card.is-text[data-note-tint="mint"] { --note-tint: var(--note-mint); }
+.wiki-card.is-text[data-note-tint="sky"] { --note-tint: var(--note-sky); }
+.wiki-card.is-text[data-note-tint="lavender"] { --note-tint: var(--note-lavender); }
+.wiki-card.is-text .wiki-card-text {
+  background: transparent;
+  aspect-ratio: auto;
+  min-height: 140px;
+  padding: 16px 16px 14px;
+}
+.wiki-card.is-text .wiki-card-text .wiki-card-note-kind {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 6px;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+.wiki-card.is-text .wiki-card-text strong.wiki-card-note-title {
+  display: block;
+  margin: 0 0 6px;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -.02em;
+  line-height: 1.3;
+}
+.wiki-card.is-selected {
+  outline: 3px solid color-mix(in srgb, var(--c-violet) 80%, var(--accent));
+  outline-offset: 2px;
+  border-color: transparent;
+  box-shadow: var(--e-card-c);
+}
+
+/* Agent workbench follows preview vibe */
+.agent-workbench {
+  --wb-preview-radius: var(--r-stage);
+}
+.agent-workbench img,
+.workbench-results img {
+  border-radius: var(--r-stage);
+  box-shadow: var(--e-card-c);
+}
+
+/* Progress / step chips on workflow run */
+.workflow-run-progress,
+.workflow-steps-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.workflow-steps-strip {
+  align-self: center;
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--panel) 80%, transparent);
+  box-shadow: var(--e-1);
+}
+
+/* Settings / dialogs / shares — skin follow */
+.wiki-dialog,
+.settings-dialog,
+.ui-dialog,
+.comfyui-dialog {
+  border-radius: var(--r-stage);
+}
+.theme-preview {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Narrow: keep classic shell, still use C tokens for cards/buttons */
+@media (max-width: 1100px) {
+  html { background: var(--bg); }
+  .wiki-sidebar {
+    background: var(--sidebar);
+    backdrop-filter: none;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .chat-result-preview {
+    display: none; /* preview stays in-stream on small screens; click still opens viewer */
+  }
+}
+
+/* Workbench skin-follow */
+.workbench-create,
+.workbench-approval,
+.workbench-empty {
+  border: 0;
+  border-radius: var(--r-stage);
+  box-shadow: var(--e-card-c);
+}
+.workbench-message.user {
+  border-radius: 20px 20px 6px 20px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c-purple) 55%, var(--accent-soft)), color-mix(in srgb, var(--c-magenta) 45%, var(--accent-soft)));
+  color: var(--ink);
+}
+.workbench-diff pre,
+.workbench-page pre {
+  border-radius: var(--r-lg);
+}
+
+
+/* ===================================================================
+   C layouts (desktop ≥1101px): library media wall with floating chrome,
+   Agent timeline + stage preview, cinematic workflow confirm.
+   =================================================================== */
+
+/* —— Library: floating search capsule, top-right actions, bottom filter capsule —— */
+@media (min-width: 1101px) {
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] {
+    padding-top: 64px;
+    padding-bottom: 96px;
+    background: transparent;
+    box-shadow: none;
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-page-header {
+    margin: 0;
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-page-header .page-header-text {
+    position: fixed;
+    top: 20px;
+    left: 226px;
+    z-index: 12;
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-page-header h1 {
+    font-size: var(--fs-section);
+    font-weight: 750;
+    color: var(--ink);
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-page-header .page-header-actions {
+    position: fixed;
+    top: 18px;
+    right: 24px;
+    z-index: 12;
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .page-header-actions > button:not(.primary) {
+    background: var(--glass-bg-strong);
+    border-color: transparent;
+    backdrop-filter: blur(14px);
+    box-shadow: var(--e-card-c);
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-toolbar {
+    position: fixed;
+    left: 210px;
+    right: 0;
+    bottom: 16px;
+    z-index: 12;
+    width: max-content;
+    max-width: calc(100vw - 260px);
+    margin-inline: auto;
+    padding: 6px 8px;
+    flex-wrap: nowrap;
+    gap: 8px;
+    border-radius: var(--r-pill);
+    isolation: isolate;
+    font-size: var(--fs-small);
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-toolbar::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(18px) saturate(1.15);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    box-shadow: var(--e-float);
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-toolbar > span {
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-toolbar .wiki-search {
+    position: fixed;
+    top: 14px;
+    left: 210px;
+    right: 0;
+    width: min(460px, calc(100vw - 640px));
+    margin-inline: auto;
+    flex: none;
+    border-radius: var(--r-pill);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(18px) saturate(1.15);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    box-shadow: var(--e-float);
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-toolbar .wiki-search input {
+    background: transparent;
+    border-color: transparent;
+    border-radius: var(--r-pill);
+  }
+  /* Popovers open upward from the bottom capsule */
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-toolbar :is(.wiki-view-menu-panel, .wiki-tag-filter-menu, .menu-panel) {
+    top: auto;
+    bottom: calc(100% + 12px);
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-toolbar :is(.wiki-tag-filter > button, .wiki-view-menu-trigger, .wiki-list-menu > summary) {
+    border-radius: var(--r-pill);
+    background: var(--panel);
+    border-color: transparent;
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="library"] .wiki-grid.wiki-masonry {
+    gap: 0 var(--sp-3);
+  }
+}
+.wiki-type-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.wiki-type-chips > button {
+  min-height: var(--h-sm);
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--panel);
+  color: var(--ink);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  box-shadow: none;
+}
+.wiki-type-chips > button[aria-pressed="true"] {
+  background: var(--c-accent);
+  color: var(--c-on-accent);
+}
+@media (max-width: 1100px) {
+  .wiki-type-chips { display: none; }
+}
+
+/* Media wall: image cards are pure image + title scrim; no panel frame */
+.wiki-card.is-image {
+  background: var(--media-dark);
+}
+.wiki-card.is-image .wiki-card-caption {
+  padding: 36px 14px 12px;
+}
+.wiki-card.is-image .wiki-card-caption strong {
+  font-size: var(--fs-body);
+  font-weight: 750;
+}
+
+/* —— Agent: mini icon rail —— */
+@media (min-width: 1101px) {
+  .app-layout.agent-home {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .agent-home .wiki-sidebar {
+    align-items: center;
+    padding: 12px 6px;
+    overflow: visible;
+  }
+  .agent-home .wiki-sidebar :is(.nav-item, .workspace-brand) {
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    width: var(--h-lg);
+    min-height: var(--h-lg);
+    font-size: 0;
+  }
+  .agent-home .wiki-sidebar :is(.nav-item, .workspace-brand) > :is(span, strong) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .agent-home .wiki-sidebar :is(.wiki-sidebar-heading, .workspace-footer-links, .nav-item .wiki-count) {
+    display: none;
+  }
+  .agent-home .wiki-sidebar .wiki-sidebar-nav {
+    align-items: center;
+  }
+}
+
+/* Stage wrapper is layout-neutral; the thread keeps its original grid/flex slot. */
+.chat-stage { display: contents; }
+
+/* —— Agent: timeline column + large stage preview (only when an image exists) —— */
+.chat-page .chat-assistant {
+  position: relative;
+  padding-left: 30px;
+}
+.chat-page .chat-assistant::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--c-violet) 28%, transparent);
+}
+.chat-page .chat-assistant > :is(.chat-process, .chat-tools) {
+  position: relative;
+}
+.chat-page .chat-assistant > :is(.chat-process, .chat-tools)::before {
+  content: "";
+  position: absolute;
+  left: -26px;
+  top: 6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--panel);
+  border: 2px solid var(--c-violet);
+  box-sizing: border-box;
+}
+.chat-page .chat-assistant > .chat-process[data-state="completed"]::before {
+  background: var(--c-violet);
+}
+.chat-page .chat-user-bubble:not(.is-editing) {
+  border-radius: 18px 18px 6px 18px;
+  background: linear-gradient(135deg, var(--c-purple), var(--c-magenta));
+  color: var(--on-media);
+  box-shadow: 0 10px 24px -14px var(--c-stage-shadow);
+}
+.chat-page .chat-user-bubble:not(.is-editing) a { color: inherit; }
+
+@media (min-width: 1101px) {
+  .chat-page:has(> .chat-stage.has-preview) {
+    display: grid;
+    grid-template-columns: 52px minmax(320px, 380px) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 12px;
+    height: calc(100dvh - 20px);
+    background: transparent;
+    box-shadow: none;
+  }
+  .chat-page:has(> .chat-stage.has-preview) > .chat-history {
+    grid-area: 1 / 1 / 3 / 2;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 4px;
+    border: 0;
+    border-radius: var(--r-float);
+    background: var(--glass-bg-strong);
+    box-shadow: var(--e-card-c);
+    overflow: hidden auto;
+  }
+  .chat-page:has(> .chat-stage.has-preview) > .chat-history > p { display: none; }
+  .chat-page:has(> .chat-stage.has-preview) > .chat-history :is(.chat-history-new, .chat-history-item > button, .text-button) {
+    justify-content: center;
+    width: var(--h-lg);
+    min-height: var(--h-lg);
+    padding: 0;
+    gap: 0;
+    font-size: 0;
+  }
+  .chat-page:has(> .chat-stage.has-preview) > .chat-history .chat-history-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .chat-page:has(> .chat-stage.has-preview) > .chat-header {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .chat-page:has(> .chat-stage.has-preview) > .chat-session-bar {
+    grid-area: 1 / 2;
+    margin: 0;
+    padding: 16px 18px 10px;
+    border: 0;
+    border-radius: var(--r-float) var(--r-float) 0 0;
+    background: var(--panel);
+  }
+  .chat-page:has(> .chat-stage.has-preview) .chat-session-title {
+    color: var(--ink);
+    font-size: var(--fs-body);
+    font-weight: 750;
+  }
+  .chat-page:has(> .chat-stage.has-preview) > .wiki-error {
+    grid-area: 1 / 3;
+    align-self: start;
+    z-index: 2;
+    margin: 12px;
+  }
+  .chat-page:has(> .chat-stage.has-preview) > .chat-stage {
+    display: contents;
+  }
+  .chat-page:has(> .chat-stage.has-preview) .chat-thread {
+    grid-area: 2 / 2;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    border-radius: 0 0 var(--r-float) var(--r-float);
+    background: var(--panel);
+    box-shadow: var(--e-card-c);
+  }
+  .chat-page:has(> .chat-stage.has-preview) .chat-viewport {
+    padding: 8px 18px;
+  }
+  .chat-page:has(> .chat-stage.has-preview) .chat-message {
+    max-width: none;
+    margin: 0 0 20px;
+    font-size: var(--fs-small);
+    line-height: 1.75;
+  }
+  .chat-page:has(> .chat-stage.has-preview) .chat-generated-image {
+    width: 168px !important;
+  }
+  .chat-page:has(> .chat-stage.has-preview) .chat-compose-area {
+    max-width: none;
+    padding: 10px 12px 12px;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+  }
+  .chat-page:has(> .chat-stage.has-preview) .chat-composer textarea {
+    min-height: 64px;
+  }
+  .chat-page:has(> .chat-stage.has-preview) .chat-starters {
+    display: none;
+  }
+  .chat-page > .chat-stage > .chat-result-preview {
+    grid-area: 1 / 3 / 3 / 4;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    min-height: 0;
+    padding: 14px;
+    border: 0;
+    border-radius: var(--r-float);
+    background: var(--panel);
+    box-shadow: var(--e-card-c);
+  }
+}
+.chat-result-preview-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.chat-result-preview-h .ui-segmented button {
+  border-radius: var(--r-pill);
+}
+.chat-result-preview-figure {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-stage);
+  overflow: hidden;
+  background: var(--media-dark);
+  cursor: zoom-in;
+}
+.chat-result-preview-figure img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chat-result-preview-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 48px 18px 16px;
+  background: var(--media-title-scrim);
+  color: var(--on-media);
+  text-align: left;
+  text-shadow: 0 1px 3px rgb(var(--shadow-color) / 0.45);
+}
+.chat-result-preview-caption strong {
+  display: block;
+  font-size: var(--fs-section);
+  font-weight: 800;
+}
+.chat-result-preview-caption span {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--fs-caption);
+  opacity: .85;
+}
+.chat-result-preview-strip {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+}
+.chat-result-preview-strip button {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.chat-result-preview-strip button[aria-pressed="true"] {
+  border-color: var(--c-violet);
+}
+.chat-result-preview-strip img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.chat-result-preview-cited > span {
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+.chat-result-preview-cited ol {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.chat-result-preview-cited li,
+.chat-result-preview-source {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+.chat-result-preview-cited li > span:last-child,
+.chat-result-preview-source > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-result-preview-cited img,
+.chat-result-preview-source img {
+  width: 28px;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.chat-result-preview-index {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 20px;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--note-lavender);
+  color: var(--ink);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+.chat-result-preview-sources {
+  flex: 1;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  overflow: auto;
+}
+.chat-result-preview-source {
+  justify-content: flex-start;
+  min-height: var(--h-lg);
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+  text-align: left;
+}
+@media (max-width: 1100px) {
+  .chat-result-preview { display: none; }
+}
+
+/* —— Workflow: cinematic one-by-one confirm —— */
+div.workflow-focus-review {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 16px;
+  padding: 18px 24px 22px;
+  background: var(--win-gradient);
+}
+html[data-atmosphere="soft"] div.workflow-focus-review {
+  background: var(--win-gradient-soft);
+}
+.workflow-focus-review .workflow-focus-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.workflow-focus-review .workflow-focus-header > button {
+  border-color: transparent;
+  background: var(--glass-bg-strong);
+  box-shadow: var(--e-card-c);
+}
+.workflow-focus-review .workflow-focus-title h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -.02em;
+}
+.workflow-focus-review .workflow-focus-title p {
+  margin: 0;
+  color: color-mix(in srgb, var(--ink) 60%, transparent);
+  font-size: var(--fs-caption);
+}
+.workflow-focus-review .workflow-focus-keys {
+  margin-left: auto;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  background: var(--glass-bg-strong);
+  color: var(--ink);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  box-shadow: var(--e-card-c);
+}
+.workflow-focus-review .workflow-focus-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 880px) minmax(0, 1fr);
+  align-items: center;
+  gap: 32px;
+  min-height: 0;
+}
+.workflow-focus-review .workflow-focus-peek {
+  position: relative;
+  width: 96px;
+  height: 124px;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--panel-2);
+  box-shadow: var(--e-card-c);
+  opacity: .92;
+  cursor: pointer;
+}
+.workflow-focus-review .workflow-focus-peek.is-prev { justify-self: end; }
+.workflow-focus-review .workflow-focus-peek.is-next { justify-self: start; }
+.workflow-focus-review .workflow-focus-peek.is-empty { visibility: hidden; }
+.workflow-focus-review .workflow-focus-peek img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.workflow-focus-review .workflow-focus-peek-text {
+  display: block;
+  padding: 10px;
+  color: var(--ink);
+  font-size: var(--fs-caption);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.workflow-focus-review .workflow-focus-peek small {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 18px 8px 6px;
+  background: var(--media-title-scrim);
+  color: var(--on-media);
+  font-size: var(--fs-caption);
+  text-align: left;
+}
+.workflow-focus-review .workflow-focus-body {
+  gap: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  height: min(560px, 100%);
+  border-radius: 28px;
+  overflow: hidden;
+  background: var(--panel);
+  box-shadow: 0 30px 70px -24px var(--c-focus-shadow);
+}
+.workflow-focus-review .workflow-focus-source {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  gap: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--media-dark);
+  color: var(--on-media);
+}
+.workflow-focus-review .workflow-focus-source > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  border-radius: 0;
+  object-fit: cover;
+}
+.workflow-focus-review .workflow-focus-source pre {
+  margin: 0;
+  padding: 32px;
+  font: 700 22px/1.5 var(--font-sans, inherit);
+  white-space: pre-wrap;
+  color: var(--on-media);
+}
+.workflow-focus-review .workflow-focus-ring {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1;
+  width: 56px;
+  height: 56px;
+}
+.workflow-focus-review .workflow-focus-ring .track {
+  fill: var(--c-white-12);
+  stroke: var(--c-white-35);
+  stroke-width: 3;
+}
+.workflow-focus-review .workflow-focus-ring .value {
+  fill: none;
+  stroke: var(--c-peach);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 22px 22px;
+}
+.workflow-focus-review .workflow-focus-ring text {
+  fill: var(--on-media);
+  font-size: 13px;
+  font-weight: 800;
+}
+.workflow-focus-review .workflow-focus-ring text.total {
+  font-size: 8px;
+  font-weight: 600;
+}
+.workflow-focus-review .workflow-focus-result {
+  border: 0;
+  border-radius: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  padding: 18px 20px;
+}
+.workflow-focus-review .workflow-focus-chips {
+  display: flex;
+  gap: 6px;
+}
+.workflow-focus-review .workflow-focus-chips span {
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--note-peach);
+  color: var(--ink);
+  font-size: var(--fs-caption);
+  font-weight: 700;
+}
+.workflow-focus-review .workflow-focus-chips .is-waiting {
+  background: var(--note-butter);
+}
+.workflow-focus-review .workflow-focus-label {
+  color: var(--muted);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+}
+.workflow-focus-review .workflow-focus-edit {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  color: var(--muted);
+  font-size: var(--fs-caption);
+}
+.workflow-focus-review .workflow-focus-edit textarea {
+  flex: 1;
+  min-height: 0;
+  resize: none;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--note-lavender) 70%, var(--panel));
+  color: var(--ink);
+  font-size: var(--fs-body);
+  line-height: 1.7;
+}
+.workflow-focus-review .workflow-focus-result .workflow-review-actions {
+  padding-top: 0;
+  border-top: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+}
+.workflow-focus-review .workflow-focus-result .workflow-review-actions .primary {
+  margin-left: auto;
+}
+.workflow-focus-review .workflow-focus-steps {
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  border-radius: var(--r-pill);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(14px);
+  box-shadow: var(--e-float);
+}
+.workflow-focus-review .workflow-focus-steps li {
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  color: var(--ink);
+  font-size: var(--fs-small);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.workflow-focus-review .workflow-focus-steps li { position: relative; }
+.workflow-focus-review .workflow-focus-steps li + li { margin-left: 22px; }
+.workflow-focus-review .workflow-focus-steps li + li::before {
+  content: "";
+  position: absolute;
+  left: -18px;
+  top: 50%;
+  width: 14px;
+  height: 1px;
+  background: var(--line-strong);
+}
+.workflow-focus-review .workflow-focus-steps li[data-active] {
+  background: var(--c-accent);
+  color: var(--c-on-accent);
+}
+
+@media (max-width: 1100px) {
+  .workflow-focus-review .workflow-focus-stage { grid-template-columns: minmax(0, 1fr); }
+  .workflow-focus-review .workflow-focus-peek, .workflow-focus-review .workflow-focus-keys { display: none; }
+  .workflow-focus-review .workflow-focus-body { grid-template-columns: minmax(0, 1fr); height: auto; }
+  .workflow-focus-review .workflow-focus-steps { flex-wrap: wrap; border-radius: var(--r-lg); }
+}
+
+/* Media buttons keep their own radius instead of the global pill shape */
+.workflow-focus-review .workflow-focus-peek { border-radius: 16px !important; }
+.chat-result-preview .chat-result-preview-figure { border-radius: var(--r-stage) !important; }
+.chat-result-preview .chat-result-preview-strip button { border-radius: 12px !important; }
+.chat-result-preview .chat-result-preview-source { border-radius: var(--r-lg) !important; }
+
+/* ===================================================================
+   C extend: remaining surfaces — trash already via data-c-surface=library;
+   canvas, detail, shares, workflow home/editor, workbench, dialogs.
+   =================================================================== */
+
+/* —— Canvas: transparent stage + floating header actions —— */
+@media (min-width: 1101px) {
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="canvas"] {
+    padding: 12px 12px 16px;
+    background: transparent;
+    box-shadow: none;
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="canvas"] .wiki-page-header {
+    position: relative;
+    z-index: 12;
+    margin: 0 0 10px;
+    padding: 8px 10px;
+    border-radius: var(--r-pill);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(16px) saturate(1.15);
+    -webkit-backdrop-filter: blur(16px) saturate(1.15);
+    box-shadow: var(--e-card-c);
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="canvas"] .react-flow,
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="canvas"] .canvas-board,
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="canvas"] .wiki-canvas {
+    border-radius: var(--r-stage);
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    box-shadow: var(--e-card-c);
+    overflow: hidden;
+  }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="canvas"] .react-flow__node {
+    border-radius: var(--r-stage);
+    box-shadow: var(--e-card-c);
+  }
+}
+
+/* —— Detail: immersive media + glass chrome —— */
+@media (min-width: 1101px) {
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="detail"] {
+    background: transparent;
+    box-shadow: none;
+    padding: 12px 16px 24px;
+  }
+  .wiki-main[data-c-surface="detail"] .wiki-detail > .wiki-detail-sticky-navigation {
+    border: 0;
+    border-radius: var(--r-pill);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(16px) saturate(1.15);
+    -webkit-backdrop-filter: blur(16px) saturate(1.15);
+    box-shadow: var(--e-card-c);
+    padding: 4px 8px;
+    margin-bottom: 12px;
+  }
+  .wiki-main[data-c-surface="detail"] .wiki-detail-toolbar {
+    border-radius: var(--r-pill);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(16px) saturate(1.15);
+    -webkit-backdrop-filter: blur(16px) saturate(1.15);
+    box-shadow: var(--e-card-c);
+    padding: 6px 10px;
+  }
+  .wiki-main[data-c-surface="detail"] .wiki-detail-header h1 {
+    font-weight: 750;
+  }
+  .wiki-main[data-c-surface="detail"] :is(.wiki-detail-media, .wiki-image-stage, .wiki-video-player, .wiki-detail-layout > figure, .wiki-detail-browse + *, .wiki-card-image) {
+    border-radius: var(--r-stage);
+  }
+  .wiki-main[data-c-surface="detail"] .wiki-detail-info {
+    padding: 16px 18px;
+    border-radius: var(--r-stage);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: var(--e-card-c);
+    border: 0;
+  }
+  .wiki-main[data-c-surface="detail"][data-tab] .wiki-detail[data-kind="image"] .wiki-detail-layout,
+  .wiki-main[data-c-surface="detail"] .wiki-detail[data-kind="video"] .wiki-detail-layout {
+    gap: 16px;
+  }
+}
+
+/* —— Temporary shares: floating stage list —— */
+@media (min-width: 1101px) {
+  .wiki-shell > .temporary-shares[data-c-surface="shares"],
+  .temporary-shares[data-c-surface="shares"] {
+    max-width: none;
+    margin: 0;
+    padding: 20px 24px 40px;
+    background: transparent;
+    box-shadow: none;
+    border-radius: var(--r-stage);
+  }
+  .temporary-shares .share-create,
+  .temporary-shares .share-card {
+    border: 0;
+    border-radius: var(--r-stage);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(14px) saturate(1.1);
+    -webkit-backdrop-filter: blur(14px) saturate(1.1);
+    box-shadow: var(--e-card-c);
+  }
+  .temporary-shares .page-header,
+  .temporary-shares > header {
+    margin-bottom: 16px;
+  }
+}
+
+/* —— Workflow: home cards + editor/prep as C stages —— */
+@media (min-width: 1101px) {
+  .workflow-app[data-c-surface="workflow"] {
+    background: transparent;
+    padding-top: 18px;
+  }
+  .workflow-app[data-c-surface="workflow"] > .page-header,
+  .workflow-app[data-c-surface="workflow"] > .workflow-header {
+    margin-bottom: 18px;
+  }
+  .workflow-app[data-c-surface="workflow"] .workflow-template-card,
+  .workflow-app[data-c-surface="workflow"] .workflow-list .workflow-home-card {
+    border: 0;
+    border-radius: var(--r-stage);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(12px) saturate(1.1);
+    -webkit-backdrop-filter: blur(12px) saturate(1.1);
+    box-shadow: var(--e-card-c);
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .workflow-app[data-c-surface="workflow"] .workflow-template-card:hover,
+  .workflow-app[data-c-surface="workflow"] .workflow-list .workflow-home-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--e-float);
+  }
+  .workflow-app[data-c-surface="workflow"] .workflow-editor,
+  .workflow-app[data-c-surface="workflow"] .workflow-editor-shell,
+  .workflow-app[data-c-surface="workflow"] .workflow-input-form,
+  .workflow-app[data-c-surface="workflow"] .workflow-workbench .workflow-plan,
+  .workflow-app[data-c-surface="workflow"] .workflow-preparation-card,
+  .workflow-app[data-c-surface="workflow"] .workflow-run-results {
+    border: 0;
+    border-radius: var(--r-stage);
+    background: var(--panel);
+    box-shadow: var(--e-card-c);
+  }
+  .workflow-app[data-c-surface="workflow"] .workflow-input-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* —— Agent workbench: glass session rail + stage conversation —— */
+@media (min-width: 1101px) {
+  .wiki-main.workbench-page[data-c-surface="workbench"] {
+    background: transparent;
+    box-shadow: none;
+    padding: 16px 18px 28px;
+  }
+  .workbench-page[data-c-surface="workbench"] .workbench-layout {
+    grid-template-columns: 200px minmax(0, 1fr);
+    gap: 14px;
+    min-height: calc(100dvh - 120px);
+  }
+  .workbench-page[data-c-surface="workbench"] .workbench-sessions {
+    padding: 10px 8px;
+    border-radius: var(--r-float);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(16px) saturate(1.15);
+    -webkit-backdrop-filter: blur(16px) saturate(1.15);
+    box-shadow: var(--e-card-c);
+    border: 0;
+    gap: 6px;
+  }
+  .workbench-page[data-c-surface="workbench"] .workbench-sessions > button {
+    border: 0;
+    border-radius: var(--r-pill);
+    text-align: left;
+    padding: 10px 12px;
+    background: transparent;
+  }
+  .workbench-page[data-c-surface="workbench"] .workbench-sessions > button[aria-current="page"] {
+    background: var(--glass-bg);
+    box-shadow: var(--e-card-c);
+  }
+  .workbench-page[data-c-surface="workbench"] .workbench-conversation {
+    border: 0;
+    border-radius: var(--r-stage);
+    background: var(--panel);
+    box-shadow: var(--e-card-c);
+    padding: 16px 18px 18px;
+    min-width: 0;
+  }
+  .workbench-page[data-c-surface="workbench"] .workbench-message.user {
+    border-radius: 18px 18px 6px 18px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--c-purple) 55%, var(--accent-soft)), color-mix(in srgb, var(--c-magenta) 45%, var(--accent-soft)));
+  }
+  .workbench-page[data-c-surface="workbench"] .workbench-composer {
+    border-radius: 24px;
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(12px);
+    box-shadow: var(--e-card-c);
+    border: 0;
+    padding: 12px;
+  }
+  .workbench-page[data-c-surface="workbench"] .workbench-create,
+  .workbench-page[data-c-surface="workbench"] .workbench-approval,
+  .workbench-page[data-c-surface="workbench"] .workbench-empty {
+    border: 0;
+    border-radius: var(--r-stage);
+    box-shadow: var(--e-card-c);
+  }
+  .workbench-page[data-c-surface="workbench"] .workbench-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* —— Dialogs / settings: stage glass sheets —— */
+@media (min-width: 701px) {
+  .wiki-dialog,
+  .settings-dialog,
+  .ui-dialog,
+  .comfyui-dialog,
+  .organization-dialog,
+  .token-usage-dialog,
+  .element-usage-dialog,
+  .chat-source-dialog,
+  .agent-source-preview {
+    border: 0;
+    border-radius: var(--r-stage);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    box-shadow: var(--e-float);
+  }
+  .wiki-dialog .wiki-dialog-header,
+  .settings-dialog .wiki-dialog-header,
+  .ui-dialog .ui-dialog-header,
+  .ui-dialog .ui-dialog-footer,
+  .comfyui-dialog .comfyui-dialog-header,
+  .comfyui-dialog .comfyui-dialog-footer {
+    border-bottom-color: transparent;
+  }
+  .settings-dialog .settings-section {
+    border-radius: var(--r-stage);
+    background: color-mix(in srgb, var(--panel) 70%, transparent);
+    padding: 14px 16px;
+    box-shadow: none;
+    border: 0;
+  }
+  .wiki-dialog-footer {
+    justify-content: flex-end;
+  }
+}
+
+/* Empty states on extended surfaces */
+.wiki-main[data-c-surface="library"] .wiki-empty,
+.temporary-shares .wiki-empty,
+.workflow-app .workflow-empty,
+.workbench-page .workbench-empty {
+  border-radius: var(--r-stage);
+  background: var(--glass-bg);
+  box-shadow: var(--e-card-c);
+  border: 0;
+  padding: 48px 28px;
+}
+
+/* —— Floating trays, popovers, menus, toasts: one C glass language (frosted, no hard borders) —— */
+.reference-tray,
+.menu-panel,
+.ui-select-list,
+.wiki-view-menu-panel,
+.wiki-tag-filter-menu,
+.wiki-relation-menu > div,
+.workspace-tools-more-body,
+.chat-connection-info,
+.chat-answer-menu-items,
+.chat-model-popover,
+.workflow-add-menu,
+.wiki-toast,
+.wiki-deletion-feedback {
+  border-color: transparent;
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  box-shadow: var(--e-float);
+}
+.menu-panel,
+.ui-select-list,
+.wiki-view-menu-panel,
+.wiki-tag-filter-menu,
+.wiki-relation-menu > div,
+.workspace-tools-more-body,
+.chat-connection-info,
+.chat-answer-menu-items,
+.workflow-add-menu {
+  border-radius: var(--r-stage);
+}
+.reference-tray,
+.chat-model-popover {
+  border-radius: var(--r-float);
+}
+.wiki-deletion-feedback,
+.wiki-toast {
+  border-radius: var(--r-pill);
+  padding-inline: 20px var(--sp-3);
+}
+.ui-notice, .canvas-notice, .workflow-notice {
+  border: 0;
+  border-radius: var(--r-stage);
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  box-shadow: var(--e-card-c);
+}
+.workflow-menu > summary { border-radius: var(--r-pill); }
+.dialog::backdrop { backdrop-filter: blur(6px) saturate(1.1); }
+.ui-toast {
+  border-radius: var(--r-pill);
+  padding-inline-start: 20px;
+  background: color-mix(in srgb, var(--ink) 88%, transparent);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: var(--e-float);
+}
+.reference-tray header { padding: var(--sp-4) 20px 0; }
+.reference-tray-hint { margin-inline: 20px; }
+.reference-tray footer { padding: var(--sp-3) var(--sp-4) var(--sp-4) 20px; }
+.reference-tray-list li {
+  border-color: transparent;
+  border-radius: var(--r-stage);
+  background: color-mix(in srgb, var(--panel) 62%, transparent);
+  box-shadow: var(--e-card-c);
+}
+.reference-tray-preview > img,
+.reference-tray-text-icon {
+  border-radius: calc(var(--r-stage) - 4px);
+}
+.reference-tray .reference-tray-list .icon-only { border-radius: var(--r-pill); }
+.reference-tray .reference-tray-preview { justify-content: flex-start; }
+/* Menu rows read as soft pills inside the glass */
+:is(.menu-panel, .workspace-tools-more-body, .wiki-relation-menu > div, .chat-answer-menu-items) > :is(button, a),
+.ui-select-list [role="option"] {
+  border-radius: calc(var(--r-stage) - 6px);
+}
+@media (prefers-reduced-transparency: reduce) {
+  .reference-tray, .menu-panel, .ui-select-list, .wiki-view-menu-panel, .wiki-tag-filter-menu,
+  .wiki-relation-menu > div, .workspace-tools-more-body, .chat-connection-info, .chat-answer-menu-items,
+  .chat-model-popover, .workflow-add-menu, .wiki-toast, .wiki-deletion-feedback, .ui-toast {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .reference-tray, .menu-panel, .ui-select-list, .wiki-view-menu-panel, .wiki-tag-filter-menu,
+  .wiki-relation-menu > div, .workspace-tools-more-body, .chat-connection-info, .chat-answer-menu-items,
+  .chat-model-popover, .workflow-add-menu, .wiki-toast, .wiki-deletion-feedback { background: var(--panel); }
+  .ui-toast { background: var(--ink); }
+}
+
+/* ===================================================================
+   C fix-all: remaining pages leave the old "white stage" skeleton.
+   Content floats straight on the window gradient; chrome is frosted glass.
+   Layout-only — no DOM / behaviour changes.
+   =================================================================== */
+@media (min-width: 1101px) {
+  /* No more framed stage behind workflow / shares / workbench / chat */
+  .workflow-app,
+  .temporary-shares,
+  .agent-workbench,
+  .app-layout.agent-home .chat-panel.chat-page {
+    background: transparent;
+    box-shadow: none;
+  }
+
+  /* —— Workflow home: hero composer capsule, centred column —— */
+  .workflow-app[data-c-surface="workflow"] > :is(.page-header, .workflow-home) {
+    width: min(1160px, 100%);
+    margin-inline: auto;
+    box-sizing: border-box;
+  }
+  .workflow-app[data-c-surface="workflow"] > .page-header .page-title { font-size: 30px; font-weight: 750; letter-spacing: -.01em; }
+  .workflow-app[data-c-surface="workflow"] .workflow-home { gap: 34px; }
+  .workflow-app[data-c-surface="workflow"] .workflow-home-build {
+    border: 0;
+    border-radius: var(--r-float);
+    padding: 22px 24px 24px;
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(18px) saturate(1.15);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    box-shadow: var(--e-float);
+  }
+  .workflow-app[data-c-surface="workflow"] .workflow-home-prompt {
+    padding: 5px 5px 5px 8px;
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--panel) 80%, transparent);
+    box-shadow: inset 0 0 0 1px var(--glass-line);
+  }
+  .workflow-app[data-c-surface="workflow"] .workflow-home-prompt :is(input, textarea) {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+  .workflow-app[data-c-surface="workflow"] .workflow-home-num {
+    background: var(--c-accent);
+    color: var(--c-on-accent);
+  }
+  .workflow-app[data-c-surface="workflow"] .workflow-template-flow {
+    opacity: 1;
+    color: var(--muted);
+    font-size: var(--fs-small);
+  }
+  .workflow-app[data-c-surface="workflow"] .workflow-template-card h3 { font-size: 15px; font-weight: 700; }
+  .workflow-app[data-c-surface="workflow"] .workflow-template-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+
+  /* —— Shares / workbench: centred column, hero glass card —— */
+  .temporary-shares > *,
+  .agent-workbench > * {
+    width: min(1040px, 100%);
+    margin-inline: auto;
+    box-sizing: border-box;
+  }
+  .temporary-shares .page-title,
+  .agent-workbench .page-title { font-size: 30px; font-weight: 750; letter-spacing: -.01em; }
+  .temporary-shares .share-create { border-radius: var(--r-float); box-shadow: var(--e-float); padding: 22px 24px; }
+  /* Glass containers form stacking contexts; lift the one holding an open dropdown above its siblings */
+  :is(.workflow-home-build, .share-create, .share-card, .workflow-template-card, .workflow-home-card):has(.ui-select-list, details[open], [aria-expanded="true"]) {
+    position: relative;
+    z-index: 20;
+  }
+  /* Form controls on these pages: soft rounded wells instead of hairline boxes */
+  :is(.temporary-shares, .agent-workbench, .workflow-app) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea),
+  :is(.temporary-shares, .agent-workbench) .ui-select > button {
+    border-color: transparent;
+    border-radius: 12px;
+    background-color: color-mix(in srgb, var(--panel) 72%, transparent);
+    box-shadow: inset 0 0 0 1px var(--glass-line);
+  }
+  :is(.temporary-shares, .agent-workbench, .workflow-app) :is(input, select, textarea):focus-visible {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  /* —— Agent page: floating history rail + open stage + glass composer —— */
+  .app-layout.agent-home .chat-panel.chat-page { column-gap: 10px; }
+  .app-layout.agent-home .chat-page:not(:has(> .chat-stage.has-preview)) > .chat-history {
+    position: sticky;
+    top: 10px;
+    align-self: start;
+    height: calc(100dvh - 20px);
+    box-sizing: border-box;
+    border: 0;
+    border-radius: var(--r-float);
+    padding: 16px 10px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(18px) saturate(1.15);
+    -webkit-backdrop-filter: blur(18px) saturate(1.15);
+    box-shadow: var(--e-float);
+  }
+  .app-layout.agent-home .chat-page .chat-history-new {
+    border-color: transparent;
+    background: var(--glass-bg-strong);
+    box-shadow: var(--e-card-c);
+  }
+  .app-layout.agent-home .chat-page .chat-history-item > button { border-radius: var(--r-pill); }
+  .app-layout.agent-home .chat-page .chat-history-item > button[aria-current] { background: var(--glass-bg-strong); box-shadow: var(--e-card-c); }
+  .app-layout.agent-home .chat-page .chat-header .page-title { font-size: 30px; font-weight: 750; letter-spacing: -.01em; }
+  .app-layout.agent-home .chat-page .chat-session-bar .chat-session-title {
+    flex: 0 1 auto;
+    padding: 4px 12px;
+    border-radius: var(--r-pill);
+    background: var(--glass-bg);
+    color: var(--ink);
+  }
+  .app-layout.agent-home .chat-page .chat-session-bar { justify-content: space-between; border-bottom: 0; }
+  .app-layout.agent-home .chat-page .chat-composer {
+    border-color: transparent;
+    border-radius: var(--r-float);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    box-shadow: var(--e-float);
+  }
+  .app-layout.agent-home .chat-page .chat-composer:focus-within {
+    border-color: transparent;
+    box-shadow: 0 0 0 3px var(--accent-soft), var(--e-float);
+  }
+  .app-layout.agent-home .chat-page .chat-codex-needed {
+    border: 0;
+    border-radius: var(--r-pill);
+    padding: 8px 8px 8px 20px;
+    background: color-mix(in srgb, var(--warn-soft) 82%, transparent);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: var(--e-card-c);
+  }
+  .app-layout.agent-home .chat-page .chat-starters button {
+    border-color: transparent;
+    border-radius: var(--r-stage);
+    background: var(--glass-bg);
+    backdrop-filter: blur(14px) saturate(1.1);
+    -webkit-backdrop-filter: blur(14px) saturate(1.1);
+    box-shadow: var(--e-card-c);
+  }
+  .app-layout.agent-home .chat-page .chat-starters button:hover:not(:disabled) {
+    background: var(--glass-bg-strong);
+    box-shadow: var(--e-float);
+  }
+  .app-layout.agent-home .chat-page .chat-empty h2,
+  .app-layout.agent-home .chat-page .chat-empty > strong { font-size: 26px; font-weight: 750; }
+
+  /* —— Canvas: header + capsule toolbars float over a single glass stage —— */
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="canvas"] .wiki-canvas {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: 12px;
+    padding: 8px 6px 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .wiki-main[data-c-surface="canvas"] .wiki-canvas > :is(.canvas-heading, .canvas-relation-guide, .canvas-workspace, .canvas-footer, .canvas-notice, .canvas-status, .wiki-error) { grid-column: 1 / -1; }
+  .wiki-main[data-c-surface="canvas"] .wiki-canvas > .canvas-heading { margin-bottom: 14px; padding-inline: 6px; }
+  .wiki-main[data-c-surface="canvas"] .wiki-canvas > .canvas-heading .page-title { font-size: 30px; font-weight: 750; letter-spacing: -.01em; }
+  .wiki-main[data-c-surface="canvas"] .wiki-canvas > .canvas-viewbar { grid-column: 1; margin: 0; }
+  .wiki-main[data-c-surface="canvas"] .wiki-canvas > .canvas-toolbar {
+    grid-column: 2;
+    margin: 0;
+    padding: 5px;
+    border-radius: var(--r-pill);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(16px) saturate(1.15);
+    -webkit-backdrop-filter: blur(16px) saturate(1.15);
+    box-shadow: var(--e-card-c);
+  }
+  .wiki-main[data-c-surface="canvas"] .canvas-toolbar .wiki-search {
+    border-color: transparent;
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--panel) 70%, transparent);
+  }
+  .wiki-main[data-c-surface="canvas"] .canvas-view-switch {
+    padding: 5px;
+    border-radius: var(--r-pill);
+    background: var(--glass-bg-strong);
+    backdrop-filter: blur(16px) saturate(1.15);
+    -webkit-backdrop-filter: blur(16px) saturate(1.15);
+    box-shadow: var(--e-card-c);
+  }
+  .wiki-main[data-c-surface="canvas"] .canvas-view-switch > * { border-radius: var(--r-pill); }
+  .wiki-main[data-c-surface="canvas"] .wiki-canvas > .canvas-relation-guide { margin: 12px 8px 8px; }
+  .wiki-main[data-c-surface="canvas"] .canvas-workspace {
+    height: max(480px, calc(100dvh - 250px));
+    border: 0;
+    border-radius: var(--r-float);
+    /* no backdrop-filter here: it would become the containing block for fixed context menus */
+    background: var(--glass-bg-strong);
+    box-shadow: var(--e-float);
+  }
+  .wiki-main[data-c-surface="canvas"] .wiki-canvas > :is(.canvas-viewbar, .canvas-toolbar) { position: relative; z-index: 6; }
+  .app-layout:not(.agent-docked) .wiki-main[data-c-surface="canvas"] .canvas-workspace .react-flow {
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .wiki-main[data-c-surface="canvas"] .react-flow__minimap,
+  .wiki-main[data-c-surface="canvas"] .react-flow__controls {
+    border: 0;
+    border-radius: var(--r-stage);
+    overflow: hidden;
+    box-shadow: var(--e-card-c);
+  }
+  .wiki-main[data-c-surface="canvas"] .canvas-footer { padding: 8px 10px 0; }
+
+  /* —— Trash: same open wall; cards get a restore pill, header warns softly —— */
+  .wiki-main[data-c-surface="library"] .wiki-trash-item .wiki-card-actions button,
+  .wiki-main[data-c-surface="library"] .wiki-card .wiki-restore { border-radius: var(--r-pill); }
+}
+
+/* —— Settings: immersive glass sheet with a pill rail; no nested slabs —— */
+@media (min-width: 701px) {
+  .settings-dialog {
+    width: min(1120px, calc(100vw - 64px));
+    height: min(860px, calc(100dvh - 48px));
+    max-height: none;
+  }
+  .settings-dialog[open] { display: flex; flex-direction: column; }
+  .settings-dialog .settings-layout { flex: 1; min-height: 0; }
+  .settings-dialog .wiki-dialog-header { padding: 22px 28px 14px; background: transparent; }
+  .settings-dialog .wiki-dialog-header h2 { font-size: 24px; font-weight: 750; }
+  .settings-dialog .settings-nav {
+    margin: 0 0 14px 14px;
+    padding: 14px 10px;
+    border: 0;
+    border-radius: var(--r-float);
+    background: color-mix(in srgb, var(--panel) 55%, transparent);
+    box-shadow: inset 0 0 0 1px var(--glass-line);
+  }
+  .settings-dialog .settings-nav button { border: 0; border-radius: var(--r-stage); }
+  .settings-dialog .settings-nav button[aria-current] {
+    border-color: transparent;
+    background: var(--glass-bg-strong);
+    box-shadow: var(--e-card-c);
+  }
+  .settings-dialog .settings-content { padding: 0 24px 24px; background: transparent; }
+  .settings-dialog .settings-content .settings-section { margin-bottom: 16px; }
+  .settings-dialog fieldset { border: 0; padding: 0; margin-inline: 0; }
+  .settings-dialog fieldset > legend { padding: 0; margin-bottom: 10px; font-weight: 600; }
+  .settings-dialog fieldset + fieldset { margin-top: 18px; }
+  .settings-dialog .theme-option-description { padding-right: 22px; }
+  .settings-dialog .settings-content :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea),
+  .settings-dialog .settings-content .ui-select > button {
+    border-color: transparent;
+    border-radius: 12px;
+    background-color: color-mix(in srgb, var(--panel) 80%, transparent);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+  .settings-dialog .theme-option {
+    border-color: transparent;
+    border-radius: var(--r-stage);
+    background: color-mix(in srgb, var(--panel) 70%, transparent);
+    box-shadow: var(--e-card-c);
+  }
+  .settings-dialog .theme-option:hover { border-color: transparent; background: var(--panel); }
+  .settings-dialog .theme-option:has(input:checked) {
+    border-color: transparent;
+    background: var(--panel);
+    box-shadow: 0 0 0 2px var(--c-accent), var(--e-card-c);
+  }
+  .settings-dialog .ui-save-bar {
+    margin: 0 14px 14px;
+    padding: 8px 8px 8px 20px;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--panel) 75%, transparent);
+    box-shadow: inset 0 0 0 1px var(--glass-line);
+  }
+  .ui-save-bar { border-top-color: transparent; }
+}
+
+/* Toasts / undo bar sit above the bottom filter capsule instead of covering it */
+@media (min-width: 1101px) {
+  .toast-region,
+  .wiki-deletion-feedback { bottom: 84px; }
+  .toast-region > .wiki-deletion-feedback { bottom: auto; }
+}

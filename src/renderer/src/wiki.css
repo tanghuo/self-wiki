@@ -348,6 +348,17 @@ p.wiki-error { background: var(--panel-2); padding: var(--sp-4); border-radius: 
 .wiki-original img.is-zoomed:active { cursor: grabbing; }
 .wiki-image-tools { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-top: var(--sp-1); color: var(--muted); font-size: var(--fs-caption); }
 .wiki-image-tools .text-button { min-height: var(--h-sm); padding: 0 var(--sp-1); font-size: var(--fs-caption); }
+.wiki-detail-image-stage { display: grid; min-width: 0; }
+.wiki-detail-image-stage > .wiki-image-viewer { display: contents; }
+.wiki-detail-image-stage .wiki-original, .wiki-image-navigation { grid-area: 1 / 1; }
+.wiki-detail-image-stage .wiki-image-tools { grid-area: 2 / 1; }
+.wiki-image-navigation { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; pointer-events: none; padding: var(--sp-3); }
+.wiki-image-navigation > button.text-button { width: clamp(64px, 12%, 144px); height: 60%; max-height: 320px; padding: 0; border: 0; border-radius: var(--r-lg); background: transparent; color: rgb(255 255 255 / .7); opacity: 0; pointer-events: auto; transition: opacity 160ms ease, background 160ms ease; }
+.wiki-image-navigation > button.text-button:hover, .wiki-image-navigation > button.text-button:focus-visible { opacity: 1; background: rgb(0 0 0 / .12); color: rgb(255 255 255 / .7); }
+.wiki-image-navigation > button.text-button:disabled:hover { opacity: .25; }
+.wiki-image-navigation > button svg { filter: drop-shadow(0 1px 3px rgb(0 0 0 / .45)); }
+.wiki-image-navigation .wiki-detail-navigation-progress { color: rgb(255 255 255 / .7); filter: drop-shadow(0 1px 3px rgb(0 0 0 / .45)); }
+@media (hover: none) { .wiki-image-navigation > button.text-button { opacity: .65; } .wiki-image-navigation > button.text-button:disabled { opacity: .2; } }
 .wiki-text-document { background: var(--panel); padding: var(--sp-6); border: 1px solid var(--line); border-radius: var(--r-lg); }
 .wiki-text-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: flex-end; margin-bottom: var(--sp-3); }
 .wiki-text-actions > button { min-height: var(--h-sm); padding: 0 var(--sp-2); font-size: var(--fs-small); }
@@ -613,10 +624,6 @@ button.wiki-relation-rename { max-width: 100%; gap: var(--sp-1); border: 0; just
 .wiki-card-video-badge, .wiki-card-video-duration { position: absolute; bottom: 10px; padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm); color: var(--on-media); background: var(--media-scrim-strong); font-size: var(--fs-caption); font-variant-numeric: tabular-nums; }
 .wiki-card-video-badge { left: 10px; }
 .wiki-card-video-duration { right: 10px; }
-.wiki-card-video-info { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4) var(--sp-4); }
-.wiki-card-video strong { color: var(--ink); font-size: var(--fs-body); line-height: 1.6; overflow-wrap: anywhere; text-align: left; }
-.wiki-card-video small { font-size: var(--fs-small); }
-.wiki-card-open.has-tags .wiki-card-video-info { padding-bottom: var(--sp-12); }
 .wiki-video-player { width: 100%; min-width: 0; }
 .wiki-video-player video { display: block; width: 100%; max-height: 70vh; aspect-ratio: 16 / 9; background: var(--media-dark); border-radius: var(--r-lg); }
 /* Keep native controls without the dark overlay, including in fullscreen. */

@@ -1,4 +1,5 @@
 import { dependencies, outputType, outputBindingType, matchesType, summarizeRun, workflowLimits, loopItems } from '../../../shared/domain/workflow/contracts.js';
+import { externalKeyLimit, externalResourceLimits } from '../../../shared/domain/externalResources.js';
 
 export function createWorkflowScheduler({ repo, nodes, store, interval = 1000 }) {
   const active = new Map();
@@ -63,7 +64,7 @@ export function createWorkflowScheduler({ repo, nodes, store, interval = 1000 })
     if (!body.nodes.length) expanded = values.items.length;
     if (!run.paused && !run.cancelled) {
       const captures = Object.fromEntries(Object.entries(values).filter(([key]) => key !== 'items'));
-      while (expanded < values.items.length && unfinished < 8) {
+      while (expanded < values.items.length && unfinished < externalResourceLimits.loopInFlight) {
         repo.expand(parent, body, expanded, values.items[expanded], captures);
         wake();
         unfinished++; expanded++;
@@ -105,7 +106,8 @@ export function createWorkflowScheduler({ repo, nodes, store, interval = 1000 })
           if (!n) { repo.setInstance(i.id, 'failed', '节点定义缺失'); continue; }
           if (faults.has(resourceFor(r, i, n))) continue;
           const resource = resourceFor(r, i, n);
-          if (resource && ([...active.values()].some((entry) => entry.resource === resource) || [...active.values()].filter((entry) => entry.resource).length >= 2)) continue;
+          const externals = [...active.values()].filter((entry) => entry.resource);
+          if (resource && (externals.filter((entry) => entry.resource === resource).length >= externalKeyLimit(resource) || externals.length >= externalResourceLimits.total)) continue;
           const upstream = dependencies(n).map((id) => all.find((s) => s.scope === i.scope && s.nodeId === id));
           const aggregate = (s) => s && ['succeeded', 'failed'].includes(s.state) && s.outputs.value && graph.nodes.find((node) => node.id === s.nodeId)?.type === 'foreach' && (n.config.acceptPartial || n.config.operation === 'successes');
           const bad = upstream.some((s) => !s || !aggregate(s) && (['failed', 'blocked', 'cancelled', 'unknown'].includes(s.state) || s.data.partialFailed && !n.config.acceptPartial && n.config.operation !== 'successes'));

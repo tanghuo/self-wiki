@@ -4,6 +4,7 @@ import KeyboardShortcuts from "./KeyboardShortcuts.jsx";
 import { isEditableTarget, overlayOpen } from "./shortcuts.js";
 import WikiApp from "./WikiApp.jsx";
 import SettingsDialog from "./SettingsDialog.jsx";
+import LiquidGlassController from "./LiquidGlassController.jsx";
 import WikiSidebar from "./WikiSidebar.jsx";
 import AgentSourcePreview from "./AgentSourcePreview.jsx";
 import TokenUsagePanel from "./TokenUsagePanel.jsx";
@@ -16,6 +17,8 @@ import { request } from "./api.js";
 import "./wiki.css";
 import "./surfaces.css";
 import "./shell.css";
+import "./visual-c.css";
+import "./liquid-glass.css";
 
 const access = document.querySelector('meta[name="wiki-access"]')?.content;
 const readOnly = access === "read-only";
@@ -85,6 +88,23 @@ export default function App() {
     try { document.cookie = `selfWikiTheme=${theme}; Path=/; Max-Age=31536000; SameSite=Strict`; }
     catch { /* Theme switching still works when preferences cannot be saved. */ }
   }, [theme]);
+  const [atmosphere, setAtmosphere] = useState(() => {
+    try { return document.cookie.split(";").some((entry) => entry.trim() === "selfWikiAtmosphere=soft") ? "soft" : "full"; }
+    catch { return "full"; }
+  });
+  useEffect(() => {
+    document.documentElement.dataset.atmosphere = atmosphere;
+    try { document.cookie = `selfWikiAtmosphere=${atmosphere}; Path=/; Max-Age=31536000; SameSite=Strict`; }
+    catch { /* ignore */ }
+  }, [atmosphere]);
+  const [liquidGlass, setLiquidGlass] = useState(() => {
+    try { return !document.cookie.split(";").some((entry) => entry.trim() === "selfWikiLiquidGlass=off"); }
+    catch { return true; }
+  });
+  useEffect(() => {
+    try { document.cookie = `selfWikiLiquidGlass=${liquidGlass ? "on" : "off"}; Path=/; Max-Age=31536000; SameSite=Strict`; }
+    catch { /* ignore */ }
+  }, [liquidGlass]);
   const [cardTagDisplay, setCardTagDisplay] = useState(() => {
     try { return document.cookie.split(";").some((entry) => entry.trim() === "selfWikiCardTagDisplay=hover") ? "hover" : "always"; }
     catch { return "always"; }
@@ -228,7 +248,8 @@ export default function App() {
       onRemove={(id) => { setReferences((current) => current.filter((element) => element.id !== id)); setReferenceError(""); }} onClear={() => { setReferences([]); setReferenceError(""); }}
       onOpen={openSource} onStart={startReferenceChat} />}
     {sourcePreview !== null && <AgentSourcePreview key={sourcePreview} id={sourcePreview} onClose={() => setSourcePreview(null)} onBrowse={browseSource} onReference={(element) => { selectForAgent(element); setSourcePreview(null); }} onAddReference={(element) => { addReference(element); setSourcePreview(null); }} />}
-    {settingsOpen && !lanGuest && <SettingsDialog key={settingsSection} initialSection={settingsSection} theme={theme} onThemeChange={setTheme} cardTagDisplay={cardTagDisplay} onCardTagDisplayChange={setCardTagDisplay} onChanged={refreshWiki} onClose={() => setSettingsOpen(false)} />}
+    <LiquidGlassController enabled={liquidGlass} atmosphere={atmosphere} />
+    {settingsOpen && !lanGuest && <SettingsDialog key={settingsSection} initialSection={settingsSection} theme={theme} onThemeChange={setTheme} atmosphere={atmosphere} onAtmosphereChange={setAtmosphere} liquidGlass={liquidGlass} onLiquidGlassChange={setLiquidGlass} cardTagDisplay={cardTagDisplay} onCardTagDisplayChange={setCardTagDisplay} onChanged={refreshWiki} onClose={() => setSettingsOpen(false)} />}
     {shortcutsOpen && <KeyboardShortcuts onClose={() => setShortcutsOpen(false)} />}
     {usageOpen && !lanGuest && <TokenUsagePanel onClose={() => setUsageOpen(false)} />}
     {organizationOpen && !lanGuest && <Dialog open label="整理历史" className="wiki-dialog organization-dialog organization-library-dialog" onClose={() => !organizationBusy && setOrganizationOpen(false)}>

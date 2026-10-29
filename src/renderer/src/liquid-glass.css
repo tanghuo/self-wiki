@@ -1,0 +1,99 @@
+/* Liquid glass surfaces — colours from themes.css tokens. Active when html[data-liquid-glass="on"]. */
+
+@property --lg-a {
+  syntax: "<angle>";
+  inherits: true;
+  initial-value: -45deg;
+}
+
+.lg-glass {
+  --lg-x: 30%;
+  --lg-y: -20%;
+  --lg-alpha: 0.2;
+  isolation: isolate;
+  background: rgb(var(--lg-tint-rgb) / calc(var(--lg-alpha) + var(--lg-alpha-boost, 0))) !important;
+  border-color: transparent !important;
+  backdrop-filter: var(--lg-filter) saturate(1.7) brightness(1.06) !important;
+  -webkit-backdrop-filter: var(--lg-filter) saturate(1.7) brightness(1.06) !important;
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim),
+    inset 0 -1px 0 var(--lg-rim-soft),
+    inset 0 0 0 1px var(--lg-edge),
+    inset 0 10px 24px -14px var(--lg-inner-glow),
+    inset 0 -14px 28px -18px var(--lg-inner-shade),
+    0 18px 44px -18px var(--lg-drop),
+    0 2px 6px -2px var(--lg-drop-soft) !important;
+  transition: --lg-a 0.25s linear;
+}
+
+
+
+/* Scrolling: drop the SVG displacement (keep a light frost) so the media wall stays smooth. */
+html[data-lg-scrolling] .lg-glass {
+  backdrop-filter: blur(6px) saturate(1.55) brightness(1.05) !important;
+  -webkit-backdrop-filter: blur(6px) saturate(1.55) brightness(1.05) !important;
+}
+
+.lg-glass > .lg-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  overflow: hidden;
+  background:
+    radial-gradient(260px circle at var(--lg-x) var(--lg-y), var(--lg-spec), transparent 60%),
+    linear-gradient(180deg, var(--lg-sheen-top), transparent 38%),
+    var(--lg-noise);
+  mix-blend-mode: soft-light;
+}
+
+.lg-glass > .lg-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(from var(--lg-a), var(--lg-rim) 0deg, transparent 70deg, transparent 150deg, var(--lg-rim-soft) 180deg, transparent 210deg, transparent 290deg, var(--lg-rim) 360deg);
+  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  mask-composite: exclude;
+  opacity: 0.9;
+}
+
+/* Sidebar / search content above the sheen layer */
+.lg-glass > :not(.lg-sheen) {
+  position: relative;
+  z-index: 1;
+}
+
+.wiki-toolbar.lg-has-plate::before {
+  display: none !important;
+}
+
+.wiki-search.lg-glass {
+  border-radius: var(--r-pill) !important;
+}
+
+.wiki-search.lg-glass input {
+  background: transparent !important;
+}
+
+.lg-plate.lg-glass {
+  border-radius: var(--r-pill);
+}
+
+.wiki-sidebar.lg-glass {
+  color: var(--ink);
+}
+
+.wiki-sidebar.lg-glass .nav-item.active,
+.wiki-sidebar.lg-glass .nav-item[aria-current="page"] {
+  background: var(--lg-nav-active);
+  box-shadow: inset 0 1px 0 var(--lg-rim), 0 4px 12px -6px var(--lg-drop-soft);
+}
+
+
+/* The sidebar keeps its own 190px grid track: the media wall starts right of it (with the shell gap),
+   so nothing is covered at rest. Refraction comes from the window gradient behind the glass. */

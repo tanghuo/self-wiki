@@ -12,6 +12,7 @@ import { createAgentWorkbenchService } from '../../src/server/application/agentW
 import { createAgentTaskService } from '../../src/server/application/agentTasks/service.js';
 import { createAgentTools } from '../../src/server/application/agentTools/service.js';
 import { acquireExternalResource } from '../../src/agent/executors/resourceGate.js';
+import { externalResourceLimits } from '../../src/shared/domain/externalResources.js';
 
 async function until(fn) { for (let i = 0; i < 500; i++) { const value = fn(); if (value) return value; await new Promise(resolve => setTimeout(resolve, 10)); } throw new Error('resource handoff timeout'); }
 test('a polling Grok turn yields its real resource slot and the approved independent image task completes once', async t => {
@@ -39,6 +40,9 @@ test('a polling Grok turn yields its real resource slot and the approved indepen
     } };
   } });
   t.after(async () => { await workbench.close(); await tasks.close(); });
+  const fillers = [];
+  for (let i = 0; i < externalResourceLimits.keys.grok - 1; i++) fillers.push(await acquireExternalResource('grok'));
+  t.after(() => fillers.forEach((release) => release()));
   const workspace = await workbench.workspace({ kind: 'scratch', trusted: true }), session = workbench.createSession({ workspaceId: workspace.id, engine: 'grok-build' });
   const turn = workbench.submit(session.id, { requestKey: 'resource-test', text: 'fixture' });
   const op = await until(() => taskRepo.operations(session.id)[0]);

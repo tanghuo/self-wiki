@@ -11,7 +11,16 @@
       try {
         const theme = document.cookie.split(";").map((entry) => entry.trim()).find((entry) => entry.startsWith("selfWikiTheme="))?.slice("selfWikiTheme=".length);
         document.documentElement.dataset.theme = ["auto", "paper", "sage", "night", "light"].includes(theme) ? theme : "auto";
+        const atmosphere = document.cookie.split(";").map((entry) => entry.trim()).find((entry) => entry.startsWith("selfWikiAtmosphere="))?.slice("selfWikiAtmosphere=".length);
+        document.documentElement.dataset.atmosphere = atmosphere === "soft" ? "soft" : "full";
       } catch { document.documentElement.dataset.theme = "auto"; }
+      try {
+        const liquidOff = document.cookie.split(";").some((entry) => entry.trim() === "selfWikiLiquidGlass=off");
+        const liquidSupported = Boolean(CSS.supports?.("backdrop-filter", "url(#liquid-glass-probe)"));
+        const reduceTransparency = matchMedia("(prefers-reduced-transparency: reduce)").matches;
+        document.documentElement.dataset.liquidGlass = !liquidOff && liquidSupported && !reduceTransparency ? "on" : "off";
+        document.documentElement.dataset.liquidGlassSupport = liquidSupported ? "yes" : "no";
+      } catch { document.documentElement.dataset.liquidGlass = "off"; }
     </script>
   </head>
   <body>

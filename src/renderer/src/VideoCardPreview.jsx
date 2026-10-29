@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Play, Video } from "lucide-react";
 import { apiUrl, request } from "./api.js";
 import { scheduleVideoCover } from "./videoCoverQueue.js";
-import { elementLabel } from "../../shared/domain/elements.js";
 
 // Bound the memory used by covers; no original video bytes are retained here.
 const covers = new Map();
@@ -148,6 +147,5 @@ export default function VideoCardPreview({ element, disabled }) {
       {playing && <span className="wiki-card-video-badge">静音预览</span>}
       {duration > 0 && <span className="wiki-card-video-duration" aria-label={`视频时长 ${timeLabel}`}>{timeLabel}</span>}
     </div>
-    <div className="wiki-card-video-info"><strong title={elementLabel(element)}>{elementLabel(element)}</strong><small>{(element.video.byteSize / 1024 / 1024).toFixed(1)} MiB</small></div>
   </div>;
 }

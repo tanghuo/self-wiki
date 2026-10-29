@@ -1,5 +1,12 @@
 .reference-tray { position: fixed; right: 24px; bottom: max(24px, env(safe-area-inset-bottom)); z-index: 18; width: min(340px, calc(100vw - 32px)); overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--r-xl); background: var(--panel); color: var(--ink); box-shadow: var(--e-3); }
 .reference-tray.is-docked { right: calc(min(460px, 42vw) + 24px); }
+.reference-tray header,
+.reference-tray .reference-tray-toggle { cursor: grab; touch-action: none; }
+.reference-tray.is-placed,
+.reference-tray.is-dragging { z-index: 32; }
+.reference-tray.is-dragging { user-select: none; }
+.reference-tray.is-dragging header,
+.reference-tray.is-dragging .reference-tray-toggle { cursor: grabbing; }
 .reference-tray header { padding: var(--sp-4) var(--sp-4) 0; }
 .reference-tray .reference-tray-toggle { width: 100%; gap: var(--sp-2); padding: 0; color: var(--ink); }
 .reference-tray-toggle strong { font-size: var(--fs-body); }

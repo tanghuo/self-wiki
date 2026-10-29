@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import { chromium } from "../helpers/authenticatedServer.js";
 import { resolveBrowserPath } from '../resolveBrowserPath.js';
 import { createServer, fetch } from "../helpers/authenticatedServer.js";
-import { workflowNode as n, output as o } from '../../src/shared/domain/workflow/examples.js';
+import { workflowNode as n, output as o, constant as c } from '../../src/shared/domain/workflow/examples.js';
 
 const browserPath = resolveBrowserPath();
 const options = { timeout: 20000, skip: !browserPath && 'Browser required' };
@@ -208,7 +208,7 @@ test('run results follow numbered steps even when instances arrive out of order'
   await page.getByLabel('修改「第 3 步 · check」的文字', { exact: true }).waitFor();
   const numbers = (labels) => labels.map((label) => Number(label.match(/第 (\d+) 步/)[1]));
   assert.equal(await page.locator('.workflow-run-results .workflow-result-heading>strong').count(), 3);
-  assert.deepEqual(numbers(await page.locator('.workflow-run-results .workflow-result-heading>strong').allTextContents()), [3, 1, 2], 'pending review comes first; remaining results keep step order');
+  assert.deepEqual(numbers(await page.locator('.workflow-run-results .workflow-result-heading>strong').allTextContents()), [1, 2, 3], 'pending review stays in step order');
   await page.getByRole('button', { name: '通过', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   assert.deepEqual(numbers(await page.locator('.workflow-run-results .workflow-result-heading>strong').allTextContents()), [1, 2, 3]);
@@ -226,4 +226,18 @@ test('library text cannot be replaced by an empty string or an error while its p
   release.resolve();
   await page.getByRole('alert').filter({ hasText: '测试：文字暂时不可用' }).waitFor();
   assert.equal(await copy.isDisabled(), true, 'fetch errors must not become editable workflow content');
+});
+
+test('an in-progress run can pause, resume and stop from the run page', options, async (t) => {
+  const { page } = await setup(t, [n('check', 'review', { valueType: 'text' }, { value: c('待确认') })]);
+  await begin(page);
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  await page.getByRole('button', { name: '停止', exact: true }).waitFor();
+  await page.getByRole('button', { name: '暂停', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="paused"]').waitFor();
+  await page.getByRole('button', { name: '继续', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="waiting_review"]').waitFor();
+  await page.getByRole('button', { name: '停止', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="cancelled"]').waitFor();
+  assert.equal(await page.getByRole('button', { name: '停止', exact: true }).count(), 0);
 });

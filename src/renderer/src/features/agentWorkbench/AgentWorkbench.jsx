@@ -74,7 +74,7 @@ export default function AgentWorkbench({ onOpen }) {
     });
   }
   const current = detail?.turns.find(turn => active(turn.state));
-  return <main className="wiki-main workbench-page">
+  return <main className="wiki-main workbench-page" data-c-surface="workbench">
     <PageHeader title="Agent 工作台" subtitle="绑定项目，审批修改，查看执行过程与结果。" actions={<button onClick={() => setCreating(!creating)} disabled={!status?.agentWorkbenchEnabled || busy}><Plus size={16} />新建会话</button>} />
     {error && <p role="alert" className="workbench-error">{error}</p>}
     {status && !status.agentWorkbenchEnabled ? <section className="workbench-empty"><h2>启用 Agent 工作台</h2><p>项目需要先确认信任；文件写入和命令逐次审批。已批准的命令使用当前用户权限运行。</p><button onClick={() => action(async () => { await request(base + '/settings', { method: 'PUT', body: JSON.stringify({ agentWorkbenchEnabled: true }) }); await refresh(); })} disabled={busy}>启用工作台</button></section> : <>

@@ -21,7 +21,8 @@ import { createAgentWikiRepository } from '../../src/server/data/agentWikiReposi
 import { migrateAgentWorkflow } from '../../src/server/data/agentWorkflowMigration.js';
 import { DatabaseSync } from 'node:sqlite';
 import sharp from 'sharp';
-import { withExternalResource } from '../../src/agent/executors/resourceGate.js';
+import { acquireExternalResource, withExternalResource } from '../../src/agent/executors/resourceGate.js';
+import { externalResourceLimits } from '../../src/shared/domain/externalResources.js';
 import { elementContent } from '../../src/shared/domain/elements.js';
 const key = () => randomUUID();
 const config = () => ({ chat: { grokBuild: { model: 'fixture' } } });
@@ -196,6 +197,9 @@ test('Agent to workflow to Agent yields the shared engine and rejects the ancest
       };
     } });
   t.after(() => workbench.close());
+  const fillers = [];
+  for (let i = 0; i < externalResourceLimits.keys.grok - 1; i++) fillers.push(await acquireExternalResource('grok'));
+  t.after(() => fillers.forEach((release) => release()));
   const agent = text => ({ schemaVersion: 1, outputs: {}, nodes: [n('agent', 'agent', { adapterId: 'grok-agent', outputType: 'text', adapterConfig: { tools: ['workflow_read', 'workflow_submit', 'task_status'] } }, { prompt: c(text), images: c([]) })] });
   childWorkflow = f.workflow.create({ requestKey: key(), name: 'child', definition: agent('child') });
   parentWorkflow = f.workflow.create({ requestKey: key(), name: 'parent', definition: agent('parent') });

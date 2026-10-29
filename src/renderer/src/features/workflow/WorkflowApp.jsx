@@ -1,3 +1,4 @@
+import WorkflowStatusLight from './WorkflowStatusLight.jsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiUrl, request } from '../../api.js';
 import WorkflowEditor, { WorkflowPlan } from './WorkflowEditor.jsx';
@@ -15,15 +16,6 @@ import PageHeader from '../../ui/PageHeader.jsx';
 import './workflow.css';
 
 const post = (path, payload) => request(path, { method: 'POST', body: JSON.stringify({ requestKey: crypto.randomUUID(), ...payload }) });
-export const runCountOf = (definition) => Number.isInteger(definition?.runCount) && definition.runCount >= 1 && definition.runCount <= 20 ? definition.runCount : 1;
-// Fixed-content edits on the preparation page are disposable. The run count is not.
-function definitionKeepingRunCount(base, current) {
-  if (!base || (base.runCount ?? undefined) === (current?.runCount ?? undefined)) return base;
-  const next = { ...base };
-  if (current?.runCount === undefined) delete next.runCount;
-  else next.runCount = current.runCount;
-  return next;
-}
 function defaultInputs(definition) {
   return Object.fromEntries(definition.nodes.filter(isRuntimeElement).map((node) => {
     const type = outputType(node);
@@ -91,6 +83,8 @@ function RunSnapshot({ snapshot, fallbackDefinition }) {
 }
 export default function WorkflowApp() {
   const [list, setList] = useState([]), [workflow, setWorkflow] = useState(null), [definition, setDefinition] = useState(null), [name, setName] = useState(''), [error, setError] = useState(''), [notice, setNotice] = useState(''), [errors, setErrors] = useState([]), [busy, setBusy] = useState(false), [mode, setMode] = useState('edit'), [runId, setRunId] = useState(null), [inputForm, setInputForm] = useState(false), [inputs, setInputs] = useState({}), [sample, setSample] = useState(false), [dirty, setDirty] = useState(false), [showArchived, setShowArchived] = useState(false), [history, setHistory] = useState([]), [snapshot, setSnapshot] = useState(null);
+  const [runCount, setRequestedRunCount] = useState(1);
+  useEffect(() => { setRequestedRunCount(1); }, [workflow?.id, runId, inputForm]);
   const importRef = useRef(null), appRef = useRef(null), inputCards = useRef(new Map());
   const latestSource = useRef(null);
   latestSource.current = { workflow, definition, name };
@@ -153,7 +147,7 @@ export default function WorkflowApp() {
       const value = suppliedInputs[node.config.parameter];
       if (value !== undefined) values[node.config.parameter] = value;
     }
-    const created = await post(`/api/workflows/${current.id}/runs`, { revision: current.revision, inputs: values, sample: isSample, count: runCountOf(source.definition),
+    const created = await post(`/api/workflows/${current.id}/runs`, { revision: current.revision, inputs: values, sample: isSample, count: runCount,
       ...(Object.keys(generationParameters).length && { definition: withGenerationParameters(source.definition, generationParameters) }) });
     setInputForm(false); setPrep(null); setFocusNodeId(null); setRunId(created.id); setMode('run'); setSnapshot(null); setHistory((await request(`/api/workflows/${current.id}`)).runs);
   }
@@ -170,9 +164,8 @@ export default function WorkflowApp() {
   function leavePreparation() {
     setGenerationParameters({});
     // Leaving without starting drops edits made to fixed content on this page.
-    // The run count is a workflow setting, so it stays with the draft.
     if (prep) {
-      const next = definitionKeepingRunCount(prep.base, definition);
+      const next = prep.base;
       setDefinition(next);
       setDirty(next === prep.base ? prep.baseDirty : true);
     }
@@ -209,9 +202,8 @@ export default function WorkflowApp() {
     const parsed = Number(raw);
     if (!Number.isInteger(parsed)) return;
     const count = Math.min(20, Math.max(1, parsed));
-    if (runCountOf(definition) === count) return;
-    setDefinition((current) => ({ ...current, runCount: count }));
-    setDirty(true); setError('');
+    if (runCount === count) return;
+    setRequestedRunCount(count); setError('');
   }
   function undoFixed(node) {
     const original = prep?.base.nodes.find((item) => item.id === node.id);
@@ -220,7 +212,7 @@ export default function WorkflowApp() {
     // Once nothing differs any more, return to the untouched definition so starting does not save a draft.
     const same = next.nodes.every((item, index) => item === prep.base.nodes[index]) && next.nodes.length === prep.base.nodes.length;
     if (!same) { setDefinition(next); return; }
-    const restored = definitionKeepingRunCount(prep.base, definition);
+    const restored = prep.base;
     setDefinition(restored);
     setDirty(restored === prep.base ? prep.baseDirty : true);
   }
@@ -241,13 +233,13 @@ export default function WorkflowApp() {
   const backToList = () => perform(async () => {
     if (inputForm) {
       const base = prep ? prep.base : definition, baseDirty = prep ? prep.baseDirty : dirty;
-      const next = prep ? definitionKeepingRunCount(base, definition) : definition;
+      const next = prep ? base : definition;
       leavePreparation();
       if (next !== base || baseDirty) await saveSource({ workflow, definition: next, name, dirty: true });
     } else if (dirty) await save();
     setWorkflow(null); setDefinition(null);
   });
-  return <main ref={appRef} id="main-content" className="workflow-app"><PageHeader title={workflow ? name : '工作流'}
+  return <main ref={appRef} id="main-content" className="workflow-app" data-c-surface="workflow"><PageHeader title={workflow ? name : '工作流'}
       subtitle={undefined}
       back={workflow ? { label: '工作流列表', ariaLabel: '返回工作流列表', disabled: busy, onClick: backToList } : undefined}
       actions={undefined}
@@ -280,7 +272,7 @@ export default function WorkflowApp() {
         <div className="workflow-template-grid">{workflowTemplates({ textAdapter: adapters.find((a) => a.nodeType === 'model')?.id || 'grok-text', imageAdapter: adapters.find((a) => a.nodeType === 'image.generate')?.id || 'grok-build' }).map((tpl) => (
           <article key={tpl.id} className="workflow-template-card">
             <h3>{tpl.name}</h3>
-            <p>{tpl.blurb}</p>
+            {/* blurb is the same chain as flow; show it once */}
             <p className="workflow-template-flow">{tpl.flow.join(' → ')}</p>
             <button type="button" disabled={busy} onClick={() => perform(async () => { const created = await post('/api/workflows', { name: tpl.name, definition: tpl.definition }); open(created); await refresh(); })}>使用模板</button>
           </article>
@@ -311,7 +303,7 @@ export default function WorkflowApp() {
       {!inputForm && mode === 'edit' && <div className="workflow-toolbar ui-toolbar"><input aria-label="工作流名称" value={name} onChange={(e) => { setName(e.target.value); setDirty(true); }} /><span className="workflow-save-state">{dirty ? '未保存' : '已保存'}</span><button disabled={busy} onClick={() => perform(save)}>保存</button><button disabled={busy} onClick={() => perform(async () => { const report = await post(`/api/workflows/${workflow.id}/validate`, { definition }); setErrors(report.errors); setNotice(report.valid ? `检查通过 · 最多调用 AI ${report.maxCalls} 次` : `还有 ${workflowIssues(definition, report.errors).length} 个问题，见下方列表`); })}>检查</button><button disabled={busy || !!workflow.archivedAt || !!issues.length || !definition.nodes.some((node) => node.type === 'foreach')} title="每个列表只处理第 1 项，用来先确认效果" onClick={() => perform(() => beginRun(true, sourceNow()))}>先试 1 项</button><details className="workflow-menu"><summary>管理</summary><div><button onClick={exportDefinition}>导出定义</button><button disabled={busy} onClick={() => perform(async () => { const saved = await request(`/api/workflows/${workflow.id}`, { method: 'PUT', body: JSON.stringify({ name, definition, revision: workflow.revision, archived: !workflow.archivedAt }) }); setWorkflow(saved); setDirty(false); await refresh(); })}>{workflow.archivedAt ? '恢复归档' : '归档'}</button></div></details></div>}
       {!inputForm && mode === 'edit' && !!issues.length && <section className="workflow-issues" aria-label="需要处理的问题"><strong>还有 {issues.length} 个问题，处理后才能运行</strong><ul>{issues.map((issue) => <li key={issue.key}><span className="workflow-issue-step">{issue.label}</span><span>{issue.message}</span>{issue.nodeId && <button onClick={() => goFix(issue)}>去修改</button>}</li>)}</ul></section>}
       {!inputForm && mode === 'edit' && <p className="workflow-mode-note">{definition.nodes.some((node) => node.type === 'foreach') ? '「运行」会处理全部内容；「先试 1 项」只处理每个列表的第 1 项，用来先确认效果。' : '「运行」会执行流程里的全部步骤。'}</p>}
-      {!inputForm && mode === 'run' && !runId && <section className="workflow-history" aria-label="运行记录"><h2>运行记录</h2>{!history.length && <p className="workflow-empty">还没有运行过。点上方「运行」，填好内容后开始。</p>}<ul className="workflow-history-list">{history.map((entry) => <li key={entry.id}><button type="button" className="workflow-history-item" data-active={runId === entry.id} onClick={() => { setSnapshot(null); setRunId(entry.id); setInputForm(false); setMode('run'); }}><strong>运行 #{entry.id}</strong><span data-state={entry.state}>{stateLabels[entry.state]}</span><small>流程第 {entry.version} 版 · {new Date(entry.createdAt || entry.updatedAt || Date.now()).toLocaleString()}</small></button></li>)}</ul>
+      {!inputForm && mode === 'run' && !runId && <section className="workflow-history" aria-label="运行记录"><h2>运行记录</h2>{!history.length && <p className="workflow-empty">还没有运行过。点上方「运行」，填好内容后开始。</p>}<ul className="workflow-history-list">{history.map((entry) => <li key={entry.id}><button type="button" className="workflow-history-item" data-active={runId === entry.id} onClick={() => { setSnapshot(null); setRunId(entry.id); setInputForm(false); setMode('run'); }}><strong>运行 #{entry.id}</strong><WorkflowStatusLight state={entry.state} label={stateLabels[entry.state]} /><small>流程第 {entry.version} 版 · {new Date(entry.createdAt || entry.updatedAt || Date.now()).toLocaleString()}</small></button></li>)}</ul>
       </section>}
       {!inputForm && mode === 'run' && runId && <section className="workflow-history-switcher" aria-label="切换运行记录"><button type="button" className="text-button button-sm workflow-history-back" onClick={() => { setRunId(null); setSnapshot(null); }}>← 全部运行记录</button></section>}
       {inputForm && <div className="workflow-workbench"><section className="workflow-workbench-columns" aria-label="运行工作台"><section className="workflow-input-form" aria-label="填写运行内容"><div className="workflow-input-heading"><span className="workflow-step">{sample ? '先试 1 项' : '新建运行'}</span><h2>{runtimeNodes().length || fixedNodes.length ? '准备本次素材' : '准备就绪'}</h2><p>{runtimeNodes().length ? '选择或填写本次要处理的内容，' : '使用已配置的素材，'}点击「开始{sample ? '试跑' : '运行'}」。</p></div>{prep?.from && <p className="workflow-prefill-note" role="status">已带上运行 #{prep.from} 的内容，可以直接修改后开始。{prep.dropped ? `有 ${prep.dropped} 张图片无法再次使用，请重新选择。` : ''}</p>}{sample && <div><p>只处理下面每个列表的第 1 项，用来先确认效果；其余步骤照常执行，参考图片全部保留。</p><ul>{definition.nodes.filter((node) => node.type === 'foreach').map((node) => <li key={node.id}>{node.name || '批量循环'}：{definition.nodes.find((source) => source.id === node.inputs?.items?.nodeId)?.name || '输入列表'}的第 1 项（空列表不执行）</li>)}</ul></div>}{!runtimeNodes().length && !!fixedNodes.length && <p>下面是流程里的固定内容，确认后即可开始。</p>}<div className="workflow-preparation-fields">{inputSteps.map((step) => {
@@ -331,10 +323,10 @@ export default function WorkflowApp() {
         </section>;
       })}</div>
       {steps.some((step) => generationParameterConfig(step.node)) && <section className="workflow-runtime-parameters" aria-label="本次生图参数"><h3>本次生图参数</h3><p>可按本次图片的比例调整分辨率、尺寸来源和 seed。只作用于这次运行，不修改流程默认值。</p>{steps.filter((step) => generationParameterConfig(step.node)).map((step) => <section key={step.id} aria-label={stepLabel(step) + '的生图参数'}><strong>{stepLabel(step)}</strong><RuntimeGenerationParameters node={step.node} value={generationParameters[step.id]} onChange={(config) => setGenerationParameters((current) => ({ ...current, [step.id]: config }))} />{generationParameters[step.id] && <><small>已调整，仅用于本次运行</small><button type="button" onClick={() => setGenerationParameters((current) => { const next = { ...current }; delete next[step.id]; return next; })}>恢复流程默认参数</button></>}</section>)}</section>}
-{!!blockers.length && <div className="workflow-start-blockers" role="status"><strong>暂时不能开始：</strong><ul>{blockers.map((blocker) => <li key={blocker.key}><span className="workflow-issue-step">{blocker.label}</span><span>{blocker.message}</span><button onClick={blocker.run}>{blocker.action}</button></li>)}</ul></div>}<div className="workflow-actions workflow-input-actions"><label className="workflow-run-count">运行次数<input aria-label="运行次数" title="下次点「开始运行」时，整个流程按这个次数各开一次" type="number" min="1" max="20" step="1" value={runCountOf(definition)} disabled={busy} onChange={(event) => setRunCount(event.target.value)} /></label><button disabled={busy} onClick={() => { leavePreparation(); setMode('edit'); }}>返回编辑</button><button className="primary" disabled={!!blockers.length} title={blockers.length ? '先处理上方「暂时不能开始」里的问题' : undefined} onClick={() => perform(() => launch(sample, inputs, sourceNow()))}>{changedFixed.length ? '保存修改并' : ''}开始{sample ? '试 1 项' : '运行'}{runCountOf(definition) > 1 ? ` ${runCountOf(definition)} 次` : ''}</button></div></section><aside className="workflow-plan" aria-label="执行前状态"><WorkflowPlan definition={definition} activeNodeId={activeInputId} onLocate={locateInput} /></aside></section></div>}
+{!!blockers.length && <div className="workflow-start-blockers" role="status"><strong>暂时不能开始：</strong><ul>{blockers.map((blocker) => <li key={blocker.key}><span className="workflow-issue-step">{blocker.label}</span><span>{blocker.message}</span><button onClick={blocker.run}>{blocker.action}</button></li>)}</ul></div>}<div className="workflow-actions workflow-input-actions"><label className="workflow-run-count">运行次数<input aria-label="运行次数" title="下次点「开始运行」时，整个流程按这个次数各开一次" type="number" min="1" max="20" step="1" value={runCount} disabled={busy} onChange={(event) => setRunCount(event.target.value)} /></label><button disabled={busy} onClick={() => { leavePreparation(); setMode('edit'); }}>返回编辑</button><button className="primary" disabled={!!blockers.length} title={blockers.length ? '先处理上方「暂时不能开始」里的问题' : undefined} onClick={() => perform(() => launch(sample, inputs, sourceNow()))}>{changedFixed.length ? '保存修改并' : ''}开始{sample ? '试 1 项' : '运行'}{runCount > 1 ? ` ${runCount} 次` : ''}</button></div></section><aside className="workflow-plan" aria-label="执行前状态"><WorkflowPlan definition={definition} activeNodeId={activeInputId} onLocate={locateInput} /></aside></section></div>}
       {/* Stay mounted while hidden so a run does not drop the canvas selection or undo stack. */}
       <div hidden={inputForm || mode !== 'edit'}><WorkflowEditor key={workflow.id} active={!inputForm && mode === 'edit'} definition={definition} adapters={adapters} issues={issues} locate={locate} onPreview={history.length ? (nodeId, scope) => { setFocusNodeId(scope || nodeId); setRunId(history[0].id); setInputForm(false); setMode('run'); setNotice('这里显示最近一次运行的结果；还没运行过的修改不会出现在这里。'); } : undefined} onChange={(next) => { setDefinition(next); setDirty(true); setErrors([]); }} /></div>
-      {!inputForm && mode === 'run' && runId && <div className="workflow-run-workspace"><WorkflowRun key={runId} runId={runId} runCount={runCountOf(definition)} onRunCountChange={setRunCount} archived={!!workflow.archivedAt} focusNodeId={focusNodeId} onStateChange={updateRunState} onRun={rememberRun} definition={definition} onEditVersion={(loaded) => { open(loaded); refresh(); }} onDerived={(id) => { setSnapshot(null); setRunId(id); setInputForm(false); setMode('run'); }} /></div>}
+      {!inputForm && mode === 'run' && runId && <div className="workflow-run-workspace"><WorkflowRun key={runId} runId={runId} title={name} runCount={runCount} onRunCountChange={setRunCount} archived={!!workflow.archivedAt} focusNodeId={focusNodeId} onStateChange={updateRunState} onRun={rememberRun} definition={definition} onEditVersion={(loaded) => { open(loaded); refresh(); }} onDerived={(id) => { setSnapshot(null); setRunId(id); setInputForm(false); setMode('run'); }} /></div>}
     </>}
 
   </main>;

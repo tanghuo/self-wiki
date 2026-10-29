@@ -55,7 +55,7 @@ export default function TemporaryShares({ local }) {
   }
   const focused = new URLSearchParams(window.location.hash.split("?")[1] || "").get("item");
   const sorted = [...items].sort((a, b) => Number(b.id === focused) - Number(a.id === focused));
-  return <main id="main-content" className="temporary-shares">
+  return <main id="main-content" className="temporary-shares" data-c-surface="shares">
     <PageHeader title="临时分享" subtitle={local ? "在同一局域网的设备之间传文件。到期或退出应用后自动失效。" : "请使用分享者提供的独立下载链接或二维码获取文件。"} />
     {local && <form className="share-create" onSubmit={create}>
       <h2>分享文件或目录</h2>

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { Copy, ImageIcon, RotateCcw } from "lucide-react";
+import { BookOpen, Copy, FileText, ImageIcon, RotateCcw } from "lucide-react";
 import { preloadImage } from "./imagePreload.js";
 import VideoCardPreview from "./VideoCardPreview.jsx";
 import { apiUrl } from "./api.js";
@@ -7,6 +7,27 @@ import { elementLabel, imagePreviewWidths } from "../../shared/domain/elements.j
 
 // Keep measured proportions across filter changes without retaining decoded images.
 const previewRatios = new Map();
+
+const NOTE_TINTS = {
+  "设计": "peach", "灵感": "peach", "海报": "peach",
+  "旅行": "sky", "海边": "sky", "计划": "sky",
+  "生活": "mint", "咖啡": "mint", "菜谱": "mint",
+  "阅读": "lavender", "摘录": "lavender",
+  "猫": "butter", "宠物": "butter",
+};
+function noteTint(tags = []) {
+  for (const tag of tags) {
+    if (NOTE_TINTS[tag]) return NOTE_TINTS[tag];
+    for (const [key, tint] of Object.entries(NOTE_TINTS)) if (tag.includes(key)) return tint;
+  }
+  return "neutral";
+}
+function noteTitle(element, fallback) {
+  const body = (element.body || "").trim();
+  if (!body) return fallback;
+  const line = body.split(/\n/).find((part) => part.trim()) || fallback;
+  return line.length > 28 ? `${line.slice(0, 28)}…` : line;
+}
 
 export default function ElementCard({ element, onOpen, onRestore, onSelect, selected = false, disabled, loading = "lazy" }) {
   const title = elementLabel(element);
@@ -54,12 +75,14 @@ export default function ElementCard({ element, onOpen, onRestore, onSelect, sele
     setPreview("ready");
   }
   const pending = canPreview && preview === "loading";
-  return <article data-element-id={element.id} ref={card} className={`wiki-card is-${element.kind} ${element.material ? "has-material" : ""} ${element.deletedAt ? "is-trashed" : ""} ${selected ? "is-selected" : ""} ${pending ? "is-loading" : ""}`} aria-busy={pending || undefined}>
+  const tint = element.kind === "text" ? noteTint(element.tags) : undefined;
+  const captionMeta = image ? (element.image?.width && element.image?.height ? `${element.image.width}×${element.image.height}` : "图片") : element.kind === "video" ? "视频" : "";
+  return <article data-element-id={element.id} data-note-tint={tint} ref={card} className={`wiki-card is-${element.kind} ${element.material ? "has-material" : ""} ${element.deletedAt ? "is-trashed" : ""} ${selected ? "is-selected" : ""} ${pending ? "is-loading" : ""}`} aria-busy={pending || undefined}>
     {onSelect && <input className="wiki-card-select" type="checkbox" aria-label={`选择内容：${title}`} checked={selected} disabled={disabled} onChange={() => onSelect(element.id)} />}
     <button className={`wiki-card-open${element.tags?.length ? " has-tags" : ""}`} disabled={disabled || (Boolean(element.deletedAt) && !onSelect)} onClick={() => onSelect ? onSelect(element.id) : onOpen(element.id)} aria-label={`${onSelect ? "选择内容" : "打开内容"}：${title}`} aria-pressed={onSelect ? selected : undefined}>
-      {image ? <div className={`wiki-card-image${imageRatio ? " has-ratio" : ""}`} style={imageRatio ? { "--wiki-image-ratio": imageRatio } : undefined}>{!canPreview ? <ImageIcon size={34} /> : preview === "error" ? <span className="wiki-card-image-error"><ImageIcon size={24} />预览无法加载</span> : <>{previewSize && requested && <img ref={imageNode} key={attempt} src={sizedThumbnail(400)} srcSet={imagePreviewWidths.map((width) => `${sizedThumbnail(width)} ${width}w`).join(", ")} sizes={previewSize} alt={title} loading="eager" decoding="async" onLoad={loaded} onError={() => { finishPreload.current?.(); setPreview("error"); }} />}{pending && <span className="wiki-card-image-loading" aria-hidden="true"><ImageIcon size={24} />正在加载预览…</span>}</>}</div>
+      {image ? <div className={`wiki-card-image${imageRatio ? " has-ratio" : ""}`} style={imageRatio ? { "--wiki-image-ratio": imageRatio } : undefined}>{!canPreview ? <ImageIcon size={34} /> : preview === "error" ? <span className="wiki-card-image-error"><ImageIcon size={24} />预览无法加载</span> : <>{previewSize && requested && <img ref={imageNode} key={attempt} src={sizedThumbnail(400)} srcSet={imagePreviewWidths.map((width) => `${sizedThumbnail(width)} ${width}w`).join(", ")} sizes={previewSize} alt={title} loading="eager" decoding="async" onLoad={loaded} onError={() => { finishPreload.current?.(); setPreview("error"); }} />}{pending && <span className="wiki-card-image-loading" aria-hidden="true"><ImageIcon size={24} />正在加载预览…</span>}{!element.deletedAt && <span className="wiki-card-caption" aria-hidden="true"><strong>{title}</strong><span>{captionMeta}</span></span>}</>}</div>
         : element.kind === "video" ? <VideoCardPreview key={element.id} element={element} disabled={disabled || Boolean(onSelect)} />
-          : <div className="wiki-card-text"><p>{element.body || "打开查看关联内容"}</p></div>}
+          : <div className="wiki-card-text"><p className="wiki-card-note-kind">{element.material ? <><BookOpen size={13} aria-hidden="true" /> 资料</> : <><FileText size={13} aria-hidden="true" /> 文字</>}</p><strong className="wiki-card-note-title">{noteTitle(element, title)}</strong>{(() => { const heading = noteTitle(element, title); const body = element.body || "打开查看关联内容"; const clipped = heading.endsWith("…") ? heading.slice(0, -1) : heading; return body.trim() === heading || body.trim().startsWith(clipped) ? null : <p>{body}</p>; })()}</div>}
       {element.tags?.length > 0 && <div className="wiki-card-tags" title={element.tags.join(" · ")}>{element.tags.slice(0, 2).map((tag) => <span className="wiki-tag" key={tag}>{tag}{element.aiTags?.some((a) => a.name === tag) && <span className="ai-source" title="AI 添加，打开内容查看整理记录">AI</span>}</span>)}{element.tags.length > 2 && <span className="wiki-card-tag-count">+{element.tags.length - 2}</span>}</div>}
     </button>
     {element.copyCount > 0 && <div className="wiki-card-copy-count" title="累计复制成功次数；历史未记录的操作不计入，相似堆叠仅显示当前封面内容的次数。"><Copy size={12} aria-hidden="true" />复制 {element.copyCount} 次</div>}

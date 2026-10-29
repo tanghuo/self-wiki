@@ -50,6 +50,7 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
   const [stopping, setStopping] = useState(false);
   const stopRequest = useRef(null);
   const [preview, setPreview] = useState(null);
+  const [stagePick, setStagePick] = useState(null), [stageTab, setStageTab] = useState("result");
   const savedDraft = useChatDraft(id, data?.session.draft);
   const draft = id ? savedDraft : newDraft;
   const sendInFlight = useRef(false);
@@ -333,7 +334,9 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
   const runtime = useExternalStoreRuntime({ messages, isRunning: running || sending, isDisabled: composerBlocked, isSendDisabled: sendBlocked || !imageReady, onNew: send, onCancel: () => stop().catch((e) => setError(e.message)) });
   useEffect(() => { runtime.thread.composer.setText(draft.text); }, [runtime, draft.text]);
   const proposals = [...new Map([...olderProposals, ...(data?.proposals || [])].map((p) => [p.id, p])).values()].sort((a, b) => b.id - a.id);
+  const latestImage = images.at(-1);
   return <ChatContext.Provider value={{ onOpen, onArchive: archive, onExtract: extract, onEdit: editMessage, onSelectVersion: selectVersion, onVersionRendered, onFork: fork, onPreview: setPreview, onReference: reference, referenceDisabled: running || blocked, changed: (proposal) => { setOlderProposals((p) => [...p.filter((item) => item.id !== proposal.id), proposal]); onChanged(); onSessionsChanged(); }, externalBusy, proposals, setError }}>
+    <div className={`chat-stage${latestImage && presentation === "page" ? " has-preview" : ""}`}>
     <AssistantRuntimeProvider runtime={runtime}><ThreadPrimitive.Root className="chat-thread">
       <ThreadPrimitive.Viewport ref={viewportRef} className="chat-viewport" autoScroll={running || sending} scrollToBottomOnInitialize={!focusedTurn}>
         {olderAvailable && <button className="text-button" onClick={loadOlder}>加载更早消息</button>}
@@ -403,6 +406,29 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
         </ComposerPrimitive.Root>
       </div>
     </ThreadPrimitive.Root></AssistantRuntimeProvider>
+    {latestImage && presentation === "page" && (() => {
+      const shown = images.find((image) => image.artifact === stagePick) || latestImage;
+      const position = images.indexOf(shown);
+      const turn = turns.find((entry) => entry.id === shown.turnId);
+      const cited = turn?.sources || [];
+      const caption = (turn?.text || "").trim().split("\n").find(Boolean) || "生成结果";
+      return <aside className="chat-result-preview" aria-label="生成结果">
+        <div className="chat-result-preview-h">
+          <div className="ui-segmented" role="group" aria-label="预览内容">
+            <button type="button" aria-pressed={stageTab === "result"} onClick={() => setStageTab("result")}>生成结果</button>
+            <button type="button" aria-pressed={stageTab === "sources"} onClick={() => setStageTab("sources")}>引用资料{cited.length ? ` · ${cited.length}` : ""}</button>
+          </div>
+          <button type="button" className="button-sm" disabled={running || blocked} onClick={() => setPreview({ ...shown, editing: true })}>放大编辑</button>
+        </div>
+        {stageTab === "result" ? <button type="button" className="chat-result-preview-figure" aria-label="侧栏预览生成图" onClick={() => setPreview(shown)}>
+          <img src={chatImageUrl(shown)} alt="" />
+          <span className="chat-result-preview-caption" aria-hidden="true"><strong>{caption.length > 32 ? `${caption.slice(0, 32)}…` : caption}</strong><span>第 {position + 1} / {images.length} 张{turn?.model ? ` · ${turn.model}` : ""}</span></span>
+        </button> : <div className="chat-result-preview-sources">{cited.length ? cited.map((source, index) => <button type="button" key={source.id} className="chat-result-preview-source" aria-label={`预览栏引用：${source.label}`} disabled={externalBusy} onClick={() => onOpen(source.id)}><span className="chat-result-preview-index">{index + 1}</span>{source.kind === "image" ? <img src={apiUrl(`/api/elements/${source.id}/thumbnail?width=400`)} alt="" /> : <FileText size={18} aria-hidden="true" />}<span>{source.label}</span></button>) : <p className="wiki-muted">这一轮没有引用资料库内容。</p>}</div>}
+        {images.length > 1 && <div className="chat-result-preview-strip" role="group" aria-label="切换生成图">{images.map((image, index) => <button type="button" key={image.artifact} aria-label={`切换到第 ${index + 1} 张生成图`} aria-pressed={image === shown} onClick={() => { setStagePick(image.artifact); setStageTab("result"); }}><img src={chatImageUrl(image)} alt="" /></button>)}</div>}
+        {stageTab === "result" && cited.length > 0 && <div className="chat-result-preview-cited"><span>本轮引用</span><ol>{cited.slice(0, 3).map((source, index) => <li key={source.id}><span className="chat-result-preview-index">{index + 1}</span>{source.kind === "image" ? <img src={apiUrl(`/api/elements/${source.id}/thumbnail?width=400`)} alt="" /> : <FileText size={14} aria-hidden="true" />}<span>{source.label}</span></li>)}</ol></div>}
+      </aside>;
+    })()}
+    </div>
     {preview && <ChatImageViewer initial={preview} images={images} turns={turns} progressNotice={data?.progressNotice} stopping={stopping} disabled={running || blocked} onEdit={editImage} onStop={stop} onClose={() => setPreview(null)} />}
   </ChatContext.Provider>;
 }

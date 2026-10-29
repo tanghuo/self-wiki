@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 
-export default function DetailImage({ src, alt, onLoad, onError, onContextMenu }) {
+export default function DetailImage({ src, alt, onLoad, onError, onContextMenu, inert }) {
   const stage = useRef(null), image = useRef(null), pan = useRef(null);
   const view = useRef({ scale: 1, x: 0, y: 0 });
   const [transform, setTransform] = useState(view.current);
@@ -41,7 +41,7 @@ export default function DetailImage({ src, alt, onLoad, onError, onContextMenu }
     return () => { target.removeEventListener("wheel", wheel); observer.disconnect(); };
   }, []);
 
-  return <div className="wiki-image-viewer">
+  return <div className="wiki-image-viewer" inert={inert}>
     <div ref={stage} className="wiki-original" onContextMenu={onContextMenu}>
       <img ref={image} src={src} alt={alt} draggable={false} className={transform.scale > 1 ? "is-zoomed" : ""}
         style={{ opacity: loaded ? 1 : 0, transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}

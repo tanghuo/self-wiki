@@ -6,6 +6,7 @@ import os from 'node:os';
 import { createServer } from 'node:http';
 import { recoverComfyuiImage } from '../../src/agent/executors/comfyui.js';
 import { acquireExternalResource } from '../../src/agent/executors/resourceGate.js';
+import { externalResourceLimits } from '../../src/shared/domain/externalResources.js';
 import { modelAdapters } from '../../src/server/application/modelAdapters/index.js';
 import { createWorkflowNodes } from '../../src/server/application/workflow/nodes.js';
 import sharp from 'sharp';
@@ -77,14 +78,35 @@ test('workflow Grok text adapter verifies an empty tool profile, isolates sessio
   }
 });
 
-test('external resource gate shares two total slots and one per key; queued cancellation never acquires a slot', async () => {
+test('external resource gate keeps one slot per non-Grok key; queued cancellation never acquires a slot', async () => {
   const releaseA = await acquireExternalResource('gate-a'), releaseB = await acquireExternalResource('gate-b');
   let acquired = false;
   const wait = acquireExternalResource('gate-a').then((release) => { acquired = true; return release; });
-  const controller = new AbortController(), cancelled = acquireExternalResource('gate-c', controller.signal);
+  const controller = new AbortController();
+  let cancelledAcquired = false;
+  const cancelled = acquireExternalResource('gate-a', controller.signal).then((release) => { cancelledAcquired = true; return release; });
   controller.abort(); await assert.rejects(cancelled);
-  releaseB(); await new Promise((r) => setTimeout(r, 10)); assert.equal(acquired, false);
-  releaseA(); const release = await wait; assert.equal(acquired, true); release();
+  releaseB(); await new Promise((r) => setTimeout(r, 10));
+  assert.equal(acquired, false); assert.equal(cancelledAcquired, false);
+  releaseA(); const release = await wait; assert.equal(acquired, true); assert.equal(cancelledAcquired, false); release();
+});
+
+test('Grok can hold ten slots and the next request waits until one is released', async () => {
+  const releases = [];
+  try {
+    for (let i = 0; i < externalResourceLimits.keys.grok; i++) releases.push(await acquireExternalResource('grok'));
+    let acquired = false;
+    const wait = acquireExternalResource('grok').then((release) => { acquired = true; releases.push(release); return release; });
+    let other = false;
+    const blocked = acquireExternalResource('comfyui:http://127.0.0.1:8188').then((release) => { other = true; releases.push(release); return release; });
+    await new Promise((r) => setTimeout(r, 20));
+    assert.equal(acquired, false); assert.equal(other, false);
+    releases.shift()();
+    await wait; assert.equal(acquired, true); assert.equal(other, false);
+    releases.at(-1)(); const otherRelease = await blocked; assert.equal(other, true); otherRelease();
+  } finally {
+    releases.forEach((releaseSlot) => releaseSlot());
+  }
 });
 
 test('ComfyUI recovery only queries a recorded task and never submits a prompt', async (t) => {

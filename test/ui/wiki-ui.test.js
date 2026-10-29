@@ -439,6 +439,13 @@ test("detail navigation keeps the current image until data and the next original
   await page.waitForFunction(() => document.querySelector(".wiki-original img")?.naturalWidth > 0);
   const initialHeight = (await page.locator(".wiki-original").boundingBox()).height;
   const nextButton = await detail.getByRole("button", { name: "下一条", exact: true }).elementHandle();
+  await page.locator(".wiki-original img").hover();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.wiki-image-navigation button:last-child')).opacity === '0');
+  assert.equal(await detail.locator(".wiki-detail-sticky-navigation").getByRole("button", { name: "下一条", exact: true }).count(), 0);
+  const nextBounds = await nextButton.boundingBox();
+  assert.ok(nextBounds.width >= 64 && nextBounds.height >= 100, "Image navigation has a large hit area");
+  await nextButton.hover();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('.wiki-image-navigation button:last-child')).opacity === '1');
   const editButton = await detail.getByRole("button", { name: "编辑", exact: true }).elementHandle();
   const initialOpacity = await editButton.evaluate((node) => getComputedStyle(node).opacity);
   let dataRequests = 0;
@@ -462,7 +469,7 @@ test("detail navigation keeps the current image until data and the next original
   await dataRequested;
   assert.equal(await currentHeading.isVisible(), true, "Keep current content while fetching the next detail");
   assert.equal(await detail.getByRole("button", { name: "下一条", exact: true }).isDisabled(), true);
-  assert.equal(await nextButton.evaluate((node) => getComputedStyle(node).opacity), "1", "Pending navigation must not dim the fixed buttons");
+  assert.equal(await nextButton.evaluate((node) => node.disabled), false, "Pending navigation preserves focus on the hover button");
   assert.equal(await editButton.evaluate((node) => getComputedStyle(node).opacity), initialOpacity);
   assert.equal(await editButton.evaluate((node) => Boolean(node.closest("[inert]"))), true, "Content actions remain blocked while switching");
   await nextButton.evaluate((node) => node.click());

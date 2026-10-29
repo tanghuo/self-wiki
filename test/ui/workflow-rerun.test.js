@@ -153,6 +153,9 @@ test('run editors respect content, AI, ComfyUI, review and save responsibilities
   assert.equal(await row('comfy').getByRole('switch').isDisabled(), true, 'no result cannot be reused');
   const lamp = row('model').locator('.workflow-result-heading > [data-state]');
   assert.equal(await lamp.evaluate((el) => getComputedStyle(el, '::before').width), '8px');
+  assert.equal(await lamp.textContent(), '', 'status has no visible text');
+  assert.equal(await lamp.getAttribute('title'), '完成');
+  assert.equal(await lamp.getAttribute('aria-label'), '完成');
   const runningLamp = row('preview').locator('.workflow-result-heading > [data-state]');
   assert.equal(await runningLamp.evaluate((el) => getComputedStyle(el, '::before').animationName), 'workflow-status-pulse');
   await page.emulateMedia({ reducedMotion: 'reduce' });

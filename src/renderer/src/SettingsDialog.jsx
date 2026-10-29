@@ -35,7 +35,7 @@ const navGroups = [
   },
 ];
 
-export default function SettingsDialog({ theme, onThemeChange, cardTagDisplay, onCardTagDisplayChange, onChanged, onClose, initialSection = "general" }) {
+export default function SettingsDialog({ theme, onThemeChange, atmosphere = "full", onAtmosphereChange, liquidGlass = true, onLiquidGlassChange, cardTagDisplay, onCardTagDisplayChange, onChanged, onClose, initialSection = "general" }) {
   const contentRef = useRef(null);
   const [activeSection, setActiveSection] = useState(initialSection);
   const [elementUsageOpen, setElementUsageOpen] = useState(false);
@@ -102,6 +102,18 @@ export default function SettingsDialog({ theme, onThemeChange, cardTagDisplay, o
             </label>)}
           </div>
           <p id="theme-help" className="wiki-muted">切换后立即生效并自动保存，内容和画布共用同一主题。</p>
+        </fieldset>
+        <fieldset className="atmosphere-picker" aria-describedby="atmosphere-help">
+          <legend>氛围色</legend>
+          <label className="theme-option" style={{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"8px"}}>
+            <input type="checkbox" checked={atmosphere === "soft"} onChange={(event) => onAtmosphereChange?.(event.target.checked ? "soft" : "full")} />
+            <span><span className="theme-option-name">减弱氛围色</span><span className="theme-option-description" style={{display:"block"}}>窗口渐变变淡，减少和照片抢戏；适合资料很多的时候。</span></span>
+          </label>
+          <label className="theme-option" style={{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"12px"}}>
+            <input type="checkbox" checked={liquidGlass} disabled={typeof CSS !== "undefined" && !CSS.supports("backdrop-filter", "url(#liquid-glass-probe)")} onChange={(event) => onLiquidGlassChange?.(event.target.checked)} />
+            <span><span className="theme-option-name">液态玻璃</span><span className="theme-option-description" style={{display:"block"}}>侧栏和搜索框用折射玻璃；关掉则回到普通磨砂。滚动时会暂时关掉折射以保持流畅。系统开启「减少透明度」时也会自动退回磨砂。</span></span>
+          </label>
+          <p id="atmosphere-help" className="wiki-muted">改完立即生效并自动保存。</p>
         </fieldset>
       </section>
       <section className="settings-section" aria-labelledby="browsing-settings-heading">

@@ -62,6 +62,55 @@ test('unified run supports full execution and repeated changed runs with idempot
   for (const count of [0, 21, 1.5, '2']) await assert.rejects(service.derive(first.id, { requestKey: key(), count }), /运行次数/);
 });
 
+test('a loop runs ten Grok steps together and keeps later items queued', async (t) => {
+  let started = 0;
+  let release; const gate = new Promise((resolve) => { release = resolve; });
+  const { service } = await fixture(t, { model: async (_snapshot, options) => { started++; options.onRequest(); await gate; return { text: 'ok' }; } });
+  const items = Array.from({ length: 12 }, (_, index) => `item-${index}`);
+  const d = definition([n('loop', 'foreach', { itemsType: 'list<text>', maxItems: 20, captureTypes: {}, body: { nodes: [
+    n('model', 'model', { adapterId: 'grok-text', outputType: 'text' }, { prompt: { kind: 'item' }, images: c([]) }),
+  ], outputs: { text: o('model') } } }, { items: c(items) })]);
+  const startedRun = await run(service, create(service, d));
+  await until(() => started, (count) => count >= 10);
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  assert.equal(started, 10);
+  release();
+  await until(() => service.run(startedRun.id), (detail) => detail.state === 'succeeded');
+  assert.equal(started, 12);
+});
+
+test('ten independent Grok steps run together and the eleventh waits for a free slot', async (t) => {
+  let started = 0;
+  let release; const gate = new Promise((resolve) => { release = resolve; });
+  const { service } = await fixture(t, { model: async (_snapshot, options) => { started++; options.onRequest(); await gate; return { text: 'ok' }; } });
+  const nodes = Array.from({ length: 11 }, (_, index) => n(`m${index}`, 'model', { adapterId: 'grok-text', outputType: 'text' }, { prompt: c('test') }));
+  const startedRun = await run(service, create(service, definition(nodes)));
+  await until(() => started, (count) => count >= 10);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(started, 10);
+  release();
+  await until(() => service.run(startedRun.id), (detail) => detail.state === 'succeeded');
+  assert.equal(started, 11);
+});
+
+test('one ComfyUI server still runs a single image request at a time', async (t) => {
+  let started = 0;
+  let release; const gate = new Promise((resolve) => { release = resolve; });
+  const fx = await fixture(t, {
+    executionConfig: () => ({ ...config(), imageGeneration: { comfyui: { baseUrl: 'http://127.0.0.1:8188' } } }),
+    generate: async (_snapshot, _value, options) => { started++; options.onDispatch(); await gate; return { bytes: fx.png }; },
+  });
+  const mapping = { workflowName: 'sizes.json', workflow: { '1': { class_type: 'Render', inputs: { text: '', width: 512, height: 512 } }, '2': { class_type: 'SaveImage', inputs: { images: ['1', 0] } } }, outputNodeId: '2', prompt: { nodeId: '1', input: 'text' }, imageInputs: [], promptMode: 'input' };
+  const nodes = [0, 1].map((index) => n(`image${index}`, 'image.generate', { adapterId: 'comfyui', adapterConfig: mapping }, { prompt: c('test'), images: c([]) }));
+  const startedRun = await run(fx.service, create(fx.service, definition(nodes)));
+  await until(() => started, (count) => count >= 1);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(started, 1);
+  release();
+  await until(() => fx.service.run(startedRun.id), (detail) => detail.state === 'succeeded');
+  assert.equal(started, 2);
+});
+
 test('explicit AI reuse preserves the selected run output across upstream changes and never calls the model again', async (t) => {
   let calls = 0;
   const { service } = await fixture(t, { model: async (_snapshot, options) => { calls++; options.onRequest(); return { text: `answer:${options.prompt}` }; } });

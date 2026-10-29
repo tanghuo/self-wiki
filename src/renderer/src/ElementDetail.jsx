@@ -117,14 +117,15 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
+  const adjacentNavigation = element && navigation && <nav className={element.kind === "image" ? "wiki-image-navigation" : "wiki-detail-navigation"} aria-label="浏览相邻内容" aria-busy={navigation.switching || undefined}>
+    <button className="text-button" aria-label="上一条" title="上一条" onClick={navigation.switching ? undefined : navigation.previous} aria-disabled={navigation.switching || undefined} disabled={busy || externalBusy || !navigation.previous}><ChevronLeft size={element.kind === "image" ? 40 : 17} />{element.kind !== "image" && "上一条"}</button>
+    <span className="wiki-detail-navigation-progress" role="status" aria-label={navigation.switching ? "正在切换内容" : navigation.loading ? "正在读取下一条" : undefined}>{(navigation.switching || navigation.loading) && <LoaderCircle size={16} />}</span>
+    <button className="text-button" aria-label="下一条" title="下一条" onClick={navigation.switching ? undefined : navigation.next} aria-disabled={navigation.switching || undefined} disabled={busy || externalBusy || !navigation.next}>{element.kind !== "image" && "下一条"}<ChevronRight size={element.kind === "image" ? 40 : 17} /></button>
+  </nav>;
   return <section className="wiki-detail" data-kind={element?.kind} aria-label="内容详情">
     <div className="wiki-detail-sticky-navigation">
       <button className="text-button button-sm wiki-back" onClick={onBack} disabled={busy}><ArrowLeft size={14} />返回</button>
-      {element && navigation && <nav className="wiki-detail-navigation" aria-label="浏览相邻内容" aria-busy={navigation.switching || undefined}>
-        <button className="text-button" onClick={navigation.switching ? undefined : navigation.previous} aria-disabled={navigation.switching || undefined} disabled={busy || externalBusy || !navigation.previous}><ChevronLeft size={17} />上一条</button>
-        <span className="wiki-detail-navigation-progress" role="status" aria-label={navigation.switching ? "正在切换内容" : navigation.loading ? "正在读取下一条" : undefined}>{(navigation.switching || navigation.loading) && <LoaderCircle size={16} />}</span>
-        <button className="text-button" onClick={navigation.switching ? undefined : navigation.next} aria-disabled={navigation.switching || undefined} disabled={busy || externalBusy || !navigation.next}>下一条<ChevronRight size={17} /></button>
-      </nav>}
+      {element?.kind !== "image" && adjacentNavigation}
       {headerActions && <div className="wiki-detail-nav-actions">{headerActions}</div>}
     </div>
     <div className="wiki-detail-toolbar" inert={navigation?.switching || undefined}>
@@ -142,15 +143,15 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
         </details>}
       </div>}
     </div>
-    <div className="wiki-detail-body" inert={navigation?.switching || undefined}>
+    <div className="wiki-detail-body" inert={(navigation?.switching && element?.kind !== "image") || undefined}>
     {navigation?.error && <p className="wiki-error" role="alert">后续内容加载失败：{navigation.error}<button disabled={busy || externalBusy} onClick={navigation.retry}>重试加载</button></p>}
     {detail.loading && !detail.data && <p className="wiki-muted" role="status">正在读取内容…</p>}
     {detail.error && <p className="wiki-error" role="alert">{detail.error}<button onClick={refresh}>重试</button></p>}
     {element && <>
-      <header className="wiki-detail-header">
+      <header className="wiki-detail-header" inert={navigation?.switching || undefined}>
         <span className="wiki-eyebrow">{elementKindLabels[element.kind]}</span><h1 title={elementLabel(element)}>{elementLabel(element)}</h1>
       </header>
-      <div className="wiki-detail-info" data-kind={element.kind}>
+      <div className="wiki-detail-info" data-kind={element.kind} inert={navigation?.switching || undefined}>
         <div className="wiki-detail-browse">
           <div className="wiki-tags wiki-detail-tags" aria-label="内容标签">{element.tags?.length ? element.tags.map((tag) => <span className="wiki-tag" key={tag}>{tag}<AiSource resultId={element.aiTags?.find((a) => a.name === tag)?.resultId} onOpen={canOrganize ? openOrganization : undefined} disabled={busy || externalBusy} /></span>) : <span className="wiki-muted">暂无标签</span>}{!readOnly && <button className="text-button" onClick={() => setModal("tags")} disabled={busy || externalBusy}>{element.tags?.length ? <Pencil size={14} /> : <Plus size={14} />}{element.tags?.length ? "编辑标签" : "添加标签"}</button>}</div>
         </div>
@@ -161,19 +162,21 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
       </div>
       <div className="wiki-detail-layout" data-kind={element.kind}>
         <div className="wiki-detail-content">
-          {element.kind === "image" ? <DetailImage key={`${id}:${element.image.url}:${imageAttempt}`} src={apiUrl(`${element.image.url}?attempt=${imageAttempt}`)} alt={elementLabel(element)}
+          {element.kind === "image" ? <div className="wiki-detail-image-stage"><DetailImage key={`${id}:${element.image.url}:${imageAttempt}`} src={apiUrl(`${element.image.url}?attempt=${imageAttempt}`)} alt={elementLabel(element)} inert={navigation?.switching || undefined}
             onContextMenu={(event) => { if (!busy && !externalBusy) onContentContextMenu?.(event, element); }}
-            onLoad={() => { setImageReady(true); setImageFailed(false); }} onError={() => { setImageReady(true); setImageFailed(true); }} />
+            onLoad={() => { setImageReady(true); setImageFailed(false); }} onError={() => { setImageReady(true); setImageFailed(true); }} />{adjacentNavigation}</div>
             : element.kind === "video" ? <VideoDetailBlocks id={id} element={element} videoPlayer={videoPlayer} revision={revision} externalRevision={externalRevision} refresh={refresh} setSeekPosition={setSeekPosition} setVisualFrameRequest={setVisualFrameRequest} visualMatchesRef={visualMatches} seekPosition={seekPosition} markerId={markerId} onOpen={onOpen} setBusy={setBusy} externalBusy={externalBusy} readOnly={readOnly} /> : element.kind === "session" ? <SessionPreview element={element} contextId={contextId} /> : <div className="wiki-text-document">
               <div className="wiki-text-actions">{!readOnly && !element.record && <button className="text-button" onClick={() => setModal("edit")} disabled={busy || externalBusy}><Pencil size={15} />编辑文字</button>}<button className="text-button" onClick={copy}><Copy size={15} />复制文字</button></div>
               {element.body ? <pre>{element.body}</pre> : <p className="wiki-muted">{readOnly ? "暂无正文" : "可以关联图片或文字。"}</p>}
             </div>}
+          <div inert={navigation?.switching || undefined}>
           {imageFailed && <p className="wiki-error" role="alert">原图无法加载。如文件缺失，请从备份恢复。<button onClick={() => { setImageReady(false); setImageFailed(false); setImageAttempt((n) => n + 1); }}>重新加载图片</button></p>}
           {element.kind === "image" && <EmbeddedPrompt key={id} id={id} />}
           {element.kind === "image" && !element.record && !element.localOnly && <ImageDescription key={id} id={id} revision={`${revision}:${externalRevision}`}
             readOnly={readOnly} disabled={busy || externalBusy} onBusyChange={setBusy} onChanged={refresh} />}
+          </div>
         </div>
-        <section className="wiki-related" aria-label="关联内容">
+        <section className="wiki-related" aria-label="关联内容" inert={navigation?.switching || undefined}>
           {["image", "video"].includes(element.kind) && !element.record && !element.localOnly && <div ref={visualMatches}><VisualMatches key={id} elementId={id} frameRequest={visualFrameRequest} revision={`${revision}:${externalRevision}`} onOpen={onOpen} onClearFrame={() => setVisualFrameRequest(null)} disabled={busy || externalBusy} readOnly={readOnly} /></div>}
           {element.videoReferenceCount > 0 && <VideoMarkerReferences id={id} revision={`${revision}:${externalRevision}`} onOpen={onOpen} disabled={busy || externalBusy} />}
           <header><h2><Link2 size={18} />关联内容 {related.data && <span>{related.data.pagination.total}</span>}</h2>{!readOnly && <button onClick={() => { setRelationKind(element.kind); setModal("relate"); }} disabled={busy || externalBusy}><Link2 size={16} />添加关联</button>}</header>

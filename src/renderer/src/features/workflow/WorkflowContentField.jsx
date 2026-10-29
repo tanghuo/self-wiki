@@ -6,7 +6,7 @@ import { clipboardImages } from '../../contentDrafts.js';
 import { maxImageBytes } from '../../../../shared/domain/elements.js';
 
 // The editor and run form share the same values; media references never need JSON entry.
-export default function WorkflowContentField({ label, type, value, onChange, renderText, showImageHelp = false, runId }) {
+export default function WorkflowContentField({ label, type, value, onChange, renderText, showImageHelp = false, showLabel = true, runId }) {
   const [picking, setPicking] = useState(false);
   const [previewIndex, setPreviewIndex] = useState(null);
   const [uploading, setUploading] = useState(false), [uploadError, setUploadError] = useState('');
@@ -40,7 +40,7 @@ export default function WorkflowContentField({ label, type, value, onChange, ren
   const [textReady, setTextReady] = useState(false), [textError, setTextError] = useState('');
   useEffect(() => { let alive = true; setTextPreview(''); setTextReady(false); setTextError(''); if (type === 'text' && value?.elementId) request(`/api/elements/${value.elementId}`).then((element) => { if (alive) { setTextPreview(element.body ?? element.element?.body ?? ''); setTextReady(true); } }).catch((e) => { if (alive) setTextError(e.message); }); return () => { alive = false; }; }, [type, value?.elementId]);
   const libraryText = type === 'text' && value && typeof value === 'object';
-  return <div className="workflow-content-field" aria-busy={uploading} tabIndex={type.includes('image') ? 0 : undefined} aria-label={type.includes('image') ? `${label}，可粘贴图片` : undefined} onKeyDown={(event) => { if (type.includes('image') && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') event.stopPropagation(); }} onPaste={(event) => { if (!type.includes('image')) return; const files = clipboardImages(event.clipboardData); if (files.length) { event.preventDefault(); event.stopPropagation(); void addImages(files); } }}>{!(type === 'text' && renderText && !libraryText) && <strong>{label}</strong>}
+  return <div className="workflow-content-field" aria-busy={uploading} tabIndex={type.includes('image') ? 0 : undefined} aria-label={type.includes('image') ? `${label}，可粘贴图片` : undefined} onKeyDown={(event) => { if (type.includes('image') && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') event.stopPropagation(); }} onPaste={(event) => { if (!type.includes('image')) return; const files = clipboardImages(event.clipboardData); if (files.length) { event.preventDefault(); event.stopPropagation(); void addImages(files); } }}>{showLabel && !(type === 'text' && renderText && !libraryText) && <strong>{label}</strong>}
     {type === 'text' && (libraryText ? <div><p>已选择资料库文字</p>{textError ? <p role="alert" className="workflow-error">{textError}</p> : <pre>{textReady ? textPreview : '读取文字…'}</pre>}<button disabled={!textReady || !!textError} onClick={() => onChange(textPreview)}>复制为可编辑文字</button></div> : renderText ? renderText(value ?? '', onChange) : <textarea aria-label={label} rows={4} value={value ?? ''} onChange={(e) => onChange(e.target.value)} />)}
     {type === 'number' && <input aria-label={label} type="number" value={value ?? 0} onChange={(e) => onChange(Number(e.target.value))} />}
     {type === 'boolean' && <label><input type="checkbox" checked={value === true} onChange={(e) => onChange(e.target.checked)} />启用</label>}

@@ -870,9 +870,9 @@ test('skipping a confirmation is shown as skipped, not failed, and running again
   await rows.nth(0).getByLabel('修改「第 5 步 · 再看一眼」的文字', { exact: true }).waitFor();
   await rows.nth(0).getByRole('button', { name: '通过', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="skipped"]').waitFor();
-  assert.equal(await page.locator('.workflow-run h2 [data-state]').textContent(), '完成 · 跳过 1 项');
-  await page.locator('.workflow-batch-heading [data-state="skipped"]').getByText('完成 1 项 · 跳过 1 项', { exact: true }).waitFor();
-  assert.equal(await rows.nth(1).locator('header > span[data-state]').textContent(), '已跳过');
+  assert.equal(await page.locator('.workflow-run h2 [data-state]').getAttribute('aria-label'), '完成 · 跳过 1 项');
+  await page.locator('.workflow-batch-heading').getByRole('img', { name: '完成 1 项 · 跳过 1 项', exact: true }).waitFor();
+  assert.equal(await rows.nth(1).locator('header > span[data-state]').getAttribute('aria-label'), '已跳过');
   assert.equal(await page.locator('.workflow-run').getByText(/失败|出错/).count(), 0, 'a skipped item is not an error');
   await rows.nth(1).getByText('你跳过了这一项', { exact: true }).waitFor();
   await page.screenshot({ path: '.local/workflow-skipped.png', fullPage: true });
@@ -956,7 +956,7 @@ test('run page is a small tool with history tabs, progress banner and one-by-one
   await page.getByRole('button', { name: '开始运行', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="waiting_review"]').waitFor();
   await page.locator('.workflow-progress-block').waitFor();
-  await page.locator('.workflow-run h2').getByText('等你确认', { exact: true }).waitFor();
+  await page.locator('.workflow-run h2').getByRole('img', { name: '等你确认', exact: true }).waitFor();
   assert.equal(await page.locator('.workflow-item-card').count(), 3);
   await page.getByRole('button', { name: '逐张确认 →', exact: true }).click();
   const focus = page.getByRole('dialog', { name: '逐张确认' });
@@ -1008,13 +1008,13 @@ test('home one-liner and templates create editable valid canvas definitions', { 
   assert.deepEqual(errors, []);
 });
 
-test('run count is a workflow setting beside start and rerun, and each start opens that many runs', { timeout: 40000, skip: !browserPath && 'Browser required' }, async (t) => {
+test('run count defaults to one despite saved settings and only applies to one submission', { timeout: 40000, skip: !browserPath && 'Browser required' }, async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-count-'));
   const app = await createServer({ port: 0, dataDir: dir });
   const browser = await chromium.launch({ executablePath: browserPath, headless: true });
   t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-count-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
   const topic = n('topic', 'element', { source: 'runtime', parameter: 'topic', valueType: 'text', required: true, default: '' }); topic.name = '本次主题';
-  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '运行次数测试', definition: { schemaVersion: 1, nodes: [topic], outputs: {} }, requestKey: 'run-count-create' }) });
+  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '运行次数测试', definition: { schemaVersion: 1, nodes: [topic], outputs: {}, runCount: 3 }, requestKey: 'run-count-create' }) });
   assert.equal(response.status, 200);
   const created = await response.json();
   const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } }); page.setDefaultTimeout(10000);
@@ -1041,7 +1041,7 @@ test('run count is a workflow setting beside start and rerun, and each start ope
   await page.getByRole('button', { name: '开始运行 2 次', exact: true }).click();
   await page.locator('.workflow-run h2').waitFor();
   const started = await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json();
-  assert.equal(started.definition.runCount, 2);
+  assert.equal(started.definition.runCount, 3, 'temporary count does not change the saved workflow');
   assert.equal(started.runs.length, 2);
   const details = [];
   for (const entry of started.runs) details.push(await (await fetch(new URL(`api/workflow-runs/${entry.id}`, app.url))).json());
@@ -1050,8 +1050,9 @@ test('run count is a workflow setting beside start and rerun, and each start ope
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   const toolbar = page.locator('.workflow-run-toolbar-actions');
   assert.equal(await count().count(), 1);
-  assert.equal(await toolbar.locator('input').inputValue(), '2');
+  assert.equal(await toolbar.locator('input').inputValue(), '1');
   await sameRow(toolbar, '运行');
+  await count().fill('2');
   const submitted = page.waitForRequest((request) => request.url().endsWith(`/api/workflow-runs/${started.runs[0].id}/derive`));
   await toolbar.getByRole('button', { name: '运行', exact: true }).click();
   assert.equal((await submitted).postDataJSON().count, 2);
@@ -1060,19 +1061,19 @@ test('run count is a workflow setting beside start and rerun, and each start ope
   assert.equal((await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json()).runs.length, 4);
   await page.getByRole('button', { name: '准备新运行', exact: true }).click();
   await page.getByText(/^已带上运行 #\d+ 的内容/).waitFor();
-  assert.equal(await count().inputValue(), '2');
-  await page.getByRole('button', { name: '开始运行 2 次', exact: true }).waitFor();
+  assert.equal(await count().inputValue(), '1');
+  await page.getByRole('button', { name: '开始运行', exact: true }).waitFor();
   assert.equal((await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json()).runs.length, 4, 'preparation opens the form and does not start');
   await count().fill('1');
   await page.getByRole('button', { name: '开始运行', exact: true }).waitFor();
   await page.getByRole('button', { name: '返回编辑', exact: true }).click();
-  await page.locator('.workflow-save-state').getByText('未保存', { exact: true }).waitFor();
+  await page.locator('.workflow-save-state').getByText('已保存', { exact: true }).waitFor();
   await page.getByRole('button', { name: '运行', exact: true }).click();
   assert.equal(await count().inputValue(), '1');
   await page.getByRole('button', { name: '返回工作流列表', exact: true }).click();
   await page.locator('.workflow-list').waitFor();
   const saved = await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json();
-  assert.equal(saved.definition.runCount, 1);
+  assert.equal(saved.definition.runCount, 3, 'temporary count never overwrites persisted legacy metadata');
   assert.equal(saved.runs.length, 4);
   assert.deepEqual(errors, []);
 });
