@@ -34,6 +34,8 @@ app.commandLine.appendSwitch('in-process-gpu');
   const veto = new Promise((resolve) => window.webContents.once('will-prevent-unload', () => setImmediate(resolve)));
   window.close(); await veto;
   assert.equal(window.isDestroyed(), false); assert.equal(stopped, 0);
+  // Complete the renderer's unload response before issuing another close request.
+  await window.webContents.executeJavaScript('true');
   response = 1;
   const closed = new Promise((resolve) => window.once('closed', resolve));
   window.close(); await closed;
@@ -43,6 +45,7 @@ app.commandLine.appendSwitch('in-process-gpu');
   const quitVeto = new Promise((resolve) => window.webContents.once('will-prevent-unload', () => setImmediate(resolve)));
   app.quit(); await quitVeto;
   assert.equal(window.isDestroyed(), false); assert.equal(stopped, 0);
+  await window.webContents.executeJavaScript('true');
   response = 1;
   app.quit();
 })().catch((error) => { console.error(error); app.exit(1); });

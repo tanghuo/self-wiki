@@ -44,17 +44,17 @@ export function createAdapterRegistry(entries) {
       return { ...node, config };
     },
     normalizeDefinition(definition) {
-      return { ...definition, nodes: definition.nodes.map((node) => node.type === 'foreach' && node.config.body ? { ...node, config: { ...node.config, body: this.normalizeDefinition(node.config.body) } } : ['model', 'image.generate'].includes(node.type) ? this.normalizeNode(node) : node) };
+      return { ...definition, nodes: definition.nodes.map((node) => node.type === 'foreach' && node.config.body ? { ...node, config: { ...node.config, body: this.normalizeDefinition(node.config.body) } } : ['model', 'agent', 'image.generate'].includes(node.type) ? this.normalizeNode(node) : node) };
     },
     snapshotDefinition(definition, settings) {
       const result = {};
       const visit = (graph, scope) => {
         for (let node of graph.nodes) {
           if (node.type === 'foreach') visit(node.config.body, `${scope}/${node.id}`);
-          if (!['model', 'image.generate'].includes(node.type)) continue;
+          if (!['model', 'agent', 'image.generate'].includes(node.type)) continue;
           node = this.normalizeNode(node);
           const entry = adapter(node.config.adapterId || node.config.executor);
-          if (entry.nodeType !== node.type || !entry.outputTypes.includes(node.type === 'model' ? node.config.outputType || 'text' : 'list<image>')) throw workflowError('适配器不支持所选输出');
+          if (entry.nodeType !== node.type || !entry.outputTypes.includes(['model', 'agent'].includes(node.type) ? node.config.outputType || 'text' : 'list<image>')) throw workflowError('适配器不支持所选输出');
           const snapshot = { id: entry.id, version: entry.version, ...entry.snapshot(node.config, settings, node) };
           rejectSecrets(snapshot);
           result[`${scope}/${node.id}`] = snapshot;

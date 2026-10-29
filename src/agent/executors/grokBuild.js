@@ -5,6 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { withExternalResource } from './resourceGate.js';
+import { childEnvironment } from '../../shared/runtime/childEnvironment.js';
 import sharp from "sharp";
 import { terminateProcessTree } from './processTree.js';
 import { grokAspectRatios, grokBuildConfig } from "../../shared/domain/imageGeneration.js";
@@ -39,7 +40,7 @@ async function executable(config) {
 function runCli(command, args, { cwd, signal, onEvent, timeout = 1800000 }) {
   signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const child = spawn(command.program, [...command.prefix, ...args], { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command.program, [...command.prefix, ...args], { cwd, shell: false, windowsHide: true, env: childEnvironment(), detached: process.platform !== 'win32', stdio: ["ignore", "pipe", "pipe"] });
     const decoder = new StringDecoder("utf8");
     let buffer = "", output = "", failure, total = 0, stopping, settled = false;
     function stop(error) {
@@ -119,7 +120,7 @@ async function generateGrokBuildUnlocked(value, { config: settings, workspace, s
   onProgress?.({ type: "prepared_prompt", prompt: value.prompt });
   onProgress?.({ type: "progress", message: "正在启动 Grok Build 并检查登录" });
   let completed, ended = false, submitted = false, imageCallId, toolError;
-  onDispatch?.();
+  onDispatch?.({ sessionId, model: config.model, tool, input });
   await runCli(await executable(config), ["--no-auto-update", "--cwd", directory, "-m", config.model,
     "--session-id", sessionId, "--no-subagents", "--disable-web-search", "--tools", tool,
     "--disallowed-tools", "search_tool,use_tool", "--allow", tool, "--allow", "GenerateImage", "--max-turns", "3",
@@ -139,6 +140,7 @@ async function generateGrokBuildUnlocked(value, { config: settings, workspace, s
           if (completed) throw new Error("Grok 返回重复图片结果");
           if (typeof event.rawOutput?.path !== "string") throw new Error("Grok 未返回可识别的本地图片");
           completed = event.rawOutput;
+          onProgress?.({ type: 'metadata', metadata: { grokBuildOutput: { sessionId, path: completed.path } } });
           // A pending tool event is only an intention. Completion confirms submission.
           if (!submitted) { submitted = true; onProgress?.({ type: "submitted", message: "Grok 已确认生成完成" }); }
         }
@@ -153,7 +155,20 @@ async function generateGrokBuildUnlocked(value, { config: settings, workspace, s
   signal?.throwIfAborted();
   if (toolError) throw toolError;
   if (!completed || !ended) throw new Error("Grok 未完成生图或未返回图片；请检查本地 Grok 会话，不会自动重发");
-  const source = await realpath(completed.path);
+  const bytes = await recoverGrokBuildImage({ sessionId, path: completed.path });
+  const info = await sharp(bytes, { limitInputPixels: 40_000_000 }).metadata();
+  const savedPath = path.join(directory, `output.${info.format === "jpeg" ? "jpg" : info.format}`);
+  await writeFile(savedPath, bytes, { flag: "wx" });
+  onProgress?.({ type: "progress", message: "Grok 图片已取回" });
+  return { bytes, savedPath };
+}
+
+// Recovery reads only the recorded result of this owned CLI session; no model
+// request or generation is performed. HTTP callers cannot supply these paths.
+export async function recoverGrokBuildImage(value) {
+  const sessionId = value?.sessionId;
+  if (!/^[a-f0-9-]{36}$/.test(sessionId || '') || typeof value.path !== 'string') throw new Error('Grok 图片取回来源无效');
+  const source = await realpath(value.path);
   const sessions = await realpath(path.join(process.env.GROK_HOME || path.join(homedir(), ".grok"), "sessions"));
   const relative = path.relative(sessions, source).split(path.sep);
   if (!inside(sessions, source) || relative.at(-3) !== sessionId || relative.at(-2) !== "images"
@@ -161,8 +176,5 @@ async function generateGrokBuildUnlocked(value, { config: settings, workspace, s
   const bytes = await readFile(source);
   const info = await sharp(bytes, { limitInputPixels: 40_000_000 }).metadata();
   if (!["png", "jpeg", "webp"].includes(info.format)) throw new Error("Grok 返回的文件不是支持的图片");
-  const savedPath = path.join(directory, `output.${info.format === "jpeg" ? "jpg" : info.format}`);
-  await writeFile(savedPath, bytes, { flag: "wx" });
-  onProgress?.({ type: "progress", message: "Grok 图片已取回" });
-  return { bytes, savedPath };
+  return bytes;
 }

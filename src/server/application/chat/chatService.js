@@ -649,6 +649,16 @@ export function createChatService({ repo, wiki, archive, organization, dataDir, 
     }
   }
   return {
+    authorizeToolRequest(req, url) {
+      const token = req.headers['x-self-wiki-chat-token'], callId = req.headers['x-self-wiki-chat-call'];
+      if (typeof token !== 'string' || !callId) return false;
+      const run = [...active.values()].find(value => value.token === token && !value.done && !value.controller.signal.aborted);
+      if (!run?.value.events.some(event => event.id === callId && event.state === 'running' && event.toolType === 'wiki_cli')) return false;
+      return req.method === 'GET' && (url.pathname === '/api/instance' || url.pathname === '/api/elements' || url.pathname === '/api/tags'
+        || /^\/api\/elements\/[1-9]\d*(?:\/(relations|tag-relations))?$/.test(url.pathname)
+        || /^\/api\/tag-relations(?:\/[1-9]\d*\/members)?$/.test(url.pathname))
+        || req.method === 'POST' && ['/api/chat/proposals', '/api/organization/semantic/search'].includes(url.pathname);
+    },
     addAttachment: (bytes, name) => attachments.addAttachment(bytes, name),
     attachmentImage: (id) => attachments.attachmentImage(id),
     removeAttachment: (id) => attachments.removeAttachment(id),

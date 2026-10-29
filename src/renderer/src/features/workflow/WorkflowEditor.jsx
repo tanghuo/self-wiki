@@ -9,14 +9,13 @@ import WorkflowContentField from './WorkflowContentField.jsx';
 import WorkflowOutputs from './WorkflowOutputs.jsx';
 import { nodeTypes as catalog, inputPorts, outputVariables, outputBindingType, outputPortName, downstreamClosure, bindings, validateDefinition, matchesType, listItemType, bindingHandle, isRuntimeElement } from '../../../../shared/domain/workflow/contracts.js';
 import { workflowNode, constant, output } from '../../../../shared/domain/workflow/examples.js';
-import WorkflowStepsView from './WorkflowStepsView.jsx';
 
 const options = ['text', 'number', 'boolean', 'json', 'image', 'list<text>', 'list<number>', 'list<boolean>', 'list<json>', 'list<image>'];
 const typeLabels = { text: '文字', number: '数字', boolean: '开关', json: '结构化数据', image: '单张图片', 'list<text>': '多段文字', 'list<number>': '数字列表', 'list<boolean>': '开关列表', 'list<json>': '数据列表', 'list<image>': '多张图片' };
 const portLabels = { value: '内容', prompt: '提示词', images: '参考图片', items: '待处理列表', a: '内容一', b: '内容二' };
-const hints = { element: '文字或图片：固定内容，或每次运行时填写', template: '拼接文字和前面步骤的结果', model: 'AI 看图或读文字，写出文字', 'image.generate': '按提示词和参考图生成图片', transform: '提取、收集或配对内容（高级）', foreach: '对列表里的每一项做同样的步骤', review: '暂停下来，等你确认、修改或跳过；通过不等于保存', preview: '查看前面步骤的结果', 'library.save': '执行到这里才存进资料库' };
+const hints = { agent: '仅使用指定应用工具；无 Shell 和项目文件权限', element: '文字或图片：固定内容，或每次运行时填写', template: '拼接文字和前面步骤的结果', model: 'AI 看图或读文字，写出文字', 'image.generate': '按提示词和参考图生成图片', transform: '提取、收集或配对内容（高级）', foreach: '对列表里的每一项做同样的步骤', review: '暂停下来，等你确认、修改或跳过；通过不等于保存', preview: '查看前面步骤的结果', 'library.save': '执行到这里才存进资料库' };
 const palette = [{ type: 'element', label: typeLabel('element'), hint: hints.element }, ...catalog.filter((n) => !['input', 'element', 'preview', 'template'].includes(n.type)).map((n) => ({ ...n, label: typeLabel(n.type), hint: hints[n.type] }))];
-const paletteGroups = [{ title: '内容', types: ['element'] }, { title: 'AI 与处理', types: ['model', 'image.generate', 'foreach', 'transform'] }, { title: '我来确认', types: ['review'] }, { title: '保存', types: ['library.save'] }];
+const paletteGroups = [{ title: '内容', types: ['element'] }, { title: 'AI 与处理', types: ['model', 'agent', 'image.generate', 'foreach', 'transform'] }, { title: '我来确认', types: ['review'] }, { title: '保存', types: ['library.save'] }];
 const labels = Object.fromEntries(catalog.map((n) => [n.type, typeLabel(n.type)]));
 export function WorkflowPlan({ definition, onLocate, activeNodeId, scope = null }) {
   // Numbers always come from the whole flow so a loop's steps keep the numbers shown on the canvas.
@@ -28,7 +27,7 @@ export function WorkflowPlan({ definition, onLocate, activeNodeId, scope = null 
     const editable = step.depth === 0 && isPreparationInput(step.node);
     const text = step.node.config.parts?.map((part) => part.kind === 'text' ? part.text : '').join('') || (typeof step.node.config.default === 'string' ? step.node.config.default : '');
     return <li key={step.id} data-node-id={step.id} data-active={activeNodeId === step.id} style={{ marginLeft: step.depth * 16 }}><span className="workflow-plan-number" aria-hidden="true">{step.number}</span><div>{editable && onLocate ? <button className="workflow-plan-locate" aria-label={'定位' + stepLabel(step)} onClick={() => onLocate(step.id)}>{step.name}</button> : <strong>{step.name}</strong>}{['element', 'template'].includes(step.node.type) && !isPreparationInput(step.node) && <small>运行时自动使用前面步骤的结果，不用填写</small>}{sources.length > 0 && <small>来自：{sources.map(stepLabel).join('、')}</small>}{targets.length > 0 && <small>用于：{targets.map(stepLabel).join('、')}</small>}{text.trim() && <small className="workflow-plan-excerpt">{text.trim().slice(0, 90)}</small>}{!sources.length && !targets.length && <small>{hints[step.node.type] || '内容'}</small>}</div></li>;
-  })}</ol> : <p>{scope ? '循环里还没有步骤，从左侧添加。' : '还没有步骤，请返回修改流程添加。'}</p>}{!!reviews.length && <p className="workflow-plan-note">需要你确认的步骤：{reviews.map((step) => step.name).join('、')}。运行到这里会暂停等待。</p>}{!!saves.length && <p className="workflow-plan-note">运行到「{saves.map((step) => step.name).join('、')}」时才会存进资料库。</p>}</div>;
+  })}</ol> : <p>{scope ? '循环里还没有步骤，从左侧添加。' : '还没有步骤，请返回修改流程添加。'}</p>}</div>;
 }
 function LoopOutputSelect({ nodes, value, onChange }) {
   const choices = nodes.flatMap((node) => outputVariables(node).map((v) => ({ label: `${nodeDisplayName(node)} / ${variableLabel(v)}（${typeLabels[v.type] || v.type}）`, ref: { kind: 'output', nodeId: node.id, port: v.port, path: v.path } })));
@@ -82,7 +81,7 @@ function defaultConfig(type) {
   if (type === 'element') return { parameter: `content_${crypto.randomUUID().slice(0, 8)}`, source: 'fixed', valueType: 'text', default: '' };
   if (type === 'input') return { parameter: `input_${Date.now()}`, valueType: 'text', required: true, default: '' };
   if (type === 'template') return { parts: [{ kind: 'text', text: '' }] };
-  if (type === 'model') return { outputType: 'text', parameters: {} };
+  if (['model', 'agent'].includes(type)) return { outputType: 'text', parameters: {} };
   if (type === 'image.generate') return { parameters: {} };
   if (type === 'foreach') return { itemsType: 'list<image>', maxItems: 1000, captureTypes: {}, body: { nodes: [], outputs: {} } };
   if (type === 'transform') return { operation: 'field', path: [], valueType: 'json' };
@@ -110,7 +109,7 @@ function BindingField({ label, displayLabel, value, type, nodes, selected, paren
   const choiceIndex = all.findIndex(({ binding }) => binding.kind === value?.kind && (binding.kind === 'output' ? binding.nodeId === value.nodeId && binding.port === outputPortName(source, value.port) && JSON.stringify(binding.path) === JSON.stringify(value.path || []) : binding.kind !== 'capture' || binding.name === value.name));
   const textParts = value?.kind === 'text' ? value.parts : value?.kind === 'constant' || !value || value.kind === 'output' && !value.nodeId ? [{ kind: 'text', text: typeof value?.value === 'string' ? value.value : '' }] : [{ kind: 'ref', ref: value }];
   const setTextParts = (parts) => onChange(parts.some((p) => p.kind === 'ref') ? { kind: 'text', parts } : constant(parts.map((p) => p.text).join('')));
-  if (type === 'text' && ['model', 'image.generate'].includes(target?.type) && label === 'prompt') return <WorkflowTextField label="提示词" parts={textParts} nodes={nodes} selected={selected} parent={parent} onChange={setTextParts} />;
+  if (type === 'text' && ['model', 'agent', 'image.generate'].includes(target?.type) && label === 'prompt') return <WorkflowTextField label="提示词" parts={textParts} nodes={nodes} selected={selected} parent={parent} onChange={setTextParts} />;
   return <fieldset className="workflow-binding"><legend>{displayLabel || portLabels[label] || label}</legend>
     <select aria-label={`${label}输出变量`} value={choiceIndex >= 0 ? String(choiceIndex) : mode === 'constant' ? 'constant' : ''} onChange={(e) => onChange(e.target.value === 'constant' ? constant(type.startsWith('list<') ? [] : type === 'number' ? 0 : type === 'boolean' ? false : type === 'json' ? {} : '') : all[Number(e.target.value)].binding)}>
       <option value="" disabled>{value?.nodeId ? '来源不可用，重新选择…' : type.includes('image') ? '＋选择参考图片来源' : '选择内容来源…'}</option>
@@ -123,7 +122,6 @@ function BindingField({ label, displayLabel, value, type, nodes, selected, paren
   </fieldset>;
 }
 export default function WorkflowEditor({ definition, onChange, onPreview, issues = [], locate = null, adapters = [], active = true }) {
-  const [builderView, setBuilderView] = useState('steps');
   const [scope, setScope] = useState(null), [selected, setSelected] = useState(null), [search, setSearch] = useState(''), [selectedIds, setSelectedIds] = useState([]);
   const [history, setHistory] = useState([]), [future, setFuture] = useState([]);
   const [nodeViews, setNodeViews] = useState({});
@@ -183,7 +181,7 @@ export default function WorkflowEditor({ definition, onChange, onPreview, issues
   function add(type, position) {
     if (parent && ['input', 'foreach'].includes(type)) return;
     const id = `n_${crypto.randomUUID().slice(0, 8)}`, node = workflowNode(id, type, defaultConfig(type), {}, position || { x: graph.nodes.length * 280, y: 0 });
-    if (['model', 'image.generate'].includes(type)) { const adapter = adapters.find((entry) => entry.nodeType === type); if (!adapter) return; node.config = newAdapterConfig(adapter); }
+    if (['model', 'agent', 'image.generate'].includes(type)) { const adapter = adapters.find((entry) => entry.nodeType === type); if (!adapter) return; node.config = newAdapterConfig(adapter); }
     if (parent && type === 'element') node.config = { source: 'fixed', valueType: 'text', parts: [{ kind: 'text', text: '' }] };
     node.name = labels[type]; updateGraph({ ...graph, nodes: [...graph.nodes, node] }); setSelected(id);
   }
@@ -237,16 +235,10 @@ export default function WorkflowEditor({ definition, onChange, onPreview, issues
   function redo() { if (!future.length) return; setHistory((h) => [...h, definition]); onChange(future[0]); setFuture((f) => f.slice(1)); }
   // Stay mounted so undo and selection survive a run, but omit the canvas while inactive so its labels are not in the document.
   if (!active) return null;
-  return <div className="workflow-editor-shell">
-    <div className="workflow-builder-tabs ui-segmented" role="toolbar" aria-label="搭建视图">
-      <button type="button" aria-pressed={builderView === 'steps'} onClick={() => setBuilderView('steps')}>步骤</button>
-      <button type="button" aria-pressed={builderView === 'canvas'} onClick={() => setBuilderView('canvas')}>画布（高级）</button>
-    </div>
-    {builderView === 'steps' ? <WorkflowStepsView definition={definition} onChange={onChange} adapters={adapters} issues={issues} locate={locate} onPreview={onPreview} /> : null}
-    {builderView === 'canvas' ? <div className="workflow-editor" ref={wrapper} onKeyDown={(e) => { if (!(e.ctrlKey || e.metaKey) || e.target.closest('input,textarea,select')) return; if (e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); } if (e.key === 'c') { e.preventDefault(); clipboard.current = graph.nodes.filter((n) => selectedIds.includes(n.id)); } if (e.key === 'v') { e.preventDefault(); paste(); } }}>
+  return <div className="workflow-editor" ref={wrapper} onKeyDown={(e) => { if (!(e.ctrlKey || e.metaKey) || e.target.closest('input,textarea,select')) return; if (e.key === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); } if (e.key === 'c') { e.preventDefault(); clipboard.current = graph.nodes.filter((n) => selectedIds.includes(n.id)); } if (e.key === 'v') { e.preventDefault(); paste(); } }}>
     <aside className="workflow-palette"><h3>添加步骤</h3><input aria-label="搜索步骤" placeholder="搜索步骤…" value={search} onChange={(e) => setSearch(e.target.value)} />{paletteGroups.map((group) => {
       const items = palette.filter((n) => group.types.includes(n.type) && n.label.includes(search) && (!parent || n.type !== 'foreach'));
-      return items.length ? <div className="workflow-palette-group" key={group.title}><h4>{group.title}</h4>{items.map((n) => <button disabled={['model', 'image.generate'].includes(n.type) && !adapters.some((entry) => entry.nodeType === n.type)} draggable key={n.type} onDragStart={(e) => e.dataTransfer.setData('application/workflow-node', n.type)} title="添加这一步" onClick={(event) => { if (event.detail <= 1) add(n.type); }}>{n.label}<small>{n.hint}</small></button>)}</div> : null;
+      return items.length ? <div className="workflow-palette-group" key={group.title}><h4>{group.title}</h4>{items.map((n) => <button disabled={['model', 'agent', 'image.generate'].includes(n.type) && !adapters.some((entry) => entry.nodeType === n.type)} draggable key={n.type} onDragStart={(e) => e.dataTransfer.setData('application/workflow-node', n.type)} title="添加这一步" onClick={(event) => { if (event.detail <= 1) add(n.type); }}>{n.label}<small>{n.hint}</small></button>)}</div> : null;
     })}</aside>
     <div className="workflow-canvas-column"><div className="workflow-canvas-toolbar"><button disabled={!parent} onClick={() => { setScope(null); setSelected(null); }}>主流程</button><span>{parent ? `「${nodeDisplayName(parent)}」里的步骤` : '画布'}</span><button disabled={!history.length} onClick={undo}>撤销</button><button disabled={!future.length} onClick={redo}>重做</button><button disabled={!selectedIds.length} onClick={() => { clipboard.current = graph.nodes.filter((n) => selectedIds.includes(n.id)); }}>复制所选</button><button onClick={paste}>粘贴</button><button disabled={!selectedEdgeIds.length} onClick={() => disconnectEdges(edges.filter((edge) => selectedEdgeIds.includes(edge.id)))}>断开连线</button><button disabled={selectedIds.length < 2} onClick={() => updateGraph({ ...graph, layout: { ...graph.layout, groups: [...(graph.layout?.groups || []), { id: `group_${crypto.randomUUID()}`, name: '节点组', nodeIds: selectedIds }] } })}>分组</button><button disabled={!graph.layout?.groups?.some((g) => g.nodeIds.some((id) => selectedIds.includes(id)))} onClick={() => updateGraph({ ...graph, layout: { ...graph.layout, groups: graph.layout.groups.filter((g) => !g.nodeIds.some((id) => selectedIds.includes(id))) } })}>取消分组</button></div>
       <div className="workflow-canvas" onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }} onDrop={(e) => { e.preventDefault(); const type = e.dataTransfer.getData('application/workflow-node'); if (palette.some((n) => n.type === type)) add(type, flow.current?.screenToFlowPosition({ x: e.clientX, y: e.clientY })); }}>
@@ -332,7 +324,7 @@ export default function WorkflowEditor({ definition, onChange, onPreview, issues
         <label>内容来源<select aria-label="内容来源" value={current.config.source} onChange={(e) => { const source = e.target.value, config = { ...current.config, source }; if (source === 'runtime' && config.parts) { config.default = config.parts.filter((p) => p.kind === 'text').map((p) => p.text).join(''); delete config.parts; } config.parameter ||= `content_${crypto.randomUUID().slice(0, 8)}`; updateNode(current.id, { config, inputs: source === 'upstream' ? current.inputs : {} }); }}><option value="fixed">{current.config.parts?.some((p) => p.kind === 'ref') ? '文字与前面步骤的结果' : '固定内容'}</option><option value="runtime" disabled={!!parent || current.config.parts?.some((p) => p.kind === 'ref')}>每次运行时填写</option>{current.config.source === 'upstream' && <option value="upstream">前面步骤的结果（旧流程）</option>}</select></label>
         {current.config.source !== 'upstream' && (parent && current.config.valueType === 'text' ? <WorkflowTextField label="内容" parts={current.config.parts || [{ kind: 'text', text: current.config.default || '' }]} nodes={graph.nodes} selected={current.id} parent={parent} onChange={(parts) => setElementText(current, parts)} /> : <WorkflowContentField key={`${current.id}:${current.config.valueType}`} label={current.config.source === 'fixed' ? '内容' : '预填内容（可选）'} type={current.config.valueType || 'text'} value={current.config.default} renderText={current.config.source === 'fixed' ? (text) => <WorkflowTextField label="内容" parts={current.config.parts || [{ kind: 'text', text }]} nodes={graph.nodes} selected={current.id} parent={parent} onChange={(parts) => setElementText(current, parts)} /> : undefined} onChange={(value) => { const config = { ...current.config }; delete config.parts; config.parameter ||= `content_${crypto.randomUUID().slice(0, 8)}`; if (value === undefined) delete config.default; else config.default = value; updateNode(current.id, { config }); }} />)}
       </>}
-      {['model', 'image.generate'].includes(current.type) && <ModelAdapterFields node={current} adapters={adapters} onChange={(config) => { const inputs = Object.fromEntries(Object.entries(current.inputs || {}).filter(([key]) => Object.hasOwn(config.adapterInputs || {}, key))); updateNode(current.id, { config, inputs }); }} />}
+      {['model', 'agent', 'image.generate'].includes(current.type) && <ModelAdapterFields node={current} adapters={adapters} onChange={(config) => { const inputs = Object.fromEntries(Object.entries(current.inputs || {}).filter(([key]) => Object.hasOwn(config.adapterInputs || {}, key))); updateNode(current.id, { config, inputs }); }} />}
       {current.type === 'transform' && <label>操作<select aria-label="操作" value={current.config.operation} onChange={(e) => updateNode(current.id, { inputs: {}, config: { ...current.config, operation: e.target.value, valueType: e.target.value === 'field' ? 'json' : ['zip', 'successes'].includes(e.target.value) ? 'list<json>' : e.target.value === 'list' ? 'list<text>' : 'text', ...(e.target.value === 'nth' ? { index: 0 } : {}) } })}>{Object.entries({ ...(current.config.operation === 'concat' ? { concat: '文字拼接（旧配置）' } : {}), field: '提取字段', list: '收集为列表', nth: '取列表中的一项', zip: '按顺序配对', successes: '只保留成功项' }).map(([op, label]) => <option key={op} value={op}>{label}</option>)}</select></label>}
       {current.type === 'transform' && <>
         {['concat', 'list'].includes(current.config.operation) && <><div>{(current.config.keys || ['a', 'b']).map((key, index, keys) => <div key={key}><span>输入 {index + 1}</span><button disabled={keys.length <= 1} onClick={() => { const inputs = { ...current.inputs }; delete inputs[key]; updateNode(current.id, { config: { ...current.config, keys: keys.filter((k) => k !== key) }, inputs }); }}>移除输入 {index + 1}</button></div>)}<button disabled={(current.config.keys || ['a', 'b']).length >= 20} onClick={() => { const keys = current.config.keys || ['a', 'b']; let index = 1; while (keys.includes('part_' + index)) index++; setConfig(current.id, { keys: [...keys, 'part_' + index] }); }}>添加输入</button></div>{current.config.operation === 'concat' && <label>分隔文字<input value={current.config.separator || ''} onChange={(e) => setConfig(current.id, { separator: e.target.value })} /></label>}</>}
@@ -347,6 +339,5 @@ export default function WorkflowEditor({ definition, onChange, onPreview, issues
     </> : <><p>点选一个步骤来修改它。按住 Shift 可框选多个；Ctrl/Cmd + C、V 复制粘贴，Z 撤销。</p><WorkflowPlan definition={definition} scope={scope} />{parent && <><h4>循环返回的结果</h4>{Object.entries(graph.outputs || {}).map(([key, b], index) => <label key={key}>结果 {index + 1}<LoopOutputSelect nodes={graph.nodes} value={b} onChange={(binding) => updateGraph({ ...graph, outputs: { ...graph.outputs, [key]: binding } })} /><button onClick={() => { const outputs = { ...graph.outputs }; delete outputs[key]; updateGraph({ ...graph, outputs }); }}>删除</button></label>)}<button disabled={!graph.nodes.length} onClick={() => updateGraph({ ...graph, outputs: { ...graph.outputs, [`output_${Object.keys(graph.outputs || {}).length + 1}`]: output(graph.nodes.at(-1).id) } })}>添加返回结果</button></>}</>}
       {(() => { const own = current ? issues.filter((issue) => issue.nodeId === current.id && (issue.scope || null) === (scope || null)) : []; return own.length ? <div className="workflow-errors" role="alert"><strong>这一步还需要处理</strong>{own.map((issue) => <p key={issue.key}>{issue.message}</p>)}</div> : null; })()}
     </aside>
-  </div> : null}
   </div>;
 }

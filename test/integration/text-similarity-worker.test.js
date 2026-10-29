@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
 
 test("text worker retrieves old candidates, records suggestions, then automatically rechecks edits and new text", { timeout: 60000 }, async (t) => {

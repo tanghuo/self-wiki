@@ -167,6 +167,10 @@ async function execute(command, options, positional) {
   // Validate and read local inputs before making any request, especially before a mutation.
   const prepared = await prepare(command, options, positional);
   const client = await connect(options);
+  if (command.action === 'pair') {
+    const { code } = await client.request('/api/auth/code', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    return { url: `${client.instance.url}#local-bootstrap=${code}`, expiresInSeconds: 60 };
+  }
   if (command.action === "status") return { instance: client.instance };
   if (command.action === "read") {
     const root = `/api/elements/${positional.id}`;

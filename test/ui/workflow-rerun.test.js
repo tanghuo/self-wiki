@@ -1,0 +1,200 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
+import sharp from 'sharp';
+import os from 'node:os';
+import path from 'node:path';
+import { chromium } from "../helpers/authenticatedServer.js";
+import { resolveBrowserPath } from '../resolveBrowserPath.js';
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
+import { workflowNode as n, output as o } from '../../src/shared/domain/workflow/examples.js';
+
+const browserPath = resolveBrowserPath();
+test('edit two run nodes together, reuse the independent branch and require fresh approval before saving', { timeout: 45000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-rerun-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-rerun-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const post = async (url, payload) => { const response = await fetch(new URL(url, app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ requestKey: crypto.randomUUID(), ...payload }) }); assert.ok(response.ok, await response.clone().text()); return response.json(); };
+  const get = async (url) => (await fetch(new URL(url, app.url))).json();
+  const nodes = [
+    n('a', 'element', { source: 'runtime', parameter: 'a', valueType: 'text', default: '原主题' }),
+    n('b', 'element', { source: 'fixed', parameter: 'b', valueType: 'text', default: '原要求' }),
+    n('stable', 'element', { source: 'fixed', parameter: 'stable', valueType: 'text', default: '独立内容' }),
+    n('join', 'template', { parts: [{ kind: 'ref', ref: o('a') }, { kind: 'text', text: ' / ' }, { kind: 'ref', ref: o('b') }] }),
+    n('check', 'review', { valueType: 'text' }, { value: o('join') }),
+    n('save', 'library.save', { valueType: 'text', tags: [] }, { value: o('check') }),
+  ];
+  const workflow = await post('api/workflows', { name: '多节点修改重跑', definition: { schemaVersion: 1, nodes, outputs: {} } });
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } }); page.setDefaultTimeout(10000);
+  const errors = []; page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto(`${app.url}#workflow`);
+  await page.locator('.workflow-list article').filter({ hasText: '多节点修改重跑' }).getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="waiting_review"]').waitFor();
+  await page.locator('.workflow-run-results').getByRole('button', { name: '通过', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  const originalId = (await get(`api/workflows/${workflow.id}`)).runs[0].id;
+  const original = await get(`api/workflow-runs/${originalId}`);
+  assert.equal(await page.getByRole('button', { name: '修改本次内容后重跑', exact: true }).count(), 0);
+  const firstRow = page.locator('.workflow-result-row[data-result-state]').filter({ has: page.locator('[data-node-id="a"]') });
+  const secondRow = page.locator('.workflow-result-row[data-result-state]').filter({ has: page.locator('[data-node-id="b"]') });
+  assert.equal(await page.locator('.workflow-run').getByRole('button', { name: /^(编辑|编辑中)$/ }).count(), 0);
+  await firstRow.getByLabel('第 1 步 · a', { exact: true }).waitFor();
+  const panel = page.getByRole('region', { name: '运行设置', exact: true });
+  assert.equal(await panel.getByRole('button', { name: '运行', exact: true }).isEnabled(), true);
+  await panel.getByText('未修改，将完整运行', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: /^(重跑这一步|重新生成|整批重新做|再生成|再运行一次)$/ }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: '运行', exact: true }).count(), 1);
+  await firstRow.getByLabel('第 1 步 · a', { exact: true }).fill('新主题');
+  await panel.getByRole('button', { name: '取消修改', exact: true }).click();
+  assert.ok(await page.locator('.workflow-node-edit').count() > 0, 'editors stay available after reset and rerun');
+  assert.equal(await firstRow.getByLabel('第 1 步 · a', { exact: true }).inputValue(), '原主题');
+  await firstRow.getByLabel('第 1 步 · a', { exact: true }).fill('新主题');
+  await secondRow.getByLabel('第 2 步 · b · 文字', { exact: true }).fill('新要求');
+  assert.equal(await firstRow.getByLabel('第 1 步 · a', { exact: true }).inputValue(), '新主题');
+  await panel.getByText('已修改 2 个节点', { exact: true }).waitFor();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const barBox = await panel.getByRole('button', { name: '运行', exact: true }).boundingBox();
+  assert.ok(barBox.y >= 0 && barBox.y + barBox.height <= 1000, 'submit stays in the viewport after scrolling to the bottom');
+  await page.screenshot({ path: '.local/workflow-rerun.png', fullPage: true });
+  const submit = page.waitForRequest((request) => request.url().endsWith(`/api/workflow-runs/${originalId}/derive`));
+  await panel.getByRole('button', { name: '运行', exact: true }).click();
+  const payload = (await submit).postDataJSON();
+  assert.equal(payload.inputs.a, '新主题');
+  assert.equal(payload.definition.nodes.find((node) => node.id === 'b').config.default, '新要求');
+  await page.waitForFunction((id) => !document.querySelector('.workflow-run h2')?.textContent.includes(`#${id} `), originalId);
+  assert.ok(await page.locator('.workflow-node-edit').count() > 0, 'editors stay available after reset and rerun');
+  await page.locator('.workflow-run h2 [data-state="waiting_review"]').waitFor();
+  const derivedId = (await get(`api/workflows/${workflow.id}`)).runs[0].id;
+  assert.notEqual(derivedId, originalId);
+  const derived = await get(`api/workflow-runs/${derivedId}`);
+  assert.ok(derived.rootInstances.find((i) => i.nodeId === 'stable').data.reusedFrom);
+  for (const id of ['a', 'b', 'join', 'check', 'save']) assert.ok(!derived.rootInstances.find((i) => i.nodeId === id).data.reusedFrom, id);
+  assert.equal(derived.rootInstances.find((i) => i.nodeId === 'check').state, 'waiting_review');
+  assert.notEqual(derived.rootInstances.find((i) => i.nodeId === 'save').state, 'succeeded');
+  const joined = derived.rootInstances.find((i) => i.nodeId === 'join').outputs.value;
+  assert.equal((await get(`api/workflow-artifacts/${joined}?runId=${derivedId}`)).value, '新主题 / 新要求');
+  assert.deepEqual((await get(`api/workflow-runs/${originalId}`)).inputs, original.inputs);
+  assert.equal((await get(`api/workflows/${workflow.id}`)).definition.nodes.find((node) => node.id === 'b').config.default, '原要求');
+  await page.locator('.workflow-run-results').getByRole('button', { name: '通过', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  const finished = await get(`api/workflow-runs/${derivedId}`);
+  const receipt = finished.rootInstances.find((i) => i.nodeId === 'save').outputs.value;
+  const savedIds = (await get(`api/workflow-artifacts/${receipt}?runId=${derivedId}`)).value;
+  assert.equal((await get(`api/elements/${savedIds[0]}`)).body, '新主题 / 新要求');
+  // Opening editors and restoring their original values still means a full run.
+  const freshRow = page.locator('.workflow-result-row:has([data-node-id="a"])');
+  const input = freshRow.getByLabel('第 1 步 · a', { exact: true });
+  await input.fill('临时修改');
+  await input.fill('新主题');
+  await panel.getByText('未修改，将完整运行', { exact: true }).waitFor();
+  await panel.getByRole('spinbutton', { name: '运行次数', exact: true }).fill('2');
+  const fullSubmit = page.waitForRequest((request) => request.url().endsWith(`/api/workflow-runs/${derivedId}/derive`));
+  await panel.getByRole('button', { name: '运行', exact: true }).click();
+  const fullPayload = (await fullSubmit).postDataJSON();
+  assert.deepEqual(fullPayload.regenerate, nodes.map((node) => node.id));
+  assert.equal(fullPayload.count, 2);
+  await page.waitForFunction((id) => !document.querySelector('.workflow-run h2')?.textContent.includes(`#${id} `), derivedId);
+  await page.locator('.workflow-run h2 [data-state="waiting_review"]').waitFor();
+  const latestRuns = (await get(`api/workflows/${workflow.id}`)).runs.slice(0, 2);
+  for (const entry of latestRuns) {
+    const full = await get(`api/workflow-runs/${entry.id}`);
+    assert.equal(full.parentId, derivedId);
+    assert.ok(full.rootInstances.every((instance) => !instance.data.reusedFrom));
+    assert.equal(full.inputs.a, '新主题');
+  }
+  assert.deepEqual(errors, []);
+});
+
+test('run editors respect content, AI, ComfyUI, review and save responsibilities', { timeout: 45000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-roles-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-roles-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const png = await sharp({ create: { width: 32, height: 32, channels: 3, background: '#557799' } }).png().toBuffer();
+  const upload = await fetch(new URL('api/images', app.url), { method: 'POST', headers: { 'content-type': 'application/octet-stream', 'x-file-name': 'reference.png' }, body: png });
+  const image = await upload.json(); assert.equal(upload.status, 201);
+  const text = '这次真正使用的提示词。'.repeat(120);
+  const nodes = [n('text', 'element', { source: 'fixed', parameter: 'text', valueType: 'text', default: text }), n('photos', 'element', { source: 'fixed', parameter: 'photos', valueType: 'list<image>', default: [{ elementId: image.id }] }), n('review', 'review', { valueType: 'text' }, { value: o('text') })];
+  const created = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ requestKey: crypto.randomUUID(), name: '节点职责验证', definition: { schemaVersion: 1, nodes, outputs: {} } }) });
+  assert.ok(created.ok); const workflow = await created.json();
+  const mapping = { workflowName: '任务.json', workflow: JSON.parse(await readFile(new URL('../fixtures/comfyui-workflow.json', import.meta.url), 'utf8')), prompt: { nodeId: '6', input: 'text' }, outputNodeId: '9', imageInputs: [] };
+  const page = await browser.newPage({ viewport: { width: 1500, height: 900 } }); page.setDefaultTimeout(10000);
+  const errors = []; page.on('pageerror', (e) => errors.push(e.message));
+  await page.route('**/api/workflows/adapters/comfyui/load', (route) => route.fulfill({ json: {
+    ...mapping, fields: [{ nodeId: '5', input: 'width', label: 'EmptyLatentImage → width', type: 'INT', value: 32, min: 1, max: 8192 }], outputs: [],
+  } }));
+  // Add historical executor nodes to the returned snapshot; this UI test never dispatches a model or ComfyUI job.
+  await page.route(/\/api\/workflow-runs\/\d+(?:\?|$)/, async (route) => {
+    const response = await route.fetch(), snapshot = await response.json();
+    const extras = [n('model', 'model', { adapterId: 'grok-text', outputType: 'text' }, { prompt: o('text') }), n('compose', 'element', { source: 'fixed', valueType: 'text', parts: [{ kind: 'ref', ref: o('text') }, { kind: 'text', text: ' 保留主体' }] }), n('comfy', 'image.generate', { adapterId: 'comfyui', adapterConfig: mapping }, { prompt: o('compose'), images: o('photos') }), n('save', 'library.save', { valueType: 'text', tags: [] }, { value: o('review') })];
+    extras.push(n('preview', 'preview', { valueType: 'text' }, { value: o('text') }), n('transform', 'transform', { operation: 'nth', index: 0, valueType: 'image' }, { value: o('photos') }), n('upstream', 'element', { source: 'upstream', valueType: 'text' }, { value: o('text') }), n('loop', 'foreach', { itemsType: 'list<image>', maxItems: 20, captureTypes: {}, body: { nodes: [n('innerImage', 'image.generate', { adapterId: 'comfyui', adapterConfig: mapping }, { prompt: { kind: 'constant', value: 'batch prompt' }, images: { kind: 'constant', value: [] } })], outputs: {} } }, { items: o('photos') }));
+    snapshot.definition.nodes.push(...extras);
+    const instances = extras.map((node, index) => ({ id: 500 + index, nodeId: node.id, scope: 'root', state: 'pending', context: {}, outputs: {}, attempts: [], outputNames: {} }));
+    const model = instances.find((instance) => instance.nodeId === 'model');
+    model.state = 'succeeded'; model.outputs = snapshot.rootInstances.find((instance) => instance.nodeId === 'text').outputs;
+    instances.find((instance) => instance.nodeId === 'preview').state = 'running';
+    instances.find((instance) => instance.nodeId === 'transform').state = 'failed';
+    snapshot.rootInstances.push(...instances); snapshot.instances.push(...instances);
+    await route.fulfill({ response, json: snapshot });
+  });
+  await page.goto(`${app.url}#workflow`);
+  await page.locator('.workflow-list article').filter({ hasText: '节点职责验证' }).getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="waiting_review"]').waitFor();
+  const row = (id) => page.locator(`.workflow-result-row:has([data-node-id="${id}"])`);
+  for (const id of ['review', 'save', 'preview', 'transform', 'upstream']) assert.equal(await row(id).locator('.workflow-node-edit').count(), 0, `${id} has no generic content editor`);
+  assert.equal(await page.locator('.workflow-run').getByRole('button', { name: /^(编辑|编辑中)$/ }).count(), 0);
+  const reuseSwitch = row('model').getByRole('switch');
+  assert.equal(await reuseSwitch.isEnabled(), true);
+  await reuseSwitch.check();
+  await row('model').getByText(/将沿用运行 #/).waitFor();
+  assert.equal(await row('comfy').getByRole('switch').isDisabled(), true, 'no result cannot be reused');
+  const lamp = row('model').locator('.workflow-result-heading > [data-state]');
+  assert.equal(await lamp.evaluate((el) => getComputedStyle(el, '::before').width), '8px');
+  const runningLamp = row('preview').locator('.workflow-result-heading > [data-state]');
+  assert.equal(await runningLamp.evaluate((el) => getComputedStyle(el, '::before').animationName), 'workflow-status-pulse');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  assert.equal(await runningLamp.evaluate((el) => getComputedStyle(el, '::before').animationName), 'none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const loop = page.locator('#workflow-step-507');
+  // The loop edits its own limit, rather than exposing the content forms of its children.
+  await page.getByLabel('列表项数上限', { exact: true }).waitFor();
+  assert.equal(await page.getByLabel('列表项数上限', { exact: true }).inputValue(), '20');
+  await loop.getByRole('button', { name: '调整本次生图参数', exact: true }).click();
+  const batchParameters = page.getByRole('dialog', { name: '本次生图参数', exact: true });
+  await batchParameters.getByLabel(/^工作流参数 .*→ width$/).fill('768');
+  await batchParameters.getByRole('button', { name: '应用到本次运行', exact: true }).click();
+  const comfyEditor = row('comfy').locator('.workflow-node-edit');
+  assert.equal(await comfyEditor.locator('textarea').count(), 0);
+  assert.equal(await comfyEditor.getByRole('button', { name: /从资料库选择|插入上游/ }).count(), 0);
+  await comfyEditor.getByRole('button', { name: '调整本次生图参数', exact: true }).waitFor();
+  await row('photos').getByRole('img', { name: '本次图片 1', exact: true }).waitFor();
+  assert.ok(await row('photos').getByRole('img', { name: '本次图片 1', exact: true }).evaluate((img) => img.complete && img.naturalWidth > 0));
+  const sheet = row('compose').locator('.workflow-composed-sheet');
+  await sheet.locator('.workflow-source-text').getByText(text, { exact: true }).waitFor();
+  assert.equal(await row('compose').locator('.workflow-node-edit select').count(), 0, 'run editing never exposes reference wiring');
+  assert.equal(await row('compose').locator('.workflow-node-edit textarea').count(), 1, 'empty additions do not appear as large blank editors');
+  const suffix = row('compose').locator('.workflow-node-edit textarea').last();
+  await suffix.fill(' 修改本节点文字');
+  assert.equal(await suffix.inputValue(), ' 修改本节点文字');
+  await row('compose').locator('.workflow-composed-change').getByText('修改本节点文字', { exact: false }).waitFor();
+  assert.match(await sheet.innerText(), /这次真正使用的提示词/);
+  assert.equal(await row('compose').locator('.workflow-result-body .workflow-artifact').count(), 0, 'the previous result does not stay beside the edited text');
+  const panel = page.getByRole('region', { name: '运行设置' });
+  await panel.getByText('复用 1 个 AI 步骤的已有结果', { exact: true }).waitFor();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const box = await panel.getByRole('button', { name: '运行', exact: true }).boundingBox();
+  assert.ok(box.y >= 0 && box.y + box.height <= 900);
+  await page.screenshot({ path: '.local/workflow-node-roles.png', fullPage: true });
+  const submitted = page.waitForRequest((request) => request.url().endsWith('/derive'));
+  await page.route('**/api/workflow-runs/*/derive', (route) => route.fulfill({ status: 400, json: { error: '测试结束：未提交外部执行' } }));
+  await panel.getByRole('button', { name: '运行', exact: true }).click();
+  const payload = (await submitted).postDataJSON();
+  assert.deepEqual(payload.reuse, ['model']);
+  assert.equal(payload.definition.nodes.find((node) => node.id === 'loop').config.body.nodes[0].config.adapterConfig.workflow['5'].inputs.width, 768);
+  assert.deepEqual(payload.definition.nodes.find((node) => node.id === 'comfy').inputs, { prompt: o('compose'), images: o('photos') });
+  assert.deepEqual(payload.definition.nodes.find((node) => node.id === 'compose').config.parts.find((part) => part.kind === 'ref'), { kind: 'ref', ref: o('text') });
+  assert.deepEqual(errors, []);
+});

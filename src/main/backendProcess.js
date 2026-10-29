@@ -36,7 +36,7 @@ export async function startBackendProcess({ nodeBinary, appDir, dataDir, port = 
   }
 
   try {
-    const url = await new Promise((resolve, reject) => {
+    const ready = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => done(new Error("API server did not start in time.")), 15000);
       function done(error, value) {
         clearTimeout(timer);
@@ -46,7 +46,7 @@ export async function startBackendProcess({ nodeBinary, appDir, dataDir, port = 
         if (error) reject(error); else resolve(value);
       }
       function onMessage(message) {
-        if (message?.type === "ready") done(null, message.url);
+        if (message?.type === "ready") done(null, { url: message.url, bootstrapCode: message.bootstrapCode });
       }
       function onError(error) { done(error); }
       function onExit(code, signal) {
@@ -62,7 +62,7 @@ export async function startBackendProcess({ nodeBinary, appDir, dataDir, port = 
       if (exited) notify(child.exitCode, child.signalCode);
       else child.once("exit", notify);
     }
-    return { url, close, onExit, pid: child.pid };
+    return { ...ready, close, onExit, pid: child.pid };
   } catch (error) {
     await close();
     throw error;

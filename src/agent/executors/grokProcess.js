@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { terminateProcessTree } from './processTree.js';
+import { childEnvironment } from '../../shared/runtime/childEnvironment.js';
 
 export async function grokCommand(executable = "grok") {
   if (executable === "grok") {
@@ -16,10 +17,11 @@ export async function grokCommand(executable = "grok") {
 export async function startGrokAcp(config, { cwd, signal, onNotification = () => {}, onRequest = async () => { throw new Error("Unsupported client request"); }, onExit = () => {} }) {
   signal?.throwIfAborted();
   const command = await grokCommand(config.executable);
-  // ACP ignores the TUI/headless --tools filter. The session's client hook is
-  // the execution gate; do not imply that those flags restrict this transport.
-  const child = spawn(command.executable, [...command.prefix, "--no-auto-update", "agent", "--no-leader", "-m", config.model, "stdio"],
-    { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', env: { ...process.env, GROK_MEMORY: "0" }, stdio: ["pipe", "pipe", "pipe"] });
+  // ACP tool filters and permission rules are distinct; only use denial rules
+  // whose behavior has been verified for the installed workbench engine.
+  const denials = (config.denyRules || []).flatMap(rule => ['--deny', rule]);
+  const child = spawn(command.executable, [...command.prefix, "--no-auto-update", ...denials, "agent", "--no-leader", "-m", config.model, "stdio"],
+    { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', env: { ...childEnvironment(), GROK_MEMORY: "0" }, stdio: ["pipe", "pipe", "pipe"] });
   const decoder = new StringDecoder("utf8"), pending = new Map();
   let sequence = 0, buffer = "", ended = false, closing = false, closePromise;
   const write = (value) => { if (!ended && !child.stdin.destroyed) child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...value }) + "\n"); };
@@ -43,7 +45,12 @@ export async function startGrokAcp(config, { cwd, signal, onNotification = () =>
     } else if (value.id !== undefined) {
       const entry = pending.get(value.id); if (!entry) return;
       pending.delete(value.id); clearTimeout(entry.timer);
-      if (value.error) entry.reject(Object.assign(new Error(`${entry.method}: ${String(value.error.message || "Grok 请求失败").slice(0, 1500)}`), { details: value.error.data }));
+      if (value.error) {
+        // Only include known configuration diagnostics. Arbitrary RPC data and
+        // stderr can contain account data and must not enter persisted errors.
+        const detail = typeof value.error.data === 'string' && value.error.data.startsWith('session initialization failed: invalid configuration:') ? ` — ${value.error.data.slice(0, 1200)}` : '';
+        entry.reject(Object.assign(new Error(`${entry.method}: ${String(value.error.message || "Grok 请求失败").slice(0, 300)}${detail}`), { details: value.error.data }));
+      }
       else entry.resolve(value.result);
     } else if (value.method) {
       Promise.resolve(onNotification(value.method, value.params || {})).catch((error) => { fail(error); void close(); });

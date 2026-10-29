@@ -28,7 +28,7 @@ function draft(value, adapters = modelAdapters) {
       if (n.type === 'transform' && n.config.keys !== undefined && (!Array.isArray(n.config.keys) || n.config.keys.some((k) => typeof k !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(k)) || new Set(n.config.keys).size !== n.config.keys.length)) throw workflowError('数据处理输入名称无效');
       if (n.config.captureTypes && (typeof n.config.captureTypes !== 'object' || Array.isArray(n.config.captureTypes))) throw workflowError('捕获类型须为对象');
       if (n.type === 'library.save') elementTags(n.config.tags || []);
-      if (n.type === 'model' && n.config.jsonSchema) checkJsonSchema(n.config.jsonSchema, undefined, { validateOnly: true });
+      if (['model', 'agent'].includes(n.type) && n.config.jsonSchema) checkJsonSchema(n.config.jsonSchema, undefined, { validateOnly: true });
       if (n.type === 'foreach' && n.config.body) visit(n.config.body, depth + 1);
     }
   }
@@ -38,8 +38,8 @@ function draft(value, adapters = modelAdapters) {
 }
 function name(value) { if (typeof value !== 'string' || !value.trim() || value.length > 160) throw workflowError('名称须为 1–160 字符'); return value.trim(); }
 
-export function createWorkflowService({ repo, store, wiki, imageStore, executionConfig, model, generate, adapters = modelAdapters }) {
-  const nodes = createWorkflowNodes({ repo, store, imageStore, model, generate, adapters });
+export function createWorkflowService({ repo, store, wiki, imageStore, executionConfig, model, executeAgent, generate, adapters = modelAdapters }) {
+  const nodes = createWorkflowNodes({ repo, store, imageStore, model, executeAgent, generate, adapters });
   const scheduler = createWorkflowScheduler({ repo, nodes, store });
   function validation(definition, inputs) {
     const normalized = draft(definition, adapters), report = validateDefinition(normalized);
@@ -174,6 +174,21 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
       return repo.save(id, { ...payload, archived: payload.archived ?? !!repo.workflow(id).archivedAt, name: name(payload.name), definition: draft(payload.definition, adapters) });
     },
     validate(id, payload) { return validation(payload.definition || repo.workflow(idNumber(id)).definition); },
+    async freezeAgentRun(id, revision, inputs) {
+      const w = repo.workflow(idNumber(id));
+      if (w.archivedAt || w.revision !== revision) throw workflowError('工作流已归档或 revision 已改变', 409);
+      const definition = checkedDefinition(w.definition), executors = adapters.snapshotDefinition(definition, executionConfig());
+      const prepared = await prepareInputs(definition, inputs || {});
+      if (repo.workflow(w.id).revision !== revision) throw workflowError('准备输入时工作流版本已改变', 409);
+      return { workflowId: w.id, name: w.name, revision, definition, executors, prepared, maxCalls: validateDefinition(definition).maxCalls };
+    },
+    startAgentRun(snapshot, requestKey, bind) {
+      const result = repo.command(`agent.workflow:${snapshot.workflowId}`, requestKey, snapshot, () => {
+        const run = repo.createRun(snapshot.workflowId, snapshot.definition, snapshot.prepared.inputs, snapshot.executors, snapshot.prepared.images);
+        bind(run); return run;
+      });
+      scheduler.wake(); return result;
+    },
     async createRun(id, payload) {
       id = idNumber(id);
       const scope = `workflow.run:${id}`, prior = repo.priorCommand(scope, payload.requestKey, payload);
@@ -181,12 +196,16 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
       const w = repo.workflow(id);
       if (payload.revision !== w.revision) throw workflowError('草稿已改变，请保存并刷新', 409);
       if (payload.sample !== undefined && typeof payload.sample !== 'boolean') throw workflowError('试跑选项须为布尔值');
+      const count = payload.count === undefined ? 1 : payload.count;
+      if (!Number.isInteger(count) || count < 1 || count > 20) throw workflowError('运行次数须为 1–20 的整数');
       // A run can carry temporary settings without overwriting the saved draft.
       const checked = checkedDefinition(payload.definition ?? w.definition), definition = payload.sample ? sampleDefinition(checked) : checked, executors = adapters.snapshotDefinition(definition, executionConfig());
       const prepared = await prepareInputs(definition, payload.inputs || {});
       const result = repo.command(scope, payload.requestKey, payload, () => {
         if (repo.workflow(id).revision !== payload.revision) throw workflowError('准备输入时草稿已改变', 409);
-        return repo.createRun(id, definition, prepared.inputs, executors, prepared.images);
+        const runs = [];
+        for (let index = 0; index < count; index += 1) runs.push(repo.createRun(id, definition, prepared.inputs, executors, index === 0 ? prepared.images : []));
+        return { ...runs.at(-1), count, ids: runs.map((item) => item.id) };
       });
       scheduler.wake(); return result;
     },
@@ -238,10 +257,11 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
         if (!snapshot) throw workflowError('适配器快照缺失', 409);
         const attempt = repo.attempts(instId).find((a) => a.id === i.attemptId), ticket = adapters.recoveryTicket(snapshot, attempt);
         const result = await adapters.recover(snapshot, ticket, { signal: AbortSignal.timeout(30000) });
-        const image = await store.saveImage(result.bytes, { recoveredFrom: { attemptId: i.attemptId, ticket }, executor: snapshot.id });
+        const images = [];
+        for (const image of result.images || [result]) images.push(await store.saveImage(image.bytes, { recoveredFrom: { attemptId: i.attemptId, ticket }, executor: snapshot.id }));
         const saved = repo.command(scope, payload.requestKey, payload, () => {
           repo.bumpControl(id, payload.controlVersion);
-          return repo.recoverUnknown(instId, i.attemptId, [{ ...image, port: `image:${image.id}` }, { type: 'list<image>', value: [{ artifactId: image.id }], metadata: { recovered: true } }]);
+          return repo.recoverUnknown(instId, i.attemptId, [...images.map((image) => ({ ...image, port: `image:${image.id}` })), { type: 'list<image>', value: images.map((image) => ({ artifactId: image.id })), metadata: { recovered: true } }]);
         });
         scheduler.settle(id); scheduler.wake(); return { instance: saved, controlVersion: repo.run(id).controlVersion };
       })();
@@ -270,9 +290,19 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
       id = idNumber(id);
       const scope = `workflow.derive:${id}`, prior = repo.priorCommand(scope, payload.requestKey, payload);
       if (prior) return prior;
+      const count = payload.count === undefined ? 1 : payload.count;
+      if (!Number.isInteger(count) || count < 1 || count > 20) throw workflowError('运行次数须为 1–20 的整数');
       const parent = repo.run(id), definition = checkedDefinition(payload.definition || parent.definition);
       if (payload.regenerate !== undefined && (!Array.isArray(payload.regenerate) || payload.regenerate.some((id) => !definition.nodes.some((n) => n.id === id)))) throw workflowError('regenerate 必须引用主作用域中的节点 ID 数组');
+      if (payload.reuse !== undefined && (!Array.isArray(payload.reuse) || new Set(payload.reuse).size !== payload.reuse.length)) throw workflowError('reuse 必须是无重复的节点 ID 数组');
+      const reuse = new Set(payload.reuse || []), sources = repo.instances(id, { scope: 'root' });
+      for (const nodeId of reuse) {
+        const node = definition.nodes.find((n) => n.id === nodeId), before = parent.definition.nodes.find((n) => n.id === nodeId);
+        if (!node || !['model', 'agent', 'image.generate'].includes(node.type) || !before || JSON.stringify(executionNode(before)) !== JSON.stringify(executionNode(node))) throw workflowError('只能复用配置未修改的主流程 AI 步骤');
+        if (!sources.some((s) => s.nodeId === nodeId && s.state === 'succeeded' && Object.keys(s.outputs).length)) throw workflowError('所选步骤在本次运行中没有成功结果，无法复用');
+      }
       const executors = adapters.snapshotDefinition(definition, executionConfig());
+      for (const nodeId of reuse) executors[`root/${nodeId}`] = parent.executors[`root/${nodeId}`];
       const inherited = Object.fromEntries(definition.nodes.filter(isRuntimeElement).filter((n) => Object.hasOwn(parent.inputs, n.config.parameter)).map((n) => [n.config.parameter, parent.inputs[n.config.parameter]]));
       const prepared = await prepareInputs(definition, payload.inputs || inherited, parent);
       const old = new Map(parent.definition.nodes.map((n) => [n.id, n])), changed = new Set(payload.regenerate || []);
@@ -283,7 +313,9 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
         // Child executor changes invalidate their containing loop.
         if (n.type === 'foreach' && JSON.stringify(Object.entries(parent.executors).filter(([k]) => k.startsWith(`root/${n.id}/`))) !== JSON.stringify(Object.entries(executors).filter(([k]) => k.startsWith(`root/${n.id}/`)))) changed.add(n.id);
       }
-      const invalid = downstreamClosure(definition.nodes, changed), sources = repo.instances(id, { scope: 'root' });
+      const invalid = downstreamClosure(definition.nodes, changed, reuse);
+      // Review and save always execute again when explicitly reusing AI results.
+      if (reuse.size) for (const n of definition.nodes.filter((n) => ['review', 'library.save'].includes(n.type))) for (const affected of downstreamClosure(definition.nodes, [n.id], reuse)) invalid.add(affected);
       // Verify referenced files before entering a short commit transaction.
       const reusable = [];
       for (const n of definition.nodes) {
@@ -296,17 +328,28 @@ export function createWorkflowService({ repo, store, wiki, imageStore, execution
             for (const referenced of references(a.value)) { const target = repo.artifact(referenced); if (target.type === 'image') await store.read(target); }
           }
           reusable.push(source);
-        } catch { for (const affected of downstreamClosure(definition.nodes, [n.id])) invalid.add(affected); }
-      }
-      const result = repo.command(scope, payload.requestKey, payload, () => {
-        const r = repo.createRun(parent.workflowId, definition, prepared.inputs, executors, prepared.images, id);
-        for (const source of reusable.filter((s) => !invalid.has(s.nodeId))) {
-          const target = repo.instances(r.id, { scope: 'root' }).find((i) => i.nodeId === source.nodeId);
-          repo.reuse(target.id, source);
-          for (const artifactId of Object.values(source.outputs)) for (const referenced of references(nodes.readValue(artifactId))) repo.addRef(r.id, target.id, referenced, 'reuse');
+        } catch {
+          if (reuse.has(n.id)) throw workflowError('所选复用结果缺失或损坏；请关闭复用开关后重新运行');
+          for (const affected of downstreamClosure(definition.nodes, [n.id], reuse)) invalid.add(affected);
         }
-        repo.event(r.id, 'run.derived', null, null, { parentId: id, invalidated: [...invalid] });
-        return r;
+      }
+      const reusePlan = reusable.filter((source) => !invalid.has(source.nodeId)).map((source) => ({
+        source, references: [...new Set(Object.values(source.outputs).flatMap((artifactId) => [...references(nodes.readValue(artifactId))]))],
+      }));
+      const result = repo.command(scope, payload.requestKey, payload, () => {
+        const runs = [];
+        for (let index = 0; index < count; index += 1) {
+          const r = repo.createRun(parent.workflowId, definition, prepared.inputs, executors, index === 0 ? prepared.images : [], id);
+          const targets = new Map(repo.instances(r.id, { scope: 'root' }).map((instance) => [instance.nodeId, instance]));
+          for (const { source, references: artifactReferences } of reusePlan) {
+            const target = targets.get(source.nodeId);
+            repo.reuse(target.id, source);
+            for (const referenced of artifactReferences) repo.addRef(r.id, target.id, referenced, 'reuse');
+          }
+          repo.event(r.id, 'run.derived', null, null, { parentId: id, invalidated: [...invalid], reuse: [...reuse] });
+          runs.push(r);
+        }
+        return { ...runs.at(-1), count, ids: runs.map((item) => item.id) };
       });
       scheduler.wake(); return result;
     },

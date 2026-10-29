@@ -4,9 +4,9 @@ import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { createServer as httpServer } from "node:http";
 import path from "node:path";
 import os from "node:os";
-import { chromium } from "playwright-core";
+import { chromium } from "../helpers/authenticatedServer.js";
 import { resolveBrowserPath } from "../resolveBrowserPath.js";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 
 const browserPath = resolveBrowserPath();
 test("temporary share UI creates scoped links, downloads on mobile without pairing, and cancels", { skip: !browserPath, timeout: 60000 }, async (t) => {

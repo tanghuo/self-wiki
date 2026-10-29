@@ -53,6 +53,8 @@ npm.cmd start
 node src/server/server.js --port 8765 --data-dir "D:\wiki-data" --open
 ```
 
+启动器会用一次性链接配对浏览器；直接访问普通地址时显示连接页。可在本机运行 `node src/cli/main.js pair --data-dir "D:\wiki-data"` 获取新链接。CLI 自动发现使用独立凭据，显式 `--url` 需要 `--token-file`；详见[本机连接与认证](docs/local-authentication.md)。
+
 ### 第一次使用
 
 1. 应用默认进入 Wiki Agent。从侧栏打开“全部内容”，点击“新增内容”，或直接拖入图片、视频。
@@ -205,6 +207,8 @@ node tools/smoke-desktop.mjs --packaged
 
 ## 文档导航
 
+- [文档索引](docs/README.md)：使用指南、有效设计与文档整理记录。
+- [通用 Agent 工作台重构方案](docs/agent-workbench-plan.md)：待实施的项目 Agent、工具、权限、任务与产物契约，以及分阶段验收。
 - [使用与配置指南](docs/usage.md)：浏览、保存、关联、画布、Agent、整理、检索与共享的完整说明。
 - [CLI 使用指南](docs/cli.md)：命令、参数、分页、错误与重试规则。
 - [聊天生图配置](docs/image-generation.md)：Codex CLI、ChatGPT 网页版、ComfyUI 与 Grok Build。

@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { chromium } from 'playwright-core';
+import { chromium } from "../helpers/authenticatedServer.js";
 import sharp from 'sharp';
 import { resolveBrowserPath } from '../resolveBrowserPath.js';
-import { createServer } from '../../src/server/server.js';
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultOrganizationConfig } from '../../src/shared/domain/organization.js';
 import { workflowNode as n, constant as c, output as o } from '../../src/shared/domain/workflow/examples.js';
 
@@ -89,7 +89,7 @@ test('preparation inputs match canvas nodes and numbered plan steps, including u
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } }); page.setDefaultTimeout(8000);
   await page.goto(`${app.url}#workflow`);
   await page.locator('.workflow-list article').filter({ hasText: '节点对应测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   const canvasNames = {};
   for (const [index, node] of nodes.entries()) {
     const canvasNode = page.locator(`.react-flow__node[data-id="${node.id}"]`);
@@ -195,7 +195,7 @@ test('ungrouping selected nodes preserves unrelated groups and all content', { t
   const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
   await page.goto(`${app.url}#workflow`);
   await page.locator('.workflow-list article').filter({ hasText: '分组保留测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   await page.locator('.react-flow__node[data-id="a"]').click();
   await page.getByRole('button', { name: '取消分组', exact: true }).click();
   await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -232,7 +232,7 @@ test('selected prompt reference has a visible delete button and supports undo', 
   assert.equal(response.status, 200); const created = await response.json();
   const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
   await page.goto(`${app.url}#workflow`); await page.locator('.workflow-list article').filter({ hasText: '连线删除按钮测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   await page.locator('.react-flow__edge').waitFor();
   assert.equal(await page.getByRole('button', { name: '× 删除连线', exact: true }).count(), 0);
   await clickEdge(page);
@@ -262,7 +262,7 @@ test('model text can be wired into editable text then into image generation', { 
   const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } }); page.setDefaultTimeout(8000);
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${app.url}#workflow`); await page.locator('.workflow-list article').filter({ hasText: '文字连线测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   const source = page.locator('.react-flow__node[data-id="model"]'), middle = page.locator('.react-flow__node[data-id="text"]'), target = page.locator('.react-flow__node[data-id="image"]');
   await connectHandles(page, source, middle, 'template:new', 'text');
   const editor = page.getByLabel('内容', { exact: true });
@@ -280,7 +280,7 @@ test('model text can be wired into editable text then into image generation', { 
   ]);
   assert.equal(saved.definition.nodes.find((node) => node.id === 'image').inputs.prompt.nodeId, 'text');
   await page.reload(); await page.locator('.workflow-list article').filter({ hasText: '文字连线测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 2);
   await middle.click();
   assert.equal(await editor.inputValue(), '请画：');
@@ -337,7 +337,7 @@ test('model output ports and schema variables are visible, selectable and surviv
   const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } }); page.setDefaultTimeout(8000);
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${app.url}#workflow`); await page.locator('.workflow-list article').filter({ hasText: '输出变量测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   const source = page.locator('.react-flow__node[data-id="model"]');
   await source.getByLabel('输出 text', { exact: true }).waitFor();
   await source.getByLabel('输出 structured_output', { exact: true }).waitFor();
@@ -360,7 +360,7 @@ test('model output ports and schema variables are visible, selectable and surviv
   assert.equal(saved.definition.nodes.find((n) => n.id === 'raw').inputs.value.port, 'text');
   assert.equal(saved.definition.nodes[0].config.jsonSchema.properties.summary.type, 'string');
   await page.reload(); await page.locator('.workflow-list article').filter({ hasText: '输出变量测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   await page.locator('.react-flow__node[data-id="save"]').click();
   assert.equal(await page.getByLabel('value输出变量').locator('option:checked').textContent(), '提取信息 / 按格式整理的结果.title (文字)');
   await page.screenshot({ path: '.local/workflow-output-variables.png' });
@@ -379,7 +379,7 @@ test('simplified configuration preserves drafts, creates loop captures by wiring
   const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } }); page.setDefaultTimeout(10000);
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${app.url}#workflow`); await page.locator('.workflow-list article').filter({ hasText: '简化配置测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   await page.locator('.react-flow__node[data-id="loop"]').click();
   await page.getByLabel('带入循环的内容', { exact: true }).selectOption({ label: '外部说明 / 内容' });
   await page.locator('.react-flow__node[data-id="loop"]').getByText('外部说明', { exact: true }).waitFor();
@@ -406,7 +406,7 @@ test('simplified configuration preserves drafts, creates loop captures by wiring
   await page.getByLabel('工作流名称').fill('保留草稿测试');
   await page.getByRole('button', { name: '返回工作流列表', exact: true }).click();
   await page.locator('.workflow-list article').filter({ hasText: '保留草稿测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   await page.waitForFunction(() => document.querySelectorAll('.react-flow__edge').length === 2);
   assert.equal(await page.locator('.react-flow__edge').count(), 2);
   await page.getByRole('button', { name: '先试 1 项', exact: true }).click();
@@ -437,7 +437,7 @@ test('image source selection connects immediately; pointer actions disconnect, d
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } }); page.setDefaultTimeout(10000);
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${app.url}#workflow`); await page.locator('.workflow-list article').filter({ hasText: '手动连线测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   const source = page.locator('.react-flow__node[data-id="first"]'), target = page.locator('.react-flow__node[data-id="generate"]');
   await target.click();
   assert.equal(await page.getByLabel('images绑定方式', { exact: true }).count(), 0);
@@ -486,8 +486,8 @@ test('content elements expose sources and typed run fields; normal model setting
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } }); page.setDefaultTimeout(10000);
   const errors = []; page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`${app.url}#workflow`);
-  await page.getByRole('button', { name: '新建空白', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.getByRole('button', { name: '＋ 从空白开始搭建', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   const palette = page.locator('.workflow-palette'), inspector = page.locator('.workflow-inspector');
   await palette.getByRole('button', { name: /^内容\s/ }).click();
   await page.locator('.react-flow__node').waitFor();
@@ -551,12 +551,12 @@ test('content elements expose sources and typed run fields; normal model setting
   await form.getByLabel(/第 [0-9]+ 步 · 本次主题$/).fill('本次填写的主题');
   await page.getByRole('button', { name: '开始运行', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
-  await page.locator('.workflow-result-heading').filter({ hasText: '本次主题' }).click();
-  await page.getByText('本次填写的主题', { exact: true }).waitFor();
-  await page.locator('.workflow-result-heading').filter({ hasText: '带引用文字' }).click();
-  await page.getByText('请翻译：本次填写的主题', { exact: true }).waitFor();
+  assert.equal(await page.locator('.workflow-run').getByLabel(/第 [0-9]+ 步 · 本次主题$/).inputValue(), '本次填写的主题');
+  const composed = page.locator('.workflow-node-edit').filter({ has: page.locator('.workflow-composed-sheet') });
+  await composed.locator('.workflow-source-text').getByText('本次填写的主题', { exact: true }).waitFor();
+  assert.equal(await composed.locator('textarea').first().inputValue(), '请翻译：');
   await page.getByRole('button', { name: '修改流程', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   await page.locator('.react-flow__node').filter({ has: page.getByText('本次主题', { exact: true }) }).click();
   await page.getByRole('button', { name: '查看最近运行结果', exact: true }).click();
   await page.locator('.workflow-run').getByText('本次填写的主题', { exact: true }).first().waitFor();
@@ -601,26 +601,15 @@ test('workflow canvas creates from blank, binds outputs, saves, runs and restore
   const errors = []; page.on('pageerror', (e) => { errors.push(e.message); console.error(e.stack); });
   await page.goto(app.url);
   await page.getByRole('link', { name: '工作流', exact: true }).click();
-  const archived = page.getByLabel('显示已归档', { exact: true });
-  await archived.waitFor();
+  await page.getByRole('region', { name: '工作流首页', exact: true }).waitFor();
   for (const width of [1500, 4914]) {
     await page.setViewportSize({ width, height: 1000 });
-    const geometry = await archived.evaluate((input) => {
-      const box = input.getBoundingClientRect(), label = input.closest('label');
-      const range = document.createRange(); range.selectNodeContents(label.lastChild);
-      const text = range.getBoundingClientRect();
-      return { width: box.width, height: box.height, labelWidth: label.getBoundingClientRect().width, textGap: text.left - box.right, centerOffset: Math.abs(text.y + text.height / 2 - box.y - box.height / 2) };
-    });
-    assert.equal(geometry.width, 16); assert.equal(geometry.height, 16);
-    assert.ok(geometry.labelWidth < 200 && geometry.textGap >= 0 && geometry.textGap <= 12 && geometry.centerOffset < 4, JSON.stringify(geometry));
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   }
   await page.setViewportSize({ width: 1500, height: 1000 });
-  await page.getByText('显示已归档', { exact: true }).click();
-  assert.equal(await archived.isChecked(), true);
-  await archived.uncheck();
   await page.screenshot({ path: '.local/workflow-list-fixed.png' });
-  await page.getByRole('button', { name: '新建空白', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.getByRole('button', { name: '＋ 从空白开始搭建', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   await page.getByLabel('工作流名称').fill('浏览器工作流');
   const palette = page.locator('.workflow-palette');
   assert.equal(await page.getByText('作用域输出', { exact: true }).count(), 0);
@@ -647,7 +636,7 @@ test('workflow canvas creates from blank, binds outputs, saves, runs and restore
   assert.equal(await page.locator('.workflow-preparation-card>header').getByText('第 1 步 · 图片', { exact: true }).count(), 1);
   await page.screenshot({ path: '.local/workflow-runtime-input.png' });
   await page.getByRole('button', { name: '返回编辑', exact: true }).click();
-  await page.locator('.workflow-editor-shell').waitFor();
+  await page.locator('.workflow-editor').waitFor();
   if (await page.getByRole('button', { name: '画布（高级）' }).isVisible().catch(() => false)) {
     await page.getByRole('button', { name: '画布（高级）' }).click();
     await page.locator('.workflow-editor').waitFor();
@@ -696,15 +685,13 @@ test('workflow canvas creates from blank, binds outputs, saves, runs and restore
   await page.getByRole('button', { name: '开始运行', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   await page.locator('.workflow-result-heading').first().click();
-  await page.getByText('固定的中文提示词 {{不二次展开}}', { exact: true }).first().waitFor();
+  await page.locator('.workflow-run').getByText('固定的中文提示词 {{不二次展开}}', { exact: true }).first().waitFor();
   await page.screenshot({ path: '.local/workflow-run-ui.png' });
   await page.reload();
   await page.getByRole('button', { name: /浏览器工作流/ }).click();
   // Title opens the run tool; switch to history to reopen the last run.
   await page.locator('.workflow-view-tabs').getByRole('button', { name: /运行记录/ }).click();
-  const history = page.getByLabel('运行历史', { exact: true });
-  const id = await history.locator('option').last().getAttribute('value');
-  await history.selectOption(id);
+  await page.locator('.workflow-history').getByRole('button', { name: /运行 #/ }).first().click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   assert.deepEqual(errors, []);
 });
@@ -754,7 +741,8 @@ test('workflow list runs directly, separates editing, and keeps review from savi
   assert.equal(await page.locator('.workflow-editor-shell:visible, .workflow-editor:visible').count(), 0);
   assert.equal(await page.locator('.workflow-preparation-card>header').getByText('第 1 步 · 文字', { exact: true }).count(), 1);
   const plan = page.locator('.workflow-plan');
-  await plan.getByText('需要你确认的步骤：核对文字。运行到这里会暂停等待。', { exact: true }).waitFor();
+  await plan.getByText('核对文字', { exact: true }).waitFor();
+  assert.equal(await plan.locator('li').count(), 2);
   assert.equal(await plan.getByRole('button', { name: '定位第 1 步 · 文字', exact: true }).count(), 1);
   assert.equal(await plan.getByText('元素', { exact: true }).count(), 0);
   assert.equal(await plan.getByText(/没有保存到内容库/).count(), 0);
@@ -766,7 +754,7 @@ test('workflow list runs directly, separates editing, and keeps review from savi
   const narrowPlan = await page.locator('.workflow-plan').boundingBox();
   assert.ok(narrowPlan.y >= narrowForm.y + narrowForm.height - 2, 'narrow workbench stacks inputs before the plan');
   await page.getByRole('button', { name: '返回编辑', exact: true }).click();
-  await page.locator('.workflow-editor-shell').waitFor();
+  await page.locator('.workflow-editor').waitFor();
   if (await page.getByRole('button', { name: '画布（高级）' }).isVisible().catch(() => false)) {
     await page.getByRole('button', { name: '画布（高级）' }).click();
     await page.locator('.workflow-editor').waitFor();
@@ -783,18 +771,17 @@ test('workflow list runs directly, separates editing, and keeps review from savi
   await page.getByRole('button', { name: '开始运行', exact: true }).click();
   await page.getByLabel('修改「第 2 步 · 核对文字」的文字', { exact: true }).waitFor();
   assert.equal(await page.locator('.workflow-execution-details .workflow-code:visible').count(), 0);
-  await page.getByText('通过只是让后面的步骤继续，不会存进资料库。', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: '通过', exact: true }).isEnabled(), true);
+  assert.equal(await page.getByRole('button', { name: '跳过', exact: true }).isEnabled(), true);
   await page.getByLabel('修改「第 2 步 · 核对文字」的文字', { exact: true }).fill('改过的说明');
   await page.getByRole('button', { name: '通过', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   await page.getByText('改过的说明', { exact: true }).waitFor();
-  await page.getByText('每一步的结果', { exact: true }).waitFor();
+  assert.ok(await page.locator('.workflow-result-heading').count() >= 2);
   const after = await (await fetch(new URL('api/elements?pageSize=1', app.url))).json();
   assert.equal(after.pagination.total, before.pagination.total);
   await page.setViewportSize({ width: 1280, height: 800 });
-  const snap = await page.locator('.workflow-run-snapshot').boundingBox();
-  const run = await page.locator('.workflow-run').boundingBox();
-  assert.ok(run.x >= snap.x + snap.width - 2, 'desktop run keeps the submitted inputs beside the results');
+  assert.equal(await page.locator('.workflow-input-form:visible').count(), 0, 'completed run cannot edit its submitted input form');
   assert.deepEqual(errors, []);
 });
 
@@ -814,7 +801,7 @@ test('problems are listed in plain words, jump to the step (inside loops too) an
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${app.url}#workflow`);
   await page.locator('.workflow-list article').filter({ hasText: '问题列表测试' }).getByRole('button', { name: '编辑', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   const issues = page.getByRole('region', { name: '需要处理的问题' });
   await issues.getByText('还有 2 个问题，处理后才能运行', { exact: true }).waitFor();
   assert.deepEqual(await issues.locator('li .workflow-issue-step').allTextContents(), ['第 2 步 · 写描述', '第 5 步 · 逐项改写']);
@@ -841,7 +828,7 @@ test('problems are listed in plain words, jump to the step (inside loops too) an
   await blockers.getByText('第 2 步 · 写描述', { exact: true }).waitFor();
   assert.equal(await page.getByRole('button', { name: '开始运行', exact: true }).isDisabled(), true);
   await blockers.getByRole('button', { name: '去修改', exact: true }).click();
-  await page.locator('.workflow-editor-shell').waitFor();
+  await page.locator('.workflow-editor').waitFor();
   if (await page.getByRole('button', { name: '画布（高级）' }).isVisible().catch(() => false)) {
     await page.getByRole('button', { name: '画布（高级）' }).click();
     await page.locator('.workflow-editor').waitFor();
@@ -891,7 +878,7 @@ test('skipping a confirmation is shown as skipped, not failed, and running again
   await page.screenshot({ path: '.local/workflow-skipped.png', fullPage: true });
   const listed = await (await fetch(new URL('api/workflows', app.url))).json();
   assert.equal(listed.workflows[0].latestState, 'partial_failed', 'the server state is unchanged; only its presentation differs');
-  await page.getByRole('button', { name: '再运行一次', exact: true }).click();
+  await page.getByRole('button', { name: '准备新运行', exact: true }).click();
   await page.getByText(/^已带上运行 #\d+ 的内容/).waitFor();
   assert.equal(await page.getByLabel('第 1 步 · 本次主题', { exact: true }).inputValue(), '第一次的主题');
   await photoField.getByText('已选择 1 张图片', { exact: true }).waitFor();
@@ -930,7 +917,7 @@ test('fixed content on the run page is read-only until changed, can be undone an
   await page.getByRole('button', { name: '开始运行', exact: true }).waitFor();
   await page.getByLabel('第 1 步 · 写作要求', { exact: true }).fill('不想保存的改动');
   await page.getByRole('button', { name: '返回编辑', exact: true }).click();
-  await page.locator('.workflow-editor-shell').waitFor();
+  await page.locator('.workflow-editor').waitFor();
   if (await page.getByRole('button', { name: '画布（高级）' }).isVisible().catch(() => false)) {
     await page.getByRole('button', { name: '画布（高级）' }).click();
     await page.locator('.workflow-editor').waitFor();
@@ -965,11 +952,11 @@ test('run page is a small tool with history tabs, progress banner and one-by-one
   // Opening the card goes straight to the run tool.
   await page.getByRole('button', { name: /P1运行页测试/ }).click();
   await page.getByRole('heading', { name: '准备本次素材', exact: true }).waitFor();
-  await page.getByText('接下来会发生什么', { exact: true }).waitFor();
+  await page.getByRole('complementary', { name: '执行前状态' }).getByText('逐项确认', { exact: true }).waitFor();
   await page.getByRole('button', { name: '开始运行', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="waiting_review"]').waitFor();
   await page.locator('.workflow-progress-block').waitFor();
-  await page.locator('.workflow-review-banner').getByText(/等你确认/).waitFor();
+  await page.locator('.workflow-run h2').getByText('等你确认', { exact: true }).waitFor();
   assert.equal(await page.locator('.workflow-item-card').count(), 3);
   await page.getByRole('button', { name: '逐张确认 →', exact: true }).click();
   const focus = page.getByRole('dialog', { name: '逐张确认' });
@@ -982,7 +969,7 @@ test('run page is a small tool with history tabs, progress banner and one-by-one
   await page.locator('.workflow-view-tabs').getByRole('button', { name: /运行记录/ }).click();
   await page.locator('.workflow-history').getByRole('button', { name: /运行 #/ }).first().waitFor();
   await page.locator('.workflow-view-tabs').getByRole('button', { name: '修改流程', exact: true }).click();
-  await page.locator('.workflow-editor-shell').waitFor();
+  await page.locator('.workflow-editor').waitFor();
   if (await page.getByRole('button', { name: '画布（高级）' }).isVisible().catch(() => false)) {
     await page.getByRole('button', { name: '画布（高级）' }).click();
     await page.locator('.workflow-editor').waitFor();
@@ -990,7 +977,7 @@ test('run page is a small tool with history tabs, progress banner and one-by-one
   assert.deepEqual(errors, []);
 });
 
-test('home one-liner and templates open the recipe steps view with result markers', { timeout: 45000, skip: !browserPath && 'Browser required' }, async (t) => {
+test('home one-liner and templates create editable valid canvas definitions', { timeout: 45000, skip: !browserPath && 'Browser required' }, async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-p2p3-'));
   const app = await createServer({ port: 0, dataDir: dir });
   const browser = await chromium.launch({ executablePath: browserPath, headless: true });
@@ -1006,20 +993,86 @@ test('home one-liner and templates open the recipe steps view with result marker
   const plan = page.getByRole('region', { name: '搭建计划' });
   await plan.getByText(/检查通过 · 最多调用 AI/).waitFor();
   await plan.getByRole('button', { name: '确认并生成', exact: true }).click();
-  await page.locator('.workflow-editor-shell').waitFor();
-  await page.locator('.workflow-steps-view').waitFor();
-  assert.equal(await page.locator('.workflow-editor:visible').count(), 0, 'recipe view is default, not canvas');
-  await page.getByRole('button', { name: '步骤', exact: true }).waitFor();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).waitFor();
-  await page.getByText('运行时你会看到的表单', { exact: true }).waitFor();
-  await page.getByText('检查结果', { exact: true }).waitFor();
-  await page.locator('.workflow-step-card').first().click();
-  await page.getByText('在结果里显示这一步', { exact: true }).waitFor();
+  await page.locator('.workflow-editor').waitFor();
+  await page.locator('.workflow-canvas').waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__node').length >= 2);
+  await page.getByRole('button', { name: '检查', exact: true }).click();
+  await page.getByText(/检查通过/).waitFor();
   await page.getByRole('button', { name: '返回工作流列表', exact: true }).click();
   await page.locator('.workflow-template-card').filter({ hasText: '一句话生图并挑选' }).getByRole('button', { name: '使用模板', exact: true }).click();
-  await page.locator('.workflow-steps-view').waitFor();
+  await page.locator('.workflow-canvas').waitFor();
   assert.match(await page.getByLabel('工作流名称').inputValue(), /一句话生图/);
-  assert.ok(await page.locator('.workflow-result-badge').count() >= 1);
-  await page.getByRole('button', { name: '＋添加一步', exact: true }).waitFor();
+  await page.waitForFunction(() => document.querySelectorAll('.react-flow__node').length >= 2);
+  await page.getByRole('button', { name: '检查', exact: true }).click();
+  await page.getByText(/检查通过/).waitFor();
+  assert.deepEqual(errors, []);
+});
+
+test('run count is a workflow setting beside start and rerun, and each start opens that many runs', { timeout: 40000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-count-'));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => { await browser.close(); await app.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-count-')); await rm(dir, { recursive: true, force: true, maxRetries: 3 }); });
+  const topic = n('topic', 'element', { source: 'runtime', parameter: 'topic', valueType: 'text', required: true, default: '' }); topic.name = '本次主题';
+  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '运行次数测试', definition: { schemaVersion: 1, nodes: [topic], outputs: {} }, requestKey: 'run-count-create' }) });
+  assert.equal(response.status, 200);
+  const created = await response.json();
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } }); page.setDefaultTimeout(10000);
+  const errors = []; page.on('pageerror', (error) => errors.push(error.message));
+  const sameRow = async (container, buttonName) => {
+    const input = await container.getByRole('spinbutton', { name: '运行次数', exact: true }).boundingBox();
+    const button = await container.getByRole('button', { name: buttonName, exact: true }).boundingBox();
+    assert.ok(input.x + input.width <= button.x + 8, `${buttonName} stays to the right of the count`);
+    assert.ok(Math.abs((input.y + input.height / 2) - (button.y + button.height / 2)) < 20, `${buttonName} stays on the same row as the count`);
+  };
+  await page.goto(`${app.url}#workflow`);
+  await page.locator('.workflow-list article').filter({ hasText: '运行次数测试' }).getByRole('button', { name: '运行', exact: true }).click();
+  const formActions = page.locator('.workflow-input-actions');
+  const count = () => page.getByRole('spinbutton', { name: '运行次数', exact: true });
+  await count().waitFor();
+  assert.equal(await count().count(), 1);
+  assert.equal(await count().inputValue(), '1');
+  await page.getByRole('button', { name: '开始运行', exact: true }).waitFor();
+  await sameRow(formActions, '开始运行');
+  await page.getByLabel('第 1 步 · 本次主题', { exact: true }).fill('同一主题');
+  await count().fill('2');
+  await page.getByRole('button', { name: '开始运行 2 次', exact: true }).waitFor();
+  assert.equal((await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json()).runs.length, 0, 'changing the count does not start a run');
+  await page.getByRole('button', { name: '开始运行 2 次', exact: true }).click();
+  await page.locator('.workflow-run h2').waitFor();
+  const started = await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json();
+  assert.equal(started.definition.runCount, 2);
+  assert.equal(started.runs.length, 2);
+  const details = [];
+  for (const entry of started.runs) details.push(await (await fetch(new URL(`api/workflow-runs/${entry.id}`, app.url))).json());
+  assert.deepEqual(details.map((run) => run.inputs.topic), ['同一主题', '同一主题']);
+  await page.getByRole('heading', { name: new RegExp(`运行 #${started.runs[0].id}`) }).waitFor();
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  const toolbar = page.locator('.workflow-run-toolbar-actions');
+  assert.equal(await count().count(), 1);
+  assert.equal(await toolbar.locator('input').inputValue(), '2');
+  await sameRow(toolbar, '运行');
+  const submitted = page.waitForRequest((request) => request.url().endsWith(`/api/workflow-runs/${started.runs[0].id}/derive`));
+  await toolbar.getByRole('button', { name: '运行', exact: true }).click();
+  assert.equal((await submitted).postDataJSON().count, 2);
+  await page.waitForFunction((id) => !document.querySelector('.workflow-run h2')?.textContent.includes(`#${id} `), started.runs[0].id);
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  assert.equal((await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json()).runs.length, 4);
+  await page.getByRole('button', { name: '准备新运行', exact: true }).click();
+  await page.getByText(/^已带上运行 #\d+ 的内容/).waitFor();
+  assert.equal(await count().inputValue(), '2');
+  await page.getByRole('button', { name: '开始运行 2 次', exact: true }).waitFor();
+  assert.equal((await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json()).runs.length, 4, 'preparation opens the form and does not start');
+  await count().fill('1');
+  await page.getByRole('button', { name: '开始运行', exact: true }).waitFor();
+  await page.getByRole('button', { name: '返回编辑', exact: true }).click();
+  await page.locator('.workflow-save-state').getByText('未保存', { exact: true }).waitFor();
+  await page.getByRole('button', { name: '运行', exact: true }).click();
+  assert.equal(await count().inputValue(), '1');
+  await page.getByRole('button', { name: '返回工作流列表', exact: true }).click();
+  await page.locator('.workflow-list').waitFor();
+  const saved = await (await fetch(new URL(`api/workflows/${created.id}`, app.url))).json();
+  assert.equal(saved.definition.runCount, 1);
+  assert.equal(saved.runs.length, 4);
   assert.deepEqual(errors, []);
 });

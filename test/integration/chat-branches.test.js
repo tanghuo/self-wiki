@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as sleep } from "node:timers/promises";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { initDb } from "../../src/server/data/sqlite.js";
 import { createChatRepository } from "../../src/server/data/chatRepository.js";
 import { createElementRepository } from "../../src/server/data/elementRepository.js";

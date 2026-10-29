@@ -1,0 +1,454 @@
+{
+  "root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-workbench-smoke-yFF3RB",
+  "modelCalls": 1,
+  "paidImageCalls": 0,
+  "rejecting": false,
+  "approvals": [
+    {
+      "kind": "native.command",
+      "allowed": true,
+      "hash": "e91ff21f0e926ba217716f93a4212d0b4bf9d555482814d94b164cf1f041e424",
+      "command": "\"C:\\\\Users\\\\Administrator\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command \"Get-Content -LiteralPath 'C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\wiki-codex-workbench-smoke-yFF3RB\\\\project\\\\answer.txt' -Raw\""
+    },
+    {
+      "kind": "native.file",
+      "allowed": true,
+      "hash": "ebcf1ee8e0f31662774da67e4c8b5eff9b0f4c8395590bb8faabb5a0b210608b"
+    },
+    {
+      "kind": "native.command",
+      "allowed": true,
+      "hash": "3966c43f34f14498259929d437c3d162e0c5cc8a24ad77df73f1231a70f6d398",
+      "command": "\"C:\\\\Users\\\\Administrator\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command \"& 'D:\\\\soft\\\\node.exe' 'C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\wiki-codex-workbench-smoke-yFF3RB\\\\project\\\\verify.mjs'\""
+    }
+  ],
+  "checks": {
+    "nativeApprovals": true,
+    "fileState": true,
+    "command": true,
+    "completed": true,
+    "resumeWithoutPrompt": true
+  },
+  "state": "completed",
+  "data": {
+    "git": {
+      "git": false,
+      "reason": "not_git_or_snapshot_failed",
+      "includesExternalChanges": true
+    }
+  },
+  "events": [
+    {
+      "type": "session.created",
+      "data": {
+        "engine": "codex-cli"
+      }
+    },
+    {
+      "type": "turn.queued",
+      "data": {
+        "turnId": 1
+      }
+    },
+    {
+      "type": "turn.started",
+      "data": {}
+    },
+    {
+      "type": "workspace.baseline",
+      "data": {
+        "git": false,
+        "reason": "not_git_or_snapshot_failed",
+        "includesExternalChanges": true
+      }
+    },
+    {
+      "type": "engine.connected",
+      "data": {
+        "sessionId": "01a18788-1ff1-7d72-9aaf-65d70e9c0211",
+        "version": "self_wiki/0.159.0 (Windows 10.0.22631; x86_64) unknown (self_wiki; 0.2.0)",
+        "capabilities": {
+          "verified": true,
+          "resume": true,
+          "clientFiles": false,
+          "clientTerminal": false,
+          "approval": "native",
+          "fileReads": "native_full_disk",
+          "nativePolicy": {
+            "type": "readOnly",
+            "networkAccess": false
+          },
+          "applicationTools": false,
+          "images": true
+        }
+      }
+    },
+    {
+      "type": "tool.updated",
+      "data": {
+        "id": "exec-5a4f0ccb-3bab-4dcc-ac14-18c70d0cc14a",
+        "kind": "commandExecution",
+        "title": "\"C:\\\\Users\\\\Administrator\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command \"Get-Content -LiteralPath 'C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\wiki-codex-workbench-smoke-yFF3RB\\\\project\\\\answer.txt' -Raw\"",
+        "status": "running"
+      }
+    },
+    {
+      "type": "approval.requested",
+      "data": {
+        "id": 1,
+        "sessionId": 1,
+        "turnId": 1,
+        "generation": 1,
+        "operationHash": "e91ff21f0e926ba217716f93a4212d0b4bf9d555482814d94b164cf1f041e424",
+        "policyRevision": 2,
+        "state": "pending",
+        "operation": {
+          "kind": "native.command",
+          "itemId": "exec-5a4f0ccb-3bab-4dcc-ac14-18c70d0cc14a",
+          "command": "\"C:\\\\Users\\\\Administrator\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command \"Get-Content -LiteralPath 'C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\wiki-codex-workbench-smoke-yFF3RB\\\\project\\\\answer.txt' -Raw\"",
+          "cwd": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-workbench-smoke-yFF3RB\\project",
+          "reason": "",
+          "nativePolicy": "untrusted / read-only"
+        },
+        "decision": null,
+        "expiresAt": 1793275523281
+      }
+    },
+    {
+      "type": "approval.resolved",
+      "data": {
+        "id": 1,
+        "sessionId": 1,
+        "turnId": 1,
+        "generation": 1,
+        "operationHash": "e91ff21f0e926ba217716f93a4212d0b4bf9d555482814d94b164cf1f041e424",
+        "policyRevision": 2,
+        "state": "approved",
+        "operation": {
+          "kind": "native.command",
+          "itemId": "exec-5a4f0ccb-3bab-4dcc-ac14-18c70d0cc14a",
+          "command": "\"C:\\\\Users\\\\Administrator\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command \"Get-Content -LiteralPath 'C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\wiki-codex-workbench-smoke-yFF3RB\\\\project\\\\answer.txt' -Raw\"",
+          "cwd": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-workbench-smoke-yFF3RB\\project",
+          "reason": "",
+          "nativePolicy": "untrusted / read-only"
+        },
+        "decision": "allow",
+        "expiresAt": 1793275523281
+      }
+    },
+    {
+      "type": "command.output",
+      "data": {
+        "commandId": "37bd8133-b47e-42f0-bebf-6dcdd120030b",
+        "byteLength": 5,
+        "output": "41\n\r\n",
+        "previewOffset": 0,
+        "truncated": false,
+        "exitCode": 0,
+        "namespace": "codex"
+      }
+    },
+    {
+      "type": "tool.updated",
+      "data": {
+        "id": "exec-5a4f0ccb-3bab-4dcc-ac14-18c70d0cc14a",
+        "kind": "commandExecution",
+        "title": "\"C:\\\\Users\\\\Administrator\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command \"Get-Content -LiteralPath 'C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\wiki-codex-workbench-smoke-yFF3RB\\\\project\\\\answer.txt' -Raw\"",
+        "status": "completed"
+      }
+    },
+    {
+      "type": "engine.usage",
+      "data": {
+        "namespace": "codex",
+        "usage": {
+          "total": {
+            "totalTokens": 8966,
+            "inputTokens": 8878,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 88,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 8966,
+            "inputTokens": 8878,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 88,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 475000
+        }
+      }
+    },
+    {
+      "type": "tool.updated",
+      "data": {
+        "id": "exec-df00d8e8-56a2-46cc-b21b-2b70643256c6",
+        "kind": "fileChange",
+        "title": "fileChange",
+        "status": "running"
+      }
+    },
+    {
+      "type": "approval.requested",
+      "data": {
+        "id": 2,
+        "sessionId": 1,
+        "turnId": 1,
+        "generation": 1,
+        "operationHash": "ebcf1ee8e0f31662774da67e4c8b5eff9b0f4c8395590bb8faabb5a0b210608b",
+        "policyRevision": 2,
+        "state": "pending",
+        "operation": {
+          "kind": "native.file",
+          "itemId": "exec-df00d8e8-56a2-46cc-b21b-2b70643256c6",
+          "changes": [
+            {
+              "path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-workbench-smoke-yFF3RB\\project\\answer.txt",
+              "kind": {
+                "type": "update",
+                "move_path": null
+              },
+              "diff": "@@ -1 +1 @@\n-41\n+42\n"
+            }
+          ],
+          "reason": ""
+        },
+        "decision": null,
+        "expiresAt": 1793275527123
+      }
+    },
+    {
+      "type": "approval.resolved",
+      "data": {
+        "id": 2,
+        "sessionId": 1,
+        "turnId": 1,
+        "generation": 1,
+        "operationHash": "ebcf1ee8e0f31662774da67e4c8b5eff9b0f4c8395590bb8faabb5a0b210608b",
+        "policyRevision": 2,
+        "state": "approved",
+        "operation": {
+          "kind": "native.file",
+          "itemId": "exec-df00d8e8-56a2-46cc-b21b-2b70643256c6",
+          "changes": [
+            {
+              "path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-workbench-smoke-yFF3RB\\project\\answer.txt",
+              "kind": {
+                "type": "update",
+                "move_path": null
+              },
+              "diff": "@@ -1 +1 @@\n-41\n+42\n"
+            }
+          ],
+          "reason": ""
+        },
+        "decision": "allow",
+        "expiresAt": 1793275527123
+      }
+    },
+    {
+      "type": "file.native_diff",
+      "data": {
+        "changes": [
+          {
+            "path": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-workbench-smoke-yFF3RB\\project\\answer.txt",
+            "kind": {
+              "type": "update",
+              "move_path": null
+            },
+            "diff": "@@ -1 +1 @@\n-41\n+42\n"
+          }
+        ],
+        "status": "completed",
+        "namespace": "codex"
+      }
+    },
+    {
+      "type": "tool.updated",
+      "data": {
+        "id": "exec-df00d8e8-56a2-46cc-b21b-2b70643256c6",
+        "kind": "fileChange",
+        "title": "fileChange",
+        "status": "completed"
+      }
+    },
+    {
+      "type": "engine.usage",
+      "data": {
+        "namespace": "codex",
+        "usage": {
+          "total": {
+            "totalTokens": 18059,
+            "inputTokens": 17904,
+            "cachedInputTokens": 8832,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 155,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 9093,
+            "inputTokens": 9026,
+            "cachedInputTokens": 8832,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 67,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 475000
+        }
+      }
+    },
+    {
+      "type": "tool.updated",
+      "data": {
+        "id": "exec-16d099c6-71c9-45cb-856d-6f39a771948b",
+        "kind": "commandExecution",
+        "title": "\"C:\\\\Users\\\\Administrator\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command \"& 'D:\\\\soft\\\\node.exe' 'C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\wiki-codex-workbench-smoke-yFF3RB\\\\project\\\\verify.mjs'\"",
+        "status": "running"
+      }
+    },
+    {
+      "type": "approval.requested",
+      "data": {
+        "id": 3,
+        "sessionId": 1,
+        "turnId": 1,
+        "generation": 1,
+        "operationHash": "3966c43f34f14498259929d437c3d162e0c5cc8a24ad77df73f1231a70f6d398",
+        "policyRevision": 2,
+        "state": "pending",
+        "operation": {
+          "kind": "native.command",
+          "itemId": "exec-16d099c6-71c9-45cb-856d-6f39a771948b",
+          "command": "\"C:\\\\Users\\\\Administrator\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command \"& 'D:\\\\soft\\\\node.exe' 'C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\wiki-codex-workbench-smoke-yFF3RB\\\\project\\\\verify.mjs'\"",
+          "cwd": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-workbench-smoke-yFF3RB\\project",
+          "reason": "",
+          "nativePolicy": "untrusted / read-only"
+        },
+        "decision": null,
+        "expiresAt": 1793275531180
+      }
+    },
+    {
+      "type": "approval.resolved",
+      "data": {
+        "id": 3,
+        "sessionId": 1,
+        "turnId": 1,
+        "generation": 1,
+        "operationHash": "3966c43f34f14498259929d437c3d162e0c5cc8a24ad77df73f1231a70f6d398",
+        "policyRevision": 2,
+        "state": "approved",
+        "operation": {
+          "kind": "native.command",
+          "itemId": "exec-16d099c6-71c9-45cb-856d-6f39a771948b",
+          "command": "\"C:\\\\Users\\\\Administrator\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command \"& 'D:\\\\soft\\\\node.exe' 'C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\wiki-codex-workbench-smoke-yFF3RB\\\\project\\\\verify.mjs'\"",
+          "cwd": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-workbench-smoke-yFF3RB\\project",
+          "reason": "",
+          "nativePolicy": "untrusted / read-only"
+        },
+        "decision": "allow",
+        "expiresAt": 1793275531180
+      }
+    },
+    {
+      "type": "command.output",
+      "data": {
+        "commandId": "fd0826ed-37a0-49ea-b522-9e7405104099",
+        "byteLength": 19,
+        "output": "CODEX_WORKBENCH_OK\n",
+        "previewOffset": 0,
+        "truncated": false,
+        "exitCode": 0,
+        "namespace": "codex"
+      }
+    },
+    {
+      "type": "tool.updated",
+      "data": {
+        "id": "exec-16d099c6-71c9-45cb-856d-6f39a771948b",
+        "kind": "commandExecution",
+        "title": "\"C:\\\\Users\\\\Administrator\\\\.cache\\\\codex-runtimes\\\\codex-primary-runtime\\\\dependencies\\\\native\\\\powershell\\\\pwsh.exe\" -Command \"& 'D:\\\\soft\\\\node.exe' 'C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Temp\\\\wiki-codex-workbench-smoke-yFF3RB\\\\project\\\\verify.mjs'\"",
+        "status": "completed"
+      }
+    },
+    {
+      "type": "engine.usage",
+      "data": {
+        "namespace": "codex",
+        "usage": {
+          "total": {
+            "totalTokens": 27243,
+            "inputTokens": 27021,
+            "cachedInputTokens": 8832,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 222,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 9184,
+            "inputTokens": 9117,
+            "cachedInputTokens": 0,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 67,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 475000
+        }
+      }
+    },
+    {
+      "type": "engine.usage",
+      "data": {
+        "namespace": "codex",
+        "usage": {
+          "total": {
+            "totalTokens": 36525,
+            "inputTokens": 36270,
+            "cachedInputTokens": 17792,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 255,
+            "reasoningOutputTokens": 0
+          },
+          "last": {
+            "totalTokens": 9282,
+            "inputTokens": 9249,
+            "cachedInputTokens": 8960,
+            "cacheWriteInputTokens": 0,
+            "outputTokens": 33,
+            "reasoningOutputTokens": 0
+          },
+          "modelContextWindow": 475000
+        }
+      }
+    },
+    {
+      "type": "workspace.changed",
+      "data": {
+        "baseline": {
+          "git": false,
+          "reason": "not_git_or_snapshot_failed",
+          "includesExternalChanges": true
+        },
+        "current": {
+          "git": false,
+          "reason": "not_git_or_snapshot_failed",
+          "includesExternalChanges": true
+        }
+      }
+    },
+    {
+      "type": "turn.finished",
+      "data": {
+        "state": "completed",
+        "git": {
+          "git": false,
+          "reason": "not_git_or_snapshot_failed",
+          "includesExternalChanges": true
+        }
+      }
+    }
+  ]
+}

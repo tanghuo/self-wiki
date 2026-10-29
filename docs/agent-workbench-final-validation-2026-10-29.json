@@ -1,0 +1,45 @@
+{
+  "date": "2026-10-29",
+  "fullRegression": {
+    "tests": 774,
+    "pass": 769,
+    "fail": 0,
+    "cancelled": 0,
+    "skipped": 5
+  },
+  "supplementaryContractTests": {
+    "tests": 9,
+    "pass": 9,
+    "log": ".local/agent-workbench-final-contract-tests.log"
+  },
+  "finalAmendmentTests": {
+    "tests": 32,
+    "pass": 32,
+    "log": ".local/agent-workbench-final-amendment-tests.log"
+  },
+  "build": "passed",
+  "architecture": "passed",
+  "windowsDirectoryPackage": "passed",
+  "packagedDesktopSmoke": "passed",
+  "packageSources": {
+    "src/agent/engines/codexWorkbench.js": true,
+    "src/agent/engines/grokWorkbench.js": true,
+    "src/server/application/agentWorkbench/service.js": true,
+    "src/server/application/agentWorkbench/legacy.js": true,
+    "src/server/application/agentTasks/service.js": true,
+    "src/server/application/agentTasks/workflowBridge.js": true,
+    "src/server/application/agentTools/service.js": true,
+    "src/server/data/agentWorkflowMigration.js": true,
+    "src/server/server.js": true,
+    "src/shared/domain/agentWorkbench/workflow.js": true
+  },
+  "defaultEnabled": false,
+  "codexReadBoundary": "native_full_disk_explicit_user_consent",
+  "logs": [
+    ".local/agent-workbench-complete-tests.log",
+    ".local/agent-workbench-final-build.log",
+    ".local/agent-workbench-final-architecture.log",
+    ".local/agent-workbench-final-package.log",
+    ".local/agent-workbench-final-desktop.log"
+  ]
+}

@@ -4,9 +4,9 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { chromium } from "playwright-core";
+import { chromium } from "../helpers/authenticatedServer.js";
 import { resolveBrowserPath } from "../resolveBrowserPath.js";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
 
 const browserPath = resolveBrowserPath();
@@ -37,6 +37,19 @@ async function setup(t) {
     assert.equal(response.status, 201); return response.json();
   };
   return { page, app, create };
+}
+
+async function openAgent(page) {
+  const link = page.getByRole('link', { name: 'Agent 对话', exact: true });
+  // A late detail refresh may briefly guard navigation after the earlier read
+  // finished. Retry the harmless link click only when it was actually guarded.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.waitForFunction(() => document.querySelector('.wiki-agent-entry')?.getAttribute('aria-disabled') === 'false');
+    await link.click();
+    try { await page.waitForURL(url => url.hash.startsWith('#agent'), { timeout: 750 }); break; }
+    catch (error) { if (attempt === 2) throw error; }
+  }
+  await page.getByRole('main', { name: 'Agent 对话', exact: true }).waitFor();
 }
 
 test("closing unsaved content asks before discarding and preserves failed batch drafts", options, async (t) => {
@@ -78,20 +91,17 @@ test("workspace navigation and browser back retain Wiki search and detail contex
   await page.getByRole("button", { name: `打开内容：${element.body}`, exact: true }).click();
   await page.getByRole("heading", { name: element.body, exact: true }).waitFor();
   await page.waitForFunction(() => document.querySelector(".wiki-agent-entry")?.getAttribute("aria-disabled") === "false");
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
-  await page.getByRole("main", { name: "Agent 对话", exact: true }).waitFor();
+  await openAgent(page);
   await page.getByRole("button", { name: "全部内容", exact: true }).click();
   await page.getByRole("heading", { name: element.body, exact: true }).waitFor();
   await page.getByRole("button", { name: "返回", exact: true }).click();
   assert.equal(await page.getByRole("textbox", { name: "搜索内容", exact: true }).inputValue(), "摄影");
   await page.waitForFunction(() => document.querySelector(".wiki-agent-entry")?.getAttribute("aria-disabled") === "false");
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
-  await page.getByRole("main", { name: "Agent 对话", exact: true }).waitFor();
+  await openAgent(page);
   await page.goBack();
   assert.equal(await page.getByRole("textbox", { name: "搜索内容", exact: true }).inputValue(), "摄影");
   await page.waitForFunction(() => document.querySelector(".wiki-agent-entry")?.getAttribute("aria-disabled") === "false");
-  await page.getByRole("link", { name: "Agent 对话", exact: true }).click();
-  await page.getByRole("main", { name: "Agent 对话", exact: true }).waitFor();
+  await openAgent(page);
   await page.getByRole("button", { name: "图片", exact: true }).click();
   await page.getByRole("heading", { name: "图片", exact: true }).waitFor();
   assert.equal(await page.getByRole("textbox", { name: "搜索内容", exact: true }).inputValue(), "");

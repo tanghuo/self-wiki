@@ -41,8 +41,8 @@ async function request(url, route, { method = "GET", body, headers = {}, timeout
   return data;
 }
 
-async function identify(url, timeout) {
-  const info = await request(url, "/api/instance", { timeout });
+async function identify(url, timeout, headers) {
+  const info = await request(url, "/api/instance", { timeout, headers });
   if (info?.application !== "self-wiki" || info.protocolVersion !== 1 || typeof info.instanceId !== "string" || !info.instanceId || typeof info.dataDir !== "string") {
     throw new CliError("PROTOCOL", "The endpoint is not a compatible self-wiki backend; restart/update it", 3);
   }
@@ -52,10 +52,20 @@ async function identify(url, timeout) {
 export async function connect(options) {
   const timeout = options.timeout ?? 30000;
   const explicitUrl = options.url ?? (process.env.SELF_WIKI_URL || undefined);
-  let url, instance;
+  const toolHeaders = process.env.SELF_WIKI_CHAT_TOKEN ? { 'x-self-wiki-chat-token': process.env.SELF_WIKI_CHAT_TOKEN, 'x-self-wiki-chat-call': process.env.SELF_WIKI_CHAT_CALL || '' } : null;
+  async function credentialHeaders(file, expectedInstanceId) {
+    if (toolHeaders) return toolHeaders;
+    if (!file) throw new CliError('AUTH_REQUIRED', 'Explicit --url requires --token-file or SELF_WIKI_TOKEN_FILE. For discovery use --data-dir.', 3);
+    let saved;
+    try { saved = JSON.parse(await readFile(file, 'utf8')); } catch { throw new CliError('AUTH_REQUIRED', 'Cannot read the local credential file; restart the backend and check --token-file.', 3); }
+    if (typeof saved.token !== 'string' || !/^[\w-]{43}$/.test(saved.token) || expectedInstanceId && saved.instanceId !== expectedInstanceId) throw new CliError('AUTH_REQUIRED', 'Invalid or stale credential file', 3);
+    return { authorization: `Bearer ${saved.token}` };
+  }
+  let url, instance, authHeaders;
   if (explicitUrl !== undefined) {
     url = localUrl(explicitUrl);
-    instance = await identify(url, timeout);
+    authHeaders = await credentialHeaders(options['token-file'] || process.env.SELF_WIKI_TOKEN_FILE);
+    instance = await identify(url, timeout, authHeaders);
   } else {
     const dataDir = path.resolve(options["data-dir"] || process.env.APP_DATA_DIR || path.resolve(import.meta.dirname, "../../data"));
     const runtimeDir = path.join(dataDir, ".runtime");
@@ -69,20 +79,22 @@ export async function connect(options) {
       // Discovery records are hints, not proof that a reused port still owns this database.
       try {
         if (typeof saved?.dataDir !== "string" || path.relative(dataDir, path.resolve(saved.dataDir)) !== "") return null;
+        if (typeof saved.instanceId !== 'string' || !/^[\da-f-]{36}$/.test(saved.instanceId)) return null;
         const candidateUrl = localUrl(saved.url);
-        const current = await identify(candidateUrl, Math.min(timeout, 1500));
+        const headers = await credentialHeaders(path.join(runtimeDir, `credentials-${saved.instanceId}.json`), saved.instanceId);
+        const current = await identify(candidateUrl, Math.min(timeout, 1500), headers);
         if (current.instanceId !== saved.instanceId || path.relative(dataDir, path.resolve(current.dataDir)) !== "") return null;
-        return { url: candidateUrl, instance: current };
+        return { url: candidateUrl, instance: current, authHeaders: headers };
       } catch (error) { if (error instanceof CliError) return null; throw error; }
     }));
     const active = candidates.filter(Boolean);
     if (!active.length) throw new CliError("NOT_RUNNING", `No active self-wiki backend found in ${dataDir}. Start/restart the app or run npm start; use --data-dir for a custom directory or --url for an explicit API origin.`, 3);
     if (active.length > 1) throw new CliError("AMBIGUOUS_INSTANCE", "Multiple backends are running. Select one with --url.", 3, active.map((entry) => entry.instance));
-    ({ url, instance } = active[0]);
+    ({ url, instance, authHeaders } = active[0]);
   }
   return {
     instance: { ...instance, url },
-    request: (route, options = {}) => request(url, route, { ...options, timeout, headers: { ...options.headers, "x-self-wiki-instance": instance.instanceId,
+    request: (route, options = {}) => request(url, route, { ...options, timeout, headers: { ...options.headers, ...authHeaders, "x-self-wiki-instance": instance.instanceId,
       ...(process.env.SELF_WIKI_CHAT_TOKEN && { "x-self-wiki-chat-token": process.env.SELF_WIKI_CHAT_TOKEN, "x-self-wiki-chat-call": process.env.SELF_WIKI_CHAT_CALL || "" }) } }),
   };
 }

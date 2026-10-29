@@ -1,6 +1,7 @@
 import { elementError } from "./elements.js";
 
 export const maxComfyReferenceImages = 8;
+export const maxComfyOutputImages = 16;
 
 export const maxComfyWorkflowBytes = 512 * 1024;
 

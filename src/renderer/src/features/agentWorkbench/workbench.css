@@ -1,0 +1,43 @@
+.workbench-page { max-width: none; }
+.workbench-layout { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); gap: var(--sp-6); }
+.workbench-sessions { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.workbench-sessions > button { display: flex; flex-direction: column; align-items: flex-start; height: auto; min-height: var(--h-lg); padding: var(--sp-3); text-align: left; }
+.workbench-sessions > button[aria-current] { border-color: var(--accent); background: var(--hover); }
+.workbench-sessions span, .workbench-muted { font-size: var(--fs-caption); color: var(--muted); }
+.workbench-conversation { min-width: 0; }
+.workbench-session-header, .workbench-actions { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.workbench-actions { justify-content: flex-end; }
+.workbench-actions > span { margin-right: auto; }
+.workbench-session-header h2, .workbench-create h2, .workbench-empty h2 { font-size: var(--fs-section); margin: 0 0 var(--sp-2); }
+.workbench-path { overflow-wrap: anywhere; font-size: var(--fs-small); color: var(--muted); }
+.workbench-create, .workbench-approval, .workbench-empty { padding: var(--sp-5); margin-bottom: var(--sp-5); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+.workbench-create { display: grid; gap: var(--sp-4); max-width: 680px; }
+.workbench-create label { display: grid; gap: var(--sp-2); }
+.workbench-create .workbench-trust { display: flex; align-items: flex-start; gap: var(--sp-2); }
+.workbench-trust > input { flex: 0 0 auto; }
+.workbench-path-input { display: flex; align-items: center; gap: var(--sp-2); }
+.workbench-path-input > input { flex: 1; min-width: 0; }
+.workbench-timeline { display: grid; gap: var(--sp-5); padding: var(--sp-5) 0; }
+.workbench-turn { border-bottom: 1px solid var(--line); padding-bottom: var(--sp-3); }
+.workbench-message.user { background: var(--hover); border-radius: var(--r-lg); padding: var(--sp-4); }
+.workbench-message p, .workbench-event.assistant > p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.workbench-event:empty { display: none; }
+.workbench-event { font-size: var(--fs-small); margin: var(--sp-3) 0; }
+.workbench-event.assistant { font-size: var(--fs-body); }
+.workbench-approval { border-color: var(--accent); }
+.workbench-approval h3 { display: flex; gap: var(--sp-2); align-items: center; font-size: var(--fs-section); margin-top: 0; }
+.workbench-page pre { max-height: 360px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-caption); padding: var(--sp-3); background: var(--hover); border-radius: var(--r-sm); }
+.workbench-diff { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-2); }
+.workbench-composer { display: grid; gap: var(--sp-3); padding-top: var(--sp-3); }
+.workbench-composer textarea { width: 100%; resize: vertical; }
+.workbench-error { color: var(--bad); }
+.workbench-results { display: grid; gap: var(--sp-3); }
+.workbench-task { padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-lg); }
+.workbench-artifacts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: var(--sp-3); }
+.workbench-artifacts figure { margin: 0; min-width: 0; }
+.workbench-artifacts img { width: 100%; height: 240px; object-fit: contain; background: var(--hover); border-radius: var(--r-lg); }
+.workbench-artifacts .workbench-actions, .workbench-attachments { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.workbench-attachments input { max-width: 100%; }
+.workbench-prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 900px) { .workbench-layout { grid-template-columns: minmax(0, 1fr); } .workbench-sessions { flex-direction: row; overflow-x: auto; } .workbench-sessions > button { flex: 0 0 auto; max-width: 220px; } }
+@media (max-width: 600px) { .workbench-diff { grid-template-columns: minmax(0, 1fr); } .workbench-create, .workbench-approval { padding: var(--sp-3); } }

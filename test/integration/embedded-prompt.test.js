@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import sharp from "sharp";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { pngText, pngWithChunks } from "../pngText.js";
 
 async function appFor(t) {

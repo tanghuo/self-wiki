@@ -2,7 +2,8 @@ import readline from 'node:readline';
 import { mkdir, readFile, writeFile, appendFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-let thread, cwd, mcp, state, hooks, hanging;
+if (process.argv.includes('--version')) { console.log('grok 1.0.70 (f50904eaee6c) stable'); process.exit(0); }
+let thread, cwd, mcp, state, hooks, hanging, profile;
 const pending = new Map(); let sequence = 0;
 const send = (value) => process.stdout.write(JSON.stringify({jsonrpc:'2.0', ...value})+'\n');
 const respond = (id,result) => send({id,result});
@@ -10,7 +11,7 @@ const request = (method,params) => new Promise(resolve => {const id='client-'+(+
 const update = (value) => send({method:'session/update',params:{sessionId:thread,update:value}});
 const models = [{modelId:'grok-4.6',name:'Grok 4.6',_meta:{reasoningEffort:'high',reasoningEfforts:[{id:'high',value:'high',label:'High'}]}}];
 const folder = () => path.join(process.env.GROK_HOME,'sessions',encodeURIComponent(cwd),thread);
-const save = async () => {await mkdir(folder(),{recursive:true});await writeFile(path.join(folder(),'state.json'),JSON.stringify(state));};
+const save = async () => {await mkdir(folder(),{recursive:true});await writeFile(path.join(folder(),'state.json'),JSON.stringify(state));await writeFile(path.join(folder(),'summary.json'),JSON.stringify({agent_profile:profile}));};
 async function gate(toolName,toolInput={}) {
   if (!hooks?.pre_tool_use?.[0]?.hookCallbackIds?.length) throw new Error('client hooks missing');
   return request('_x.ai/hooks/run',{sessionId:thread,hookCallbackId:'self-wiki-tools',hookEventName:'pre_tool_use',toolName,toolInput});
@@ -19,11 +20,13 @@ async function handle(value) {
   if(!value.method){const resolve=pending.get(value.id);if(resolve){pending.delete(value.id);resolve(value.result);}return;}
   if(value.method==='initialize')return respond(value.id,{protocolVersion:1,agentCapabilities:{loadSession:true,promptCapabilities:{image:true},mcpCapabilities:{http:true},_meta:{'x.ai/hooks':{blockingEvents:['pre_tool_use']}}},authMethods:[{id:'cached_token'}],_meta:{agentVersion:'1.0.70',modelState:{availableModels:models}}});
   if(value.method==='authenticate')return respond(value.id,{});
+  if(value.method==='_x.ai/mcp/list')return respond(value.id,{result:{servers:[],sessionMcpResolved:true}});
   if(value.method==='session/new'||value.method==='session/load'){
-    cwd=value.params.cwd;mcp=value.params.mcpServers[0];hooks=value.params._meta['x.ai/hooks'];
+    cwd=value.params.cwd;mcp=value.params.mcpServers[0];hooks=value.params._meta['x.ai/hooks'];profile=value.params._meta.agentProfile;
+    if(profile?.injectDefaultTools===false&&!profile.toolConfig?.tools?.length)return send({id:value.id,error:{code:-32603,message:'Internal error',data:'session initialization failed: invalid configuration: curated tool list is empty'}});
     thread=value.params.sessionId||randomUUID();
     if(value.method==='session/load')state=JSON.parse(await readFile(path.join(folder(),'state.json'),'utf8'));else{state={};await save();}
-    await appendFile(path.join(process.env.GROK_HOME,'acp-requests.ndjson'),JSON.stringify({method:value.method,thread,cwd,mcpUrl:mcp.url})+'\n');
+    await appendFile(path.join(process.env.GROK_HOME,'acp-requests.ndjson'),JSON.stringify({method:value.method,thread,cwd,mcpUrl:mcp?.url,profile})+'\n');
     // Loaded transcripts must not leak into the new turn.
     if(value.method==='session/load')update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'REPLAY_SHOULD_BE_IGNORED'}});
     return respond(value.id,{sessionId:thread,models:{availableModels:models}});
@@ -34,6 +37,9 @@ async function handle(value) {
   if(value.method==='session/cancel'){if(hanging){respond(hanging,{stopReason:'cancelled'});hanging=undefined;}return;}
   if(value.method!=='session/prompt')throw new Error('unsupported method');
   const text=value.params.prompt.filter(p=>p.type==='text').map(p=>p.text).join('\n');
+  const tools=(profile?.toolConfig?.tools||[]).filter(t=>!profile.disallowedTools?.includes(t.id.split(':').at(-1))).map(t=>({type:'function',function:{name:t.id.split(':').at(-1)}}));
+  if(text==='INJECT_TOOLS')tools.push({type:'function',function:{name:'unexpected'}});
+  await writeFile(path.join(folder(),'tool_definitions.json'),JSON.stringify(tools));
   await appendFile(path.join(process.env.GROK_HOME,'acp-inputs.ndjson'),JSON.stringify({thread,prompt:value.params.prompt})+'\n');
   let answer='fixture Grok reply';
   if(text.startsWith('HANG')){hanging=value.id;return;}

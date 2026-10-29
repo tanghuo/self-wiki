@@ -1,4 +1,8 @@
 import { migrateWorkflow } from "./workflowMigration.js";
+import { migrateAgentWorkbench } from './agentWorkbenchMigration.js';
+import { migrateAgentWiki } from './agentWikiMigration.js';
+import { migrateAgentDraftRequests } from './agentDraftRequestMigration.js';
+import { migrateAgentWorkflow } from './agentWorkflowMigration.js';
 import { migrateElementMaterial } from "./elementMaterialMigration.js";
 import { migrateImageDimensions } from "./imageDimensionsMigration.js";
 import { migrateChatEffort } from "./chatEffortMigration.js";
@@ -200,6 +204,10 @@ export const wikiMigrations = [
   { versions: [38], run: migrateImageDimensions },
   { versions: [39], run: migrateElementMaterial },
   { versions: [40], run: migrateWorkflow },
+  { versions: [41], run: migrateAgentWorkbench },
+  { versions: [42], run: migrateAgentWiki },
+  { versions: [43], run: migrateAgentDraftRequests },
+  { versions: [44], run: migrateAgentWorkflow },
 ];
 const knownVersions = new Set(wikiMigrations.flatMap((step) => step.versions));
 export const latestWikiVersion = Math.max(...knownVersions);

@@ -6,9 +6,11 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, writeFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { createServer as createWikiServer } from "../../src/server/server.js";
+import { createServer as createWikiServer, fetch, tokenFileForUrl } from "../helpers/authenticatedServer.js";
 
 function cli(args) {
+  const url = args[args.indexOf('--url') + 1];
+  if (args.includes('--url') && !args.includes('--token-file')) args = [...args, '--token-file', tokenFileForUrl(url) || path.resolve('test/fixtures/local-credentials.json')];
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.resolve("src/cli/main.js"), ...args], {
       env: { ...process.env, SELF_WIKI_URL: "", APP_DATA_DIR: "" }, windowsHide: true, stdio: ["ignore", "pipe", "pipe"],

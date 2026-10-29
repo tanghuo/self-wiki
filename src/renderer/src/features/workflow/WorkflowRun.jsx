@@ -3,8 +3,9 @@ import { apiUrl, request } from '../../api.js';
 import { WorkflowGraphSnapshot } from './WorkflowEditor.jsx';
 import { downstreamClosure, sampleDefinition } from '../../../../shared/domain/workflow/contracts.js';
 import { workflowSteps, stepLabel, variableLabel } from './workflowLabels.js';
-import RuntimeGenerationParameters, { generationParameterConfig, withGenerationParameters } from '../modelAdapters/RuntimeGenerationParameters.jsx';
 import WorkflowReviewImages from './WorkflowReviewImages.jsx';
+import WorkflowArtifactImages from './WorkflowArtifactImages.jsx';
+import WorkflowRerun, { useRerunDraft, WorkflowNodeEdit, canEditNode } from './WorkflowRerun.jsx';
 
 export const stateLabels = { queued: '排队中', pending: '等待中', running: '处理中', paused: '已暂停', waiting_review: '等你确认', needs_attention: '需要你处理', succeeded: '完成', partial_failed: '部分完成', failed: '出错', unknown: '不确定是否完成', blocked: '没有执行', cancelled: '已取消', skipped: '已跳过', not_run: '没有执行（已跳过）' };
 const command = (path, data) => request(path, { method: 'POST', body: JSON.stringify({ requestKey: crypto.randomUUID(), ...data }) });
@@ -32,10 +33,8 @@ function Artifact({ id, runId, onValue, hidden = false, compact = false }) {
   if (error) return <p role="alert">{error}</p>;
   if (hidden) return null;
   if (!artifact) return <small>读取中…</small>;
-  const media = (aid) => apiUrl(`/api/workflow-artifacts/${aid}/media?runId=${runId}`);
-  const image = (aid) => <a key={aid} href={media(aid)} target="_blank" rel="noreferrer"><img alt="结果图片" src={media(aid)} /></a>;
   if (compact && artifact.type === 'text') return <p className="workflow-card-text">{typeof artifact.value === 'string' ? artifact.value : JSON.stringify(artifact.value)}</p>;
-  return <div className="workflow-artifact">{artifact.type === 'image' ? image(id) : artifact.type === 'list<image>' ? <div className="workflow-result-images">{artifact.value.map((v) => image(v.artifactId))}</div> : <pre>{typeof artifact.value === 'string' ? artifact.value : JSON.stringify(artifact.value, null, 2)}</pre>}<details><summary>技术详情</summary><small>SHA-256：{artifact.hash}</small><pre>{JSON.stringify(artifact.metadata, null, 2)}</pre></details></div>;
+  return <div className="workflow-artifact">{artifact.type === 'image' || artifact.type === 'list<image>' ? <WorkflowArtifactImages key={`${runId}:${id}`} runId={runId} images={artifact.type === 'image' ? [{ artifactId: id }] : artifact.value} /> : <pre>{typeof artifact.value === 'string' ? artifact.value : JSON.stringify(artifact.value, null, 2)}</pre>}</div>;
 }
 const visibleOutputs = (instance) => Object.entries(instance.outputs || {}).filter(([port]) => !port.startsWith('image:') && !(port === 'raw' && instance.outputNames?.value === 'text'));
 const outputLabel = (instance, port) => variableLabel(instance.outputNames?.[port] || port);
@@ -65,13 +64,10 @@ function mediaUrl(runId, artifactId) { return apiUrl(`/api/workflow-artifacts/${
 function downloadUrl(runId, artifactId, name = 'result') {
   const a = document.createElement('a'); a.href = mediaUrl(runId, artifactId); a.download = name; a.target = '_blank'; a.rel = 'noreferrer'; a.click();
 }
-function NodeResult({ instance, runId, onAction, expanded = false, definition, run, compact = false, skippedBefore = false, focusMode = false }) {
+function NodeResult({ instance, runId, onAction, expanded = false, definition, run, compact = false, skippedBefore = false, focusMode = false, editor }) {
   const attention = instance.state === 'waiting_review' || instance.state === 'unknown' || instance.state === 'failed';
   const [open, setOpen] = useState(expanded || attention || (definition?.resultSteps || []).includes(instance.nodeId)), [editing, setEditing] = useState(''), [original, setOriginal] = useState(null), [acknowledged, setAcknowledged] = useState(false);
   const [chosen, setChosen] = useState(null), [changed, setChanged] = useState(false);
-  const [generationParameters, setGenerationParameters] = useState(null);
-  useEffect(() => { setGenerationParameters(null); }, [runId, instance.id]);
-  const generationNode = nodeOf(instance, definition), generationConfig = generationParameterConfig(generationNode);
   const feedsSave = definition && instance.state === 'waiting_review' && reviewContinuesToSave(definition, instance);
   useEffect(() => { if (expanded || attention) setOpen(true); }, [instance.state, expanded, attention]);
   const label = resultLabel(instance, definition), waiting = instance.state === 'waiting_review';
@@ -79,26 +75,24 @@ function NodeResult({ instance, runId, onAction, expanded = false, definition, r
   const shown = isSkip(instance, definition, run) ? 'skipped' : instance.state === 'blocked' && skippedBefore ? 'not_run' : instance.state;
   const error = instance.state === 'blocked' ? skippedBefore ? '' : blockedText : instance.error;
   function accept() {
-    if (!original) return;
+    if (!original || (original.type === 'list<image>' && !chosen?.length)) return;
     onAction(instance, 'accept', changed ? { value: original.type === 'text' ? editing : original.value.filter((v) => chosen.includes(v.artifactId)) } : {});
   }
-  return <div className="workflow-node-result" data-node-id={instance.nodeId}><button type="button" className="workflow-result-heading" aria-expanded={open} onClick={() => setOpen(!open)}><strong>{label}</strong>{isFinal && <span className="workflow-result-badge">最终结果</span>}{instance.itemId && !compact && <span>第 {instance.context.index + 1} 项</span>}<span data-state={shown}>{stateLabels[shown]}</span></button>
+  return <div className="workflow-node-result" data-node-id={instance.nodeId}><div className="workflow-result-header"><button type="button" className="workflow-result-heading" aria-expanded={open} onClick={() => setOpen(!open)}><strong>{label}</strong>{isFinal && <span className="workflow-result-badge">最终结果</span>}{instance.itemId && !compact && <span>第 {instance.context.index + 1} 项</span>}<span data-state={shown}>{instance.data?.reusedFrom && shown === 'succeeded' ? '已复用' : stateLabels[shown]}</span></button>
+    </div>
+    {editor}
     {error && <p className="workflow-error">{error}</p>}
-    {open && <div className="workflow-result-body">{visibleOutputs(instance).map(([port, id]) => <div key={id}>{!(waiting && port === 'value') && <small>{outputLabel(instance, port)}</small>}<Artifact id={id} runId={runId} hidden={waiting && port === 'value'} onValue={port === 'value' ? (a) => { setOriginal(a); if (!changed) { setEditing(typeof a.value === 'string' ? a.value : ''); setChosen(a.type === 'list<image>' ? a.value.map((v) => v.artifactId) : null); } } : undefined} /></div>)}
+    {open && <div className="workflow-result-body">{(!editor || ['model', 'image.generate'].includes(nodeOf(instance, definition)?.type)) && visibleOutputs(instance).map(([port, id]) => <div key={id}>{!(waiting && port === 'value') && <small>{outputLabel(instance, port)}</small>}<Artifact id={id} runId={runId} hidden={waiting && port === 'value'} onValue={port === 'value' ? (a) => { setOriginal(a); if (!changed) { setEditing(typeof a.value === 'string' ? a.value : ''); setChosen(a.type === 'list<image>' ? a.value.map((v) => v.artifactId) : null); } } : undefined} /></div>)}
       {waiting && <div className="workflow-review">
-        {!compact && !focusMode && <p className="workflow-review-note">{feedsSave ? '通过后才会继续执行到「存进资料库」；跳过则不会入库。' : '通过只是让后面的步骤继续，不会存进资料库。'}</p>}
         {original?.type === 'text' && <label>可以直接修改后再通过<textarea aria-label={`修改「${label}」的文字`} rows={focusMode ? 10 : 5} value={editing} onChange={(e) => { setEditing(e.target.value); setChanged(true); }} /></label>}
-        {original?.type === 'list<image>' && <WorkflowReviewImages images={original.value} runId={runId} chosen={chosen} onChange={(ids) => { setChosen(ids); setChanged(true); }} />}
+        {original?.type === 'list<image>' && <WorkflowReviewImages images={original.value} runId={runId} chosen={chosen} onAccept={accept} onChange={(ids) => { setChosen(ids); setChanged(true); }} />}
         {!original && <small>读取中…</small>}
-        <div className="workflow-review-actions"><button type="button" disabled={!original} onClick={accept}>通过</button><button type="button" className="danger-quiet" onClick={() => onAction(instance, 'reject')}>{compact ? '跳过这一项' : '跳过'}</button></div>
+        <div className="workflow-review-actions"><button type="button" className="primary" disabled={!original || (original.type === 'list<image>' && !chosen?.length)} onClick={accept}>{original?.type === 'list<image>' ? `通过选中的 ${chosen?.length || 0} / ${original.value.length} 张` : '通过'}</button><button type="button" className="danger-quiet" onClick={() => onAction(instance, 'reject')}>{original?.type === 'list<image>' ? '整批跳过' : compact ? '跳过这一项' : '跳过'}</button></div>
       </div>}
       {(instance.state === 'failed' || instance.state === 'unknown') && <section className="workflow-recovery" aria-label="出错后的处理">
         {instance.state === 'failed' && <button type="button" onClick={() => onAction(instance, 'retry')}>重试这一步</button>}
         {instance.state === 'unknown' && <div className="workflow-unknown"><p>不确定这一步是否已经完成（可能已在远端完成）。请先核对；重新执行可能会多调用一次。</p>{instance.canRecover && <button type="button" onClick={() => onAction(instance, 'recover')}>核对并取回结果</button>}<label><input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />我已核对，接受可能多调用一次</label><button type="button" disabled={!acknowledged} onClick={() => onAction(instance, 'reexecute', { acknowledgeDuplicate: true })}>仍然重新执行</button><button type="button" onClick={() => onAction(instance, 'abandon')}>放弃这一步</button></div>}
       </section>}
-      {instance.state === 'succeeded' && !compact && !generationConfig && <div><button type="button" onClick={() => onAction(instance, 'regenerate')}>从这一步重新做</button><small>会新开一次运行，这次的结果保留不变。</small></div>}
-      {instance.state === 'succeeded' && !compact && generationConfig && <section className="workflow-runtime-parameters"><RuntimeGenerationParameters node={generationNode} value={generationParameters || generationConfig} regenerate onChange={(config) => setGenerationParameters(JSON.stringify(config) === JSON.stringify(generationConfig) ? null : config)} /><div className="workflow-actions"><button type="button" onClick={() => onAction(instance, 'regenerate', { adapterConfig: generationParameters || generationConfig })}>重新生成</button>{generationParameters && <button type="button" onClick={() => setGenerationParameters(null)}>恢复本次原参数</button>}</div><small>{generationParameters ? '参数已调整，点击“重新生成”后生效。' : '点击“调整参数”可先修改参数，保存不会开始生成。'}沿用本次文字与参考图，重新执行生图及后续步骤。原结果和流程默认参数保留。</small></section>}
-      {!focusMode && <details><summary>技术详情（执行 {instance.attempts.length} 次）</summary>{instance.attempts.map((a) => <div key={a.id}><p>#{a.number} · {stateLabels[a.state]} · {a.dispatchStarted ? '已记录提交意图' : '本地准备'}</p><pre>{JSON.stringify({ request: a.request, remoteId: a.remoteId, error: a.error, metadata: a.data }, null, 2)}</pre>{Object.entries(a.data.outputs || {}).filter(([, id]) => !Object.values(instance.outputs).includes(id)).map(([port, id]) => <div key={id}><small>第 {a.number} 次执行 · {variableLabel(port)}</small><Artifact id={id} runId={runId} /></div>)}</div>)}</details>}
     </div>}
   </div>;
 }
@@ -157,7 +151,6 @@ function ItemCard({ item, runId, onAction, selected, setSelected, definition, ru
     <footer className="workflow-item-actions">
       {firstOut && <button type="button" onClick={() => downloadUrl(runId, firstOut.id, `item-${item.index + 1}`)}>下载</button>}
       {failed && <button type="button" onClick={() => onAction(failed, 'retry')}>重试这一项</button>}
-      {state === 'succeeded' && item.instances.some((i) => i.state === 'succeeded') && <button type="button" onClick={() => onAction(item.instances.find((i) => i.state === 'succeeded'), 'regenerate')}>再生成</button>}
       {!!rest.length && <details><summary>查看每一步</summary>{rest.map((i) => <NodeResult key={i.id} compact instance={i} runId={runId} onAction={onAction} definition={definition} run={run} skippedBefore={skipped} />)}</details>}
     </footer>
   </article>;
@@ -193,7 +186,7 @@ function FocusReview({ items, runId, onAction, definition, run, onClose }) {
   const label = resultLabel(current.instance, definition);
   const source = current.item.value;
   function accept() {
-    if (!original) return;
+    if (!original || (original.type === 'list<image>' && !chosen?.length)) return;
     onAction(current.instance, 'accept', changed ? { value: original.type === 'text' ? editing : original.value.filter((v) => chosen.includes(v.artifactId)) } : {});
     setIndex((v) => Math.min(v, Math.max(0, waiting.length - 2)));
   }
@@ -208,9 +201,9 @@ function FocusReview({ items, runId, onAction, definition, run, onClose }) {
         <strong>{label}</strong>
         <Artifact id={current.instance.outputs?.value} runId={runId} hidden onValue={(a) => { setOriginal(a); if (!changed) { setEditing(typeof a.value === 'string' ? a.value : ''); setChosen(a.type === 'list<image>' ? a.value.map((v) => v.artifactId) : null); } }} />
         {original?.type === 'text' && <label>AI 的结果<textarea aria-label={`修改「${label}」的文字`} rows={12} value={editing} onChange={(e) => { setEditing(e.target.value); setChanged(true); }} /></label>}
-        {original?.type === 'list<image>' && <WorkflowReviewImages images={original.value} runId={runId} chosen={chosen} onChange={(ids) => { setChosen(ids); setChanged(true); }} />}
+        {original?.type === 'list<image>' && <WorkflowReviewImages images={original.value} runId={runId} chosen={chosen} onAccept={accept} onChange={(ids) => { setChosen(ids); setChanged(true); }} />}
         {!original && <small>读取中…</small>}
-        <div className="workflow-review-actions"><button type="button" className="primary" disabled={!original} onClick={accept}>通过，下一张</button><button type="button" className="danger-quiet" onClick={skip}>跳过这一项</button></div>
+        <div className="workflow-review-actions"><button type="button" className="primary" disabled={!original || (original.type === 'list<image>' && !chosen?.length)} onClick={accept}>{original?.type === 'list<image>' ? `通过选中的 ${chosen?.length || 0} / ${original.value.length} 张` : '通过，下一张'}</button><button type="button" className="danger-quiet" onClick={skip}>跳过这一项</button></div>
       </div>
     </div>
   </div>;
@@ -227,7 +220,7 @@ function BatchTable({ runId, instanceId, instance, controlVersion, onAction, sel
   const waitingIds = (batch?.items || []).flatMap((item) => item.instances.filter((i) => i.state === 'waiting_review').map((i) => i.id));
   const canRetry = instance.state === 'failed' && (!summary || summary.failed > 0);
   // Keep a hidden table so existing tests that look for tbody/tr/textarea still resolve.
-  return <section className="workflow-batch"><header className="workflow-batch-heading"><h3>{resultLabel(instance, definition)} <span className="workflow-batch-state" data-state={shown.state}>{shown.label}</span></h3>{shown.note && <p className={shown.state === 'skipped' ? 'workflow-muted-note' : 'workflow-error'}>{shown.note}</p>}{canRetry && <button type="button" onClick={() => onAction(instance, 'retry')}>重试出错的项</button>}{instance.state === 'succeeded' && <div><button type="button" onClick={() => onAction(instance, 'regenerate')}>整批重新做</button><small>会新开一次运行，这次的结果保留不变。</small></div>}</header>{error && <p role="alert">{error}</p>}{batch && <>
+  return <section className="workflow-batch"><header className="workflow-batch-heading"><h3>{resultLabel(instance, definition)} <span className="workflow-batch-state" data-state={shown.state}>{shown.label}</span></h3>{shown.note && <p className={shown.state === 'skipped' ? 'workflow-muted-note' : 'workflow-error'}>{shown.note}</p>}{canRetry && <button type="button" onClick={() => onAction(instance, 'retry')}>重试出错的项</button>}</header>{error && <p role="alert">{error}</p>}{batch && <>
     <div className="workflow-actions"><span>第 {batch.total ? offset + 1 : 0}–{Math.min(offset + 20, batch.total)} 项，共 {batch.total} 项</span><button type="button" disabled={!offset} onClick={() => setOffset((v) => Math.max(0, v - 20))}>上一页</button><button type="button" disabled={offset + 20 >= batch.total} onClick={() => setOffset((v) => v + 20)}>下一页</button>{!!waitingIds.length && <button type="button" onClick={() => setSelected((ids) => [...new Set([...ids, ...waitingIds])])}>全选本页等你确认的（{waitingIds.length}）</button>}{!!waitingIds.length && <button type="button" onClick={() => setFocus(true)}>逐张确认 →</button>}</div>
     {!!waitingIds.length && <p className="workflow-review-note">确认后才会继续这一项后面的步骤；「通过」不等于存进资料库。可以逐项处理，也可以勾选后一起通过。</p>}
     <div className="workflow-item-wall" aria-label="每项结果">{batch.items.map((item) => <ItemCard key={item.itemId} item={item} runId={runId} onAction={onAction} selected={selected} setSelected={setSelected} definition={definition} run={run} filter={filter} />)}</div>
@@ -250,8 +243,10 @@ function ProgressBar({ total, done, waiting, failed, skipped, running, queued })
   </div>;
 }
 
-export default function WorkflowRun({ runId, definition, focusNodeId, onStateChange, onEditVersion, onDerived, onRun }) {
+export default function WorkflowRun({ runId, definition, focusNodeId, onStateChange, onEditVersion, onDerived, onRun, runCount = 1, onRunCountChange, archived = false }) {
   const [run, setRun] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false), [after, setAfter] = useState(0), [events, setEvents] = useState([]), [selected, setSelected] = useState([]), [showGraph, setShowGraph] = useState(false), [diagnostics, setDiagnostics] = useState(false);
+  const [focusedStep, setFocusedStep] = useState(null);
+  const rerun = useRerunDraft(run);
   const [filter, setFilter] = useState('all'), [batchStats, setBatchStats] = useState({}), [notice, setNotice] = useState('');
   const startedAt = useRef(null);
   useEffect(() => { if (run) onStateChange?.(run.id, run.state); onRun?.(run); }, [run, onStateChange, onRun]);
@@ -270,7 +265,9 @@ export default function WorkflowRun({ runId, definition, focusNodeId, onStateCha
     }
     setEvents([]); poll(); return () => { alive = false; clearTimeout(timer); };
   }, [runId, after]);
-  const roots = run ? run.rootInstances || run.instances.filter((i) => i.scope === 'root') : [];
+  const rootOrder = new Map(workflowSteps(run?.definition).filter((step) => step.depth === 0).map((step) => [step.node.id, step.number]));
+  const roots = run ? [...(run.rootInstances || run.instances.filter((i) => i.scope === 'root'))]
+    .sort((a, b) => (rootOrder.get(a.nodeId) ?? Infinity) - (rootOrder.get(b.nodeId) ?? Infinity)) : [];
   const isLoop = (instance) => run.definition.nodes.some((n) => n.id === instance.nodeId && n.type === 'foreach');
   const loops = run ? roots.filter(isLoop) : [];
   const summaries = useLoopSummaries(runId, loops);
@@ -302,12 +299,7 @@ export default function WorkflowRun({ runId, definition, focusNodeId, onStateCha
   const isSample = run.definition.nodes.some((n) => n.config.sampleSize === 1);
   const nextDefinition = isSample ? sampleDefinition(definition) : definition;
   const nodeAction = (instance, action, extra = {}) => perform(async () => {
-    if (action === 'regenerate') {
-      const key = instance.scope === 'root' ? instance.nodeId : `${instance.scope.split('/')[1]}/${instance.nodeId}`;
-      const source = extra.adapterConfig ? withGenerationParameters(run.definition, { [key]: extra.adapterConfig }) : nextDefinition;
-      const r = await command(`/api/workflow-runs/${runId}/derive`, { definition: source, regenerate: [instance.scope === 'root' ? instance.nodeId : instance.scope.split('/')[1]] }); onDerived(r.id);
-    }
-    else await command(`/api/workflow-runs/${runId}/nodes/${instance.id}/actions`, { action, controlVersion: run.controlVersion, ...extra });
+    await command(`/api/workflow-runs/${runId}/nodes/${instance.id}/actions`, { action, controlVersion: run.controlVersion, ...extra });
   });
   const rank = (instance) => instance.state === 'waiting_review' ? 0 : instance.state === 'failed' || instance.state === 'unknown' ? 1 : 2;
   const nodeRoots = roots.filter((instance) => !isLoop(instance)).sort((a, b) => rank(a) - rank(b));
@@ -349,36 +341,29 @@ export default function WorkflowRun({ runId, definition, focusNodeId, onStateCha
   const remaining = Math.max(0, progress.total - finished);
   const elapsedMin = Math.max(0.1, (Date.now() - (startedAt.current || Date.now())) / 60000);
   const perItem = finished > 0 ? elapsedMin / finished : 0.5;
-  const etaMin = remaining > 0 && ['queued', 'running', 'waiting_review', 'paused'].includes(run.state) ? Math.max(1, Math.ceil(remaining * perItem)) : 0;
+  const etaMin = remaining > 0 && ['queued', 'running'].includes(run.state) ? Math.max(1, Math.ceil(remaining * perItem)) : 0;
 
-  return <section className="workflow-run" aria-label="工作流运行"><header><h2>{isSample ? '试跑' : '运行'} #{run.id} <span data-state={runShown.state}>{runShown.label}</span></h2><p>流程第 {run.version} 版 · {new Date(run.createdAt).toLocaleString()}{run.parentId ? ` · 由运行 #${run.parentId} 重新做` : ''}</p><p>{isSample ? '这次是「先试 1 项」：每个列表只处理了第 1 项。' : ''}{saveCount ? `运行到 ${saveCount} 个「存进资料库」步骤时才会保存。` : '这个流程不会存进资料库。'}</p>
+  return <section className="workflow-run" aria-label="工作流运行"><header className="workflow-run-summary"><div className="workflow-run-summary-copy"><h2>{isSample ? '试跑' : '运行'} #{run.id} <span data-state={runShown.state}>{runShown.label}</span></h2>
     {progress.total > 0 && <div className="workflow-progress-block">
-      <p className="workflow-progress-label">{['queued', 'running', 'paused'].includes(run.state) ? `处理中 · 第 ${Math.max(1, current)} / ${progress.total} 项` : `共 ${progress.total} 项`}{etaMin ? `，约 ${etaMin} 分钟` : ''}</p>
+      <p className="workflow-progress-label">{['queued', 'running', 'paused'].includes(run.state) ? `处理中 · 第 ${Math.max(1, current)} / ${progress.total} 项` : `共 ${progress.total} ${loops.length ? '项' : '步'}`}{etaMin ? `，约 ${etaMin} 分钟` : ''}</p>
       <ProgressBar {...progress} />
-      <div className="workflow-progress-filters ui-segmented" role="toolbar" aria-label="按状态筛选">
+      {!!loops.length && <div className="workflow-progress-filters ui-segmented" role="toolbar" aria-label="按状态筛选">
         {[['all', '全部', progress.total], ['done', '完成', progress.done], ['waiting', '等你确认', progress.waiting], ['error', '有问题', progress.failed], ['skipped', '已跳过', progress.skipped], ['running', '处理中', progress.running]].map(([key, label, count]) => <button type="button" key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}（{count}）</button>)}
-      </div>
+      </div>}
     </div>}
-    <div className="workflow-actions">
-    {!['succeeded', 'partial_failed', 'failed', 'cancelled'].includes(run.state) && <><button type="button" disabled={busy} onClick={() => perform(() => command(`/api/workflow-runs/${run.id}/actions`, { action: run.paused ? 'resume' : 'pause', controlVersion: run.controlVersion }))}>{run.paused ? '继续' : '暂停'}</button><button type="button" disabled={busy} onClick={() => perform(() => command(`/api/workflow-runs/${run.id}/actions`, { action: 'cancel', controlVersion: run.controlVersion }))}>取消运行</button></>}
-    {(run.state === 'waiting_review' || !!selected.length) && <button type="button" disabled={!selected.length} onClick={() => perform(async () => { await command(`/api/workflow-runs/${runId}/reviews`, { instanceIds: selected, action: 'accept', controlVersion: run.controlVersion }); setSelected([]); })}>通过选中的 {selected.length} 项</button>}
-    {progress.failed > 0 && <button type="button" disabled={busy} onClick={() => loops.forEach((loop) => { if (summaries[loop.id]?.failed || loop.state === 'failed') nodeAction(loop, 'retry'); })}>只重试失败的（{progress.failed}）</button>}
+    </div><div className="workflow-run-controls workflow-actions">
+    {!!selected.length && <button type="button" disabled={busy || !selected.length} onClick={() => perform(async () => { await command(`/api/workflow-runs/${runId}/reviews`, { instanceIds: selected, action: 'accept', controlVersion: run.controlVersion }); setSelected([]); })}>通过选中的 {selected.length} 项</button>}
+    {!!loops.length && progress.failed > 0 && <button type="button" disabled={busy} onClick={() => loops.forEach((loop) => { if (summaries[loop.id]?.failed || loop.state === 'failed') nodeAction(loop, 'retry'); })}>只重试失败的（{progress.failed}）</button>}
   </div></header>
   {error && <p role="alert" className="workflow-error">{error}</p>}
   {notice && <p className="workflow-notice" role="status">{notice}</p>}
-  {(run.state === 'waiting_review' || progress.waiting > 0) && <div className="workflow-review-banner" role="status"><strong>有 {Math.max(progress.waiting, (progress.waitingIds || []).length) || '多'} 项等你确认</strong><span>确认后才会继续后面的步骤；其它项不受影响。</span><div className="workflow-actions"><button type="button" className="primary" disabled={busy || !((progress.waitingIds || []).length || selected.length)} onClick={() => {
-    const ids = (progress.waitingIds || []).length ? progress.waitingIds : selected;
-    if (!ids.length) { setNotice('请先点「全选本页等你确认的」，或打开「逐张确认」。'); return; }
-    perform(async () => { await command(`/api/workflow-runs/${runId}/reviews`, { instanceIds: ids, action: 'accept', controlVersion: run.controlVersion }); setSelected([]); setNotice(''); });
-  }}>全部通过</button></div></div>}
+  <WorkflowRerun key={runId} run={run} draft={rerun.draft} busy={busy} disabled={archived} count={runCount} onCountChange={onRunCountChange} onClose={rerun.reset} onSubmit={(payload) => perform(async () => { const result = await command(`/api/workflow-runs/${runId}/derive`, payload); rerun.reset(); onDerived(result.id); })} />
+  <div className="workflow-run-layout"><div className="workflow-run-main">
   {['queued', 'running'].includes(run.state) && !progress.waiting && <p className="workflow-waiting">正在处理。每一步的结果和需要你确认的内容会出现在下面。</p>}
-  {loops.map((i) => <BatchTable key={i.id} runId={runId} instanceId={i.id} instance={i} controlVersion={run.controlVersion} onAction={nodeAction} selected={selected} setSelected={setSelected} expanded={i.nodeId === focusNodeId} definition={run.definition} run={run} summary={summaries[i.id]} filter={filter} onStats={onStats} />)}
-  {!!nodeRoots.length && <fieldset disabled={busy} className="workflow-run-results"><legend>每一步的结果</legend>
-    {nodeRoots.map((i) => <div key={i.id} className="workflow-result-row">{i.state === 'waiting_review' && <label className="workflow-review-select"><input type="checkbox" aria-label={`选中${resultLabel(i, run.definition)}`} checked={selected.includes(i.id)} onChange={(e) => setSelected((ids) => e.target.checked ? [...ids, i.id] : ids.filter((id) => id !== i.id))} /></label>}<NodeResult instance={i} runId={runId} onAction={nodeAction} expanded={i.nodeId === focusNodeId} definition={run.definition} run={run} skippedBefore={onlySkips} /></div>)}
-  </fieldset>}<details className="workflow-execution-details"><summary>更多操作与技术详情</summary><div className="workflow-actions"><button type="button" disabled={busy} onClick={() => perform(async () => { const w = await command(`/api/workflow-runs/${run.id}/edit-version`, {}); onEditVersion(w); })}>按这次的流程修改</button><button type="button" disabled={busy} onClick={() => perform(async () => { const r = await command(`/api/workflow-runs/${run.id}/derive`, { definition: nextDefinition }); onDerived(r.id); })}>{isSample ? '用修改后的流程再试 1 项' : '用修改后的流程重新做'}</button><button type="button" onClick={() => setShowGraph(!showGraph)}>查看这次的流程图</button></div><small>重新做时，没有改过的步骤会沿用这次的结果，不会重复调用 AI。</small>
-    {showGraph && <><WorkflowGraphSnapshot definition={run.definition} /><details><summary>流程定义（JSON）</summary><pre className="workflow-code">{JSON.stringify(run.definition, null, 2)}</pre></details></>}
-    <details className="workflow-diagnostics" onToggle={(e) => setDiagnostics(e.currentTarget.open)}><summary>每一步的全部记录</summary>{diagnostics && <><div className="workflow-actions"><button type="button" disabled={!after} onClick={() => { setAfter(0); setSelected([]); }}>第一页</button><button type="button" disabled={run.instances.length < 100} onClick={() => { setAfter(run.nextCursor); setSelected([]); }}>下一页</button></div>{run.instances.map((i) => <NodeResult key={i.id} instance={i} runId={runId} onAction={nodeAction} definition={run.definition} run={run} />)}</>}</details>
-    <details className="workflow-events"><summary>事件日志（最近 {events.length} 条）</summary><ol>{events.map((e) => <li key={e.id}>#{e.id} {e.type} {e.instanceId ? `实例 ${e.instanceId}` : ''} {e.data.state ? stateLabels[e.data.state] : ''}</li>)}</ol></details>
-  </details>
+  {loops.map((i) => <div key={i.id} id={`workflow-step-${i.id}`}><WorkflowNodeEdit key={rerun.resetKey} run={run} nodeId={i.nodeId} draft={rerun.draft || run} setDefinition={rerun.setDefinition} setInputs={rerun.setInputs} busy={busy || archived} adapters={rerun.adapters} setReuse={rerun.setReuse} /><BatchTable runId={runId} instanceId={i.id} instance={i} controlVersion={run.controlVersion} onAction={nodeAction} selected={selected} setSelected={setSelected} expanded={i.nodeId === focusNodeId || i.id === focusedStep} definition={run.definition} run={run} summary={summaries[i.id]} filter={filter} onStats={onStats} /></div>)}
+  {!!nodeRoots.length && <fieldset disabled={busy} className="workflow-run-results">
+    {nodeRoots.map((i) => <div key={i.id} className="workflow-result-row" id={`workflow-step-${i.id}`} data-result-state={i.state}>{i.state === 'waiting_review' && (progress.waitingIds || []).length > 1 && <label className="workflow-review-select"><input type="checkbox" aria-label={`选中${resultLabel(i, run.definition)}`} checked={selected.includes(i.id)} onChange={(e) => setSelected((ids) => e.target.checked ? [...ids, i.id] : ids.filter((id) => id !== i.id))} /></label>}<NodeResult instance={i} runId={runId} onAction={nodeAction} expanded={i.nodeId === focusNodeId || i.id === focusedStep} definition={run.definition} run={run} skippedBefore={onlySkips} editor={canEditNode(nodeOf(i, run.definition), rerun.adapters) ? <WorkflowNodeEdit key={rerun.resetKey} run={run} nodeId={i.nodeId} draft={rerun.draft || run} setDefinition={rerun.setDefinition} setInputs={rerun.setInputs} busy={busy || archived} adapters={rerun.adapters} setReuse={rerun.setReuse} /> : null} /></div>)}
+  </fieldset>}
+  </div></div>
   </section>;
 }

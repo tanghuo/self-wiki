@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import { createServer as createHttpServer } from "node:http";
 import path from "node:path";
 import os from "node:os";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { createVideoStore } from "../../src/server/assets/videoStore.js";
 import { maxVideoBytes } from "../../src/shared/domain/elements.js";
 import sharp from "sharp";

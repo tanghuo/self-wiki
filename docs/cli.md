@@ -32,11 +32,12 @@ node src/cli/main.js read 123
 
 也可用 `npm.cmd run --silent cli -- <命令>`。项目声明了 `self-wiki` npm bin，执行 `npm.cmd link` 后可直接运行 `self-wiki <命令>`。自动化建议直接调用 Node，或为 npm 加 `--silent`，避免 npm 的脚本横幅混入 stdout。
 
-命令名在前，参数和选项在后，例如 `elements get 123 --url http://127.0.0.1:8765`。全局选项适用于所有操作命令：
+命令名在前，参数和选项在后，例如 `elements get 123 --data-dir "D:\wiki-data"`。全局选项适用于所有操作命令：
 
 | 选项 | 含义 |
 | --- | --- |
 | `--url` | 指定本机 HTTP API 地址；优先于 `SELF_WIKI_URL` 环境变量和自动发现 |
+| `--token-file` | 显式 URL 使用的管理凭据文件；也可用 `SELF_WIKI_TOKEN_FILE` |
 | `--data-dir` | 从指定目录发现服务；默认 `APP_DATA_DIR`，其次是项目 `data/` |
 | `--timeout` | 每次 HTTP 请求超时毫秒数，默认 30000 |
 | `--pretty` | 格式化 JSON；默认单行 JSON |
@@ -45,7 +46,9 @@ node src/cli/main.js read 123
 
 桌面版使用动态端口。后端监听成功后，在数据目录 `.runtime/server-<实例ID>.json` 发布发现信息；CLI 通过 `/api/instance` 核对实例和数据目录，再发送请求。正常关闭会删除本实例的记录，崩溃留下的失效记录会被忽略。同一目录有多个有效实例时，CLI 报错并列出地址，需用 `--url` 选择；不会猜测或自动回退到 8765。旧版本服务需要重启升级。
 
-`--url` 仅接受 `http://127.0.0.1:端口/`、`localhost` 或 `[::1]` 的根地址，不接受局域网共享地址、用户名密码或额外路径。实例标识用于防止重启和端口复用后误连，不是身份认证；访问边界仍然是现有的本机接口。局域网共享提供与本机相同的 HTTP API 和实例信息；CLI 的地址校验仍只接受回环地址。
+`--url` 仅接受 `http://127.0.0.1:端口/`、`localhost` 或 `[::1]` 的根地址，不接受局域网共享地址、用户名密码或额外路径。显式 URL 必须同时指定管理凭据文件；自动发现会从数据目录读取本实例的受限凭据。实例标识继续防止端口复用误连，不能代替认证。详见 [本机连接与认证](local-authentication.md)。
+
+`node src/cli/main.js pair --data-dir "D:\wiki-data"` 返回有效期 60 秒的一次性浏览器配对链接。此命令需要本机管理凭据；聊天工具令牌不能创建配对码。
 
 打包文件也包含 `src/cli/`。未封装目录下可通过 `resources/runtime/node.exe resources/app/src/cli/main.js ... --data-dir "实际数据目录"` 调用；便携程序的数据目录选择仍按 README 的规则。
 

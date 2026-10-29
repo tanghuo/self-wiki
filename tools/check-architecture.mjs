@@ -7,6 +7,16 @@ const sourceRoot = path.join(projectRoot, "src");
 
 const rules = [
   {
+    from: 'src/server/application/agentWorkbench/',
+    disallow: ['src/agent/', 'src/server/http/', 'src/renderer/'],
+    message: 'Workbench orchestration must use executorsPort and shared contracts',
+  },
+  {
+    from: 'src/server/application/agentTasks/',
+    disallow: ['src/agent/', 'src/server/http/', 'src/renderer/'],
+    message: 'Independent tasks must use executorsPort and workflow service contracts',
+  },
+  {
     from: "src/server/application/workflow/",
     disallow: ["src/server/application/executorsPort.js", "src/server/application/modelAdapters/grok.js", "src/server/application/modelAdapters/comfyui.js", "src/shared/domain/comfyui.js", "src/shared/domain/imageGeneration.js"],
     message: "Workflow must use the adapter registry rather than provider implementations",

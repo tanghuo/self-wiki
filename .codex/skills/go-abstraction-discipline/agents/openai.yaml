@@ -1,7 +1,0 @@
-interface:
-  display_name: "Go Abstraction Discipline"
-  short_description: "Remove low-value abstractions"
-  default_prompt: "Use $go-abstraction-discipline to refactor this Go code so low-value wrappers, single-use constants, misplaced helper abstractions, precomputed mirrored view structs, synthetic empty-object input fallbacks, and needless interruptions inside local value-construction blocks are removed. Keep abstractions on the layer that owns the semantics, reject missing required client input directly instead of masking it with `{}`, prefer deriving lightweight payloads from canonical data at the use site when simpler, and keep declaration-to-consumption flows contiguous. Also keep the public API smaller than the implementation surface: let `Must`/`Require` siblings earn their place by strengthening the contract instead of forming symmetric forwarding pairs, and delete leftover migration scaffolding and stale names."
-
-policy:
-  allow_implicit_invocation: true

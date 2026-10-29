@@ -45,3 +45,10 @@ kbd, .kbd { display: inline-flex; align-items: center; justify-content: center; 
 .wiki-purge-confirm { display: grid; gap: var(--sp-2); margin: var(--sp-3) 0 0; font-size: var(--fs-small); font-weight: 600; }
 .wiki-purge-confirm input { min-height: var(--h-md); padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--bg); color: var(--ink); font: inherit; font-weight: 500; }
 .wiki-purge-confirm input:focus { outline: none; border-color: var(--bad); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bad) 18%, transparent); }
+/* A local browser must pair before any private application requests start. */
+.local-pairing { min-height: 100dvh; display: grid; place-items: center; padding: var(--sp-6); }
+.local-pairing form { width: min(100%, 460px); display: grid; gap: var(--sp-4); }
+.local-pairing .page-header { margin-bottom: 0; }
+.local-pairing label { display: grid; gap: var(--sp-2); }
+.local-pairing input { width: 100%; min-height: var(--h-md); padding: 0 var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); color: var(--ink); }
+.local-pairing [role="alert"] { color: var(--bad); }

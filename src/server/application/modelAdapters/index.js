@@ -1,6 +1,6 @@
 import { createAdapterRegistry } from './registry.js';
-import { grokTextAdapter, grokImageAdapter } from './grok.js';
+import { grokTextAdapter, grokAgentAdapter, grokImageAdapter } from './grok.js';
 import { comfyuiAdapter } from './comfyui.js';
 
-export const modelAdapters = createAdapterRegistry([grokTextAdapter, grokImageAdapter, comfyuiAdapter]);
+export const modelAdapters = createAdapterRegistry([grokTextAdapter, grokAgentAdapter, grokImageAdapter, comfyuiAdapter]);
 export { createAdapterRegistry, rejectSecrets } from './registry.js';

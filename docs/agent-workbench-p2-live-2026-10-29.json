@@ -1,0 +1,91 @@
+{
+  "createdAt": "2026-10-29T09:02:22.418Z",
+  "root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-workbench-smoke-CaBd0K",
+  "modelCalls": 1,
+  "paidImageCalls": 0,
+  "approvals": [
+    {
+      "kind": "engine.permission",
+      "allowed": true,
+      "operationHash": "db61fd6e474bf917512f8110469d1a4aa8a095a99318667bb1820664eec829d9"
+    },
+    {
+      "kind": "file.write",
+      "allowed": true,
+      "operationHash": "3dafb8b44527d22b0ecca505bd5baeb8ddb08c04c69a634b42b03d9b74297816"
+    },
+    {
+      "kind": "engine.permission",
+      "allowed": true,
+      "operationHash": "014e019e7a5d2253fe0b3118a49d73c2ae08c038024eb9c6674d523370654dd1"
+    },
+    {
+      "kind": "command",
+      "allowed": true,
+      "operationHash": "df7b9fd5dc4d39a4cdd6f45a0feb0edea22320adea41cf11cc993383ff9f286b"
+    }
+  ],
+  "checks": {
+    "clientWrite": true,
+    "commandExit": true,
+    "persistedEngineProfile": true,
+    "completed": true,
+    "eventsContiguous": true
+  },
+  "turn": {
+    "state": "completed",
+    "delivery": "acknowledged",
+    "data": {
+      "git": {
+        "git": false,
+        "reason": "not_git_or_snapshot_failed",
+        "includesExternalChanges": true
+      }
+    }
+  },
+  "eventTypes": [
+    "session.created",
+    "turn.queued",
+    "turn.started",
+    "workspace.baseline",
+    "engine.connected",
+    "engine.extension",
+    "engine.extension",
+    "engine.extension",
+    "engine.extension",
+    "engine.extension",
+    "message.delta",
+    "message.delta",
+    "engine.extension",
+    "tool.updated",
+    "tool.updated",
+    "tool.updated",
+    "message.delta",
+    "engine.extension",
+    "engine.extension",
+    "engine.extension",
+    "tool.updated",
+    "tool.updated",
+    "approval.requested",
+    "approval.resolved",
+    "engine.extension",
+    "approval.requested",
+    "approval.resolved",
+    "file.changed",
+    "tool.updated",
+    "engine.extension",
+    "engine.extension",
+    "tool.updated",
+    "tool.updated",
+    "approval.requested",
+    "approval.resolved",
+    "approval.requested",
+    "approval.resolved",
+    "command.output",
+    "tool.updated",
+    "engine.extension",
+    "message.delta",
+    "workspace.changed",
+    "turn.finished"
+  ]
+}

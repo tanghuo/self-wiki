@@ -18,8 +18,8 @@ export function videoDownloadUrl(src, backendUrl, pageOrigin = new URL(backendUr
   return new URL(url.pathname, backendUrl).href;
 }
 
-export async function prepareVideoFile(url, cacheRoot) {
-  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(30 * 60 * 1000) });
+export async function prepareVideoFile(url, cacheRoot, headers = {}) {
+  const response = await fetch(url, { headers, redirect: "error", signal: AbortSignal.timeout(30 * 60 * 1000) });
   if (!response.ok || !response.body) throw new Error(`读取视频失败（${response.status}）。`);
   const encodedName = /filename\*=UTF-8''([^;]+)/i.exec(response.headers.get("content-disposition") || "")?.[1];
   let name = encodedName ? decodeURIComponent(encodedName) : "video.mp4";

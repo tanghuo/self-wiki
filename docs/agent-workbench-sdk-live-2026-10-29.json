@@ -1,0 +1,93 @@
+{
+  "modelCalls": 2,
+  "paidImageCalls": 0,
+  "checks": {
+    "sdkCapability": true,
+    "profile": true,
+    "sdkToolCalledExactlyOnce": true,
+    "exactNativeCatalog": true,
+    "nativeGrepNeverCompleted": true,
+    "bypassFailed": true,
+    "noHostSideEffect": true
+  },
+  "toolCalls": 1,
+  "hostRequests": [],
+  "trace": [
+    {
+      "phase": "application-tool",
+      "event": "tool_call",
+      "tool": "search_tool"
+    },
+    {
+      "phase": "application-tool",
+      "event": "tool_call_update",
+      "tool": "search_tool"
+    },
+    {
+      "phase": "application-tool",
+      "event": "tool_call_update",
+      "status": "completed"
+    },
+    {
+      "phase": "application-tool",
+      "event": "tool_call",
+      "tool": "use_tool"
+    },
+    {
+      "phase": "application-tool",
+      "event": "tool_call_update",
+      "tool": "use_tool"
+    },
+    {
+      "phase": "application-tool",
+      "permissionTool": "use_tool",
+      "target": "self_wiki_1884f40b1c204ab9994998c4179bf0fb__wiki_search"
+    },
+    {
+      "phase": "application-tool",
+      "event": "tool_call_update",
+      "status": "completed"
+    },
+    {
+      "phase": "native-bypass",
+      "event": "tool_call",
+      "tool": "use_tool"
+    },
+    {
+      "phase": "native-bypass",
+      "event": "tool_call_update",
+      "tool": "use_tool"
+    },
+    {
+      "phase": "native-bypass",
+      "permissionTool": "use_tool",
+      "target": "grep"
+    },
+    {
+      "phase": "native-bypass",
+      "event": "tool_call_update",
+      "status": "failed",
+      "error": "[{\"type\":\"content\",\"content\":{\"type\":\"text\",\"text\":\"Tool `grep` failed via `use_tool`: 'grep' is not a valid MCP tool name. Tool names must be qualified as `server__tool` (e.g., `linear__save_issue`). Use `search_tool` to discover available tools.\"}}]"
+    }
+  ],
+  "version": "1.0.70",
+  "catalog": {
+    "server": "self_wiki_1884f40b1c204ab9994998c4179bf0fb",
+    "tools": [
+      {
+        "name": "wiki_search",
+        "description": "Search synthetic wiki entries only",
+        "enabled": true
+      }
+    ],
+    "transport": "acp"
+  },
+  "advertisedTools": [
+    "read_file",
+    "run_terminal_cmd",
+    "search_replace",
+    "search_tool",
+    "use_tool",
+    "write"
+  ]
+}

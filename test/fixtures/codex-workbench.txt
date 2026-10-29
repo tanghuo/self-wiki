@@ -1,0 +1,42 @@
+import readline from 'node:readline';
+import path from 'node:path';
+import { writeFile } from 'node:fs/promises';
+let cwd, thread = 'fixture-thread', turn, held;
+const pending = new Map();
+const send = value => process.stdout.write(JSON.stringify(value) + '\n');
+const reply = (id, result) => send({ id, result });
+const notify = (method, params) => send({ method, params: { threadId: thread, turnId: turn, ...params } });
+let counter = 0;
+async function ask(method, params) { const id = `host-${++counter}`; send({ id, method, params: { threadId: thread, turnId: turn, ...params } }); return new Promise(resolve => pending.set(id, resolve)); }
+async function handle(value) {
+  if (!value.method) { pending.get(value.id)?.(value.result); pending.delete(value.id); return; }
+  const p = value.params || {}, method = value.method;
+  if (method === 'initialize') return reply(value.id, { userAgent: 'self_wiki/0.159.0' });
+  if (method === 'initialized') return;
+  if (method === 'account/read') return reply(value.id, { account: { type: 'chatgpt' }, requiresOpenaiAuth: true });
+  if (method === 'config/read') return reply(value.id, { config: { model: 'fixture-model', mcp_servers: {}, features: Object.fromEntries(['apps','plugins','hooks','multi_agent','image_generation','browser_use','in_app_browser','computer_use','browser_use_external','code_mode','code_mode_only','multi_agent_v2','goals','in_app_local_automation','sleep_tool','request_permissions_tool','unbounded_connection_retries'].map(name => [name, false])) } });
+  if (method === 'model/list') return reply(value.id, { data: [{ model: 'fixture-model', displayName: 'Fixture', isDefault: true }], nextCursor: null });
+  if (method === 'mcpServerStatus/list') return reply(value.id, { data: [], nextCursor: null });
+  if (method === 'thread/start' || method === 'thread/resume') {
+    cwd = p.cwd; if (method === 'thread/resume') notify('item/agentMessage/delta', { delta: 'REPLAY_MUST_NOT_APPEAR' });
+    return reply(value.id, { thread: { id: thread }, cwd, sandbox: { type: 'readOnly', networkAccess: false }, approvalPolicy: 'untrusted', approvalsReviewer: 'user' });
+  }
+  if (method === 'turn/interrupt') { held?.(); reply(value.id, {}); return; }
+  if (method !== 'turn/start') throw new Error('Unsupported method');
+  turn = `turn-${++counter}`;
+  notify('turn/started', { turn: { id: turn } }); reply(value.id, { turn: { id: turn } });
+  const text = p.input[0].text;
+  if (text === 'HANG') { await new Promise(resolve => held = resolve); held = null; notify('turn/completed', { turn: { id: turn, status: 'interrupted' } }); return; }
+  const file = path.join(cwd, 'result.txt'), changes = [{ path: file, kind: { type: 'add' }, diff: '+fixture\n' }];
+  notify('item/started', { item: { id: 'patch-1', type: 'fileChange', changes, status: 'inProgress' } });
+  const decision = await ask('item/fileChange/requestApproval', { itemId: 'patch-1' });
+  const accepted = decision?.decision === 'accept'; if (accepted) await writeFile(file, 'fixture\n');
+  notify('item/completed', { item: { id: 'patch-1', type: 'fileChange', changes, status: accepted ? 'completed' : 'declined' } });
+  notify('item/started', { item: { id: 'command-1', type: 'commandExecution', command: 'echo fixture', cwd, status: 'inProgress' } });
+  const command = await ask('item/commandExecution/requestApproval', { itemId: 'command-1', cwd, command: 'echo fixture', availableDecisions: ['accept', 'decline'] });
+  notify('item/completed', { item: { id: 'command-1', type: 'commandExecution', command: 'echo fixture', cwd, status: command?.decision === 'accept' ? 'completed' : 'declined', aggregatedOutput: command?.decision === 'accept' ? 'fixture command output' : '', exitCode: command?.decision === 'accept' ? 0 : null } });
+  await ask('item/tool/call', { callId: 'wiki-1', tool: 'wiki_search', arguments: { query: 'fixture' } });
+  notify('item/agentMessage/delta', { delta: 'fixture completed' });
+  notify('turn/completed', { turn: { id: turn, status: 'completed' } });
+}
+readline.createInterface({ input: process.stdin }).on('line', line => { const value = JSON.parse(line); handle(value).catch(error => send({ id: value.id, error: { code: -32000, message: error.message } })); }).on('close', () => process.exit(0));

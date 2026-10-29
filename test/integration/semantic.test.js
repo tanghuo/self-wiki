@@ -14,7 +14,7 @@ import { createSemanticService } from "../../src/server/application/semanticServ
 import { defaultEmbeddingConfig, embeddingConfig, embeddingChunks, embeddingVector } from "../../src/shared/domain/embedding.js";
 import { defaultOrganizationConfig, organizationConfig } from "../../src/shared/domain/organization.js";
 import { embedTexts } from "../../src/server/semantic/embeddingClient.js";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 
 function setup(t) {
   const db = initDb(":memory:"), resource = { db, wiki: createElementRepository(db), repo: createSemanticRepository(db) };

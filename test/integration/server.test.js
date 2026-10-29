@@ -5,7 +5,7 @@ import { Server } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import os from "node:os";
 import path from "node:path";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { initDb } from "../../src/server/data/sqlite.js";
 import { startBackendProcess } from "../../src/main/backendProcess.js";
 import { createServer as createViteServer } from "vite";
@@ -45,8 +45,8 @@ test("automatic binding closes browser-blocked candidates before publishing the 
     assert.notEqual(app.port, 6566);
     assert.equal(app.port, address.call(blockedServer).port);
     const runtimeDir = path.join(dataDir, ".runtime"), files = await readdir(runtimeDir);
-    assert.equal(files.length, 1);
-    assert.equal(JSON.parse(await readFile(path.join(runtimeDir, files[0]), "utf8")).url, app.url);
+    assert.equal(files.length, 2);
+    assert.equal(JSON.parse(await readFile(path.join(runtimeDir, files.find(name => name.startsWith('server-'))), "utf8")).url, app.url);
     assert.equal((await fetch(new URL("api/instance", app.url))).status, 200);
   } finally { await app.close(); }
 });
@@ -96,7 +96,12 @@ test("desktop child reports its own readiness and shuts down through IPC", async
     nodeBinary: process.execPath,
     appDir: path.resolve(import.meta.dirname, "../.."), dataDir,
   });
-  try { assert.equal((await fetch(new URL("api/instance", backend.url))).status, 200); }
+  try {
+    assert.equal((await fetch(new URL('api/instance', backend.url))).status, 401);
+    const pairing = await fetch(new URL('api/auth/bootstrap', backend.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: backend.bootstrapCode }) });
+    assert.equal(pairing.status, 200);
+    assert.equal((await fetch(new URL('api/instance', backend.url), { headers: { cookie: pairing.headers.get('set-cookie') } })).status, 200);
+  }
   finally { await backend.close(); }
   await backend.close();
   await assert.rejects(fetch(new URL("api/instance", backend.url)));
@@ -139,7 +144,7 @@ test("Vite proxy preserves the browser origin for POST while rejecting foreign o
     await dev.listen();
     const origin = `http://127.0.0.1:${dev.httpServer.address().port}`;
     const post = (requestOrigin) => fetch(`${origin}/api/elements`, {
-      method: "POST", headers: { "content-type": "application/json", origin: requestOrigin }, body: '{"body":"Proxy note"}',
+      method: "POST", headers: { ...app.managementHeaders(), "content-type": "application/json", origin: requestOrigin }, body: '{"body":"Proxy note"}',
     });
     assert.equal((await post(origin)).status, 201);
     assert.equal((await post("https://example.test")).status, 403);

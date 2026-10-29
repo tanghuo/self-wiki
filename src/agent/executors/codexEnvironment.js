@@ -6,6 +6,7 @@ import path from "node:path";
 import { parse } from "smol-toml";
 import { setTimeout as delay } from "node:timers/promises";
 import { localCodexAuth } from "./codexLocalAuth.js";
+import { childEnvironment } from '../../shared/runtime/childEnvironment.js';
 
 const configHeader = "# Managed by self-wiki; edit the source Codex config.toml, then reconnect.\n";
 
@@ -91,5 +92,5 @@ export async function codexEnvironment(config, { shareCapabilities = false } = {
       }
     }
   }
-  return { ...process.env, ...(home ? { CODEX_HOME: home } : {}) };
+  return { ...childEnvironment(), ...(home ? { CODEX_HOME: home } : {}) };
 }

@@ -16,7 +16,7 @@
     "dev:web": "vite --host 127.0.0.1 --port 5173",
     "dev:api": "node src/server/server.js --port 8765",
     "dev:desktop": "cross-env API_PORT=8765 EXTERNAL_API_URL=http://127.0.0.1:8765 VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
-    "dev": "concurrently -k -n api,web,desktop -c teal,blue,magenta \"npm run dev:api\" \"npm run dev:web\" \"wait-on http://127.0.0.1:5173 http://127.0.0.1:8765/api/instance && npm run dev:desktop\"",
+    "dev": "concurrently -k -n api,web,desktop -c teal,blue,magenta \"npm run dev:api\" \"npm run dev:web\" \"wait-on http://127.0.0.1:5173 http://127.0.0.1:8765/api/health && npm run dev:desktop\"",
     "start": "node src/server/server.js --port 8765 --open",
     "build": "vite build",
     "desktop": "electron .",

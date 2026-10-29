@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, rm, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
 import { initDb } from "../../src/server/data/sqlite.js";
 import { createElementRepository } from "../../src/server/data/elementRepository.js";

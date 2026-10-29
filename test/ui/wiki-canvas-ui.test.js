@@ -6,10 +6,10 @@ import path from "node:path";
 import os from "node:os";
 import { createServer as createHttpServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
-import { chromium } from "playwright-core";
+import { chromium } from "../helpers/authenticatedServer.js";
 import { resolveBrowserPath } from "../resolveBrowserPath.js";
 import sharp from "sharp";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { chooseOption, selectedValue, openRelationAdvanced } from "../ui-select.js";
 
 const browserPath = resolveBrowserPath();

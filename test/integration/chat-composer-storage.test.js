@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import sharp from "sharp";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
 import { migrateChatComposerStorage } from "../../src/server/data/chatComposerStorageMigration.js";
 import { checkChatImageCount } from "../../src/shared/domain/chat.js";

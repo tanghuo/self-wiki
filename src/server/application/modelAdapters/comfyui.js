@@ -23,9 +23,13 @@ export const comfyuiAdapter = {
   resource: (snapshot) => 'comfyui:' + new URL(snapshot.settings.baseUrl).origin,
   validateInput(snapshot, values) { if ((snapshot.promptMode !== 'workflow' && !values.prompt?.trim()) || (values.prompt || '').length > 12000) throw workflowError('提示词须为 1–12000 字符'); },
   confirmedFailure: (error) => /ComfyUI 执行失败/.test(error.message),
-  generate: (snapshot, value, options) => comfyuiImageExecutor.generate({ prompt: snapshot.promptMode === 'workflow' ? '' : value.prompt, referencePaths: value.images }, { ...options, config: snapshot.settings }),
-  recoveryTicket: (attempt) => attempt?.data?.comfyui?.promptId || null,
-  recover: (snapshot, ticket, options) => recoverComfyuiImage(snapshot.settings, ticket, options),
+  generate: (snapshot, value, options) => comfyuiImageExecutor.generate({ prompt: snapshot.promptMode === 'workflow' ? '' : value.prompt, referencePaths: value.images }, { ...options, multiple: true, config: snapshot.settings }),
+  recoveryTicket(attempt) {
+    const data = attempt?.data?.comfyui;
+    if (data?.sequence) return { count: data.sequence.count, promptIds: data.sequence.requests.map((request) => request.promptId || request.requestedPromptId) };
+    return data?.promptId || null;
+  },
+  recover: (snapshot, ticket, options) => recoverComfyuiImage(snapshot.settings, ticket, { ...options, multiple: true }),
   configuration: {
     workflows: { method: 'GET', execute: (server) => listComfyuiWorkflows(server.imageGeneration?.comfyui || {}) },
     load: { method: 'POST', execute: (server, payload) => loadComfyuiWorkflow(server.imageGeneration?.comfyui || {}, payload) },

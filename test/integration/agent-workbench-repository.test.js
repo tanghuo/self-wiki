@@ -1,0 +1,34 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { initDb } from '../../src/server/data/sqlite.js';
+import { createAgentWorkbenchRepository } from '../../src/server/data/agentWorkbenchRepository.js';
+
+test('workbench migration, idempotent turns, event ordering, approvals and restart recovery preserve authority', t => {
+  const db = initDb(':memory:'); t.after(() => db.close());
+  const repo = createAgentWorkbenchRepository(db);
+  const w = repo.createWorkspace({ kind: 'scratch', userPath: 'fixture', path: 'fixture', identity: 'fixture' });
+  const s = repo.createSession({ workspaceId: w.id, engine: 'grok-build', policy: { write: 'ask' } });
+  const first = repo.queueTurn(s.id, 'request-1', { text: 'hello' });
+  assert.equal(repo.queueTurn(s.id, 'request-1', { text: 'hello' }).id, first.id);
+  assert.throws(() => repo.queueTurn(s.id, 'request-1', { text: 'different' }), { statusCode: 409 });
+  assert.throws(() => repo.queueTurn(s.id, 'request-2', { text: 'hello' }), { statusCode: 409 });
+  const run = repo.startTurn(first.id);
+  const approval = repo.requestApproval(run.id, run.generation, { program: 'fixture', args: [] }, Date.now() + 60000);
+  const decision = { operationHash: approval.operationHash, revision: approval.policyRevision, decision: 'allow' };
+  assert.throws(() => repo.decide(approval.id, { ...decision, operationHash: 'wrong' }), { statusCode: 409 });
+  assert.equal(repo.decide(approval.id, decision).state, 'approved');
+  assert.equal(repo.decide(approval.id, decision).state, 'approved');
+  assert.throws(() => repo.decide(approval.id, { ...decision, decision: 'reject' }), { statusCode: 409 });
+  repo.delivery(run.id, run.generation, 'attempted');
+  repo.recover(); assert.equal(repo.turn(run.id).state, 'unknown');
+  assert.throws(() => repo.event(run.id, run.generation, 'late', {}), { statusCode: 409 });
+  const next = repo.startTurn(repo.queueTurn(s.id, 'request-3', { text: 'next' }).id);
+  assert.ok(next.generation > run.generation);
+  const pending = repo.requestApproval(next.id, next.generation, { command: 'fixture' }, Date.now() + 60000);
+  repo.cancelling(next.id);
+  assert.throws(() => repo.decide(pending.id, { operationHash: pending.operationHash, revision: pending.policyRevision, decision: 'allow' }), { statusCode: 409 });
+  repo.finish(next.id, 'cancelled');
+  const events = repo.events(s.id);
+  assert.deepEqual(events.map(e => e.seq), events.map((_, i) => i + 1));
+  assert.equal(db.prepare('PRAGMA foreign_key_check').all().length, 0);
+});

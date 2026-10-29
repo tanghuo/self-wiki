@@ -1,0 +1,175 @@
+{
+  "modelCalls": 1,
+  "paidImageCalls": 0,
+  "checks": {
+    "completed": true,
+    "proposed": true,
+    "notAutoApplied": true,
+    "acceptedByUser": true
+  },
+  "turn": {
+    "state": "completed",
+    "data": {
+      "git": {
+        "git": false,
+        "reason": "not_git_or_snapshot_failed",
+        "includesExternalChanges": true
+      }
+    }
+  },
+  "events": [
+    {
+      "type": "session.created"
+    },
+    {
+      "type": "turn.queued"
+    },
+    {
+      "type": "turn.started"
+    },
+    {
+      "type": "workspace.baseline"
+    },
+    {
+      "type": "engine.connected"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "tool.updated",
+      "title": "search_tool"
+    },
+    {
+      "type": "tool.updated",
+      "title": "Search tools: \"wiki_search wiki_read wiki_propose self_wiki\""
+    },
+    {
+      "type": "tool.updated",
+      "status": "completed",
+      "content": [
+        {
+          "type": "content",
+          "content": {
+            "type": "text",
+            "text": "{\n  \"results\": [\n    {\n      \"server\": \"self_wiki_3e6258841994449bb49d31bd492fa216\",\n      \"tools\": [\n        {\n          \"tool_name\": \"self_wiki_3e6258841994449bb49d31bd492fa216__wiki_propose\",\n          \"description\": \"提出 create_text/add_tags/add_relation 建议。返回待采纳卡；不会修改 Wiki。不得携带旧聊天 excerpts。\",\n          \"score\": 4.960440158843994,\n          \"input_schema\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"properties\": {\n              \"requestKey\": {\n                \"type\": \"string\"\n              },\n              \"proposal\": {\n                \"type\": \"object\"\n              }\n            },\n            \"required\": [\n              \"requestKey\",\n              \"proposal\"\n            ]\n          }\n        },\n        {\n          \"tool_name\": \"self_wiki_3e6258841994449bb49d31bd492fa216__wiki_search\",\n          \"description\": \"只读检索 Wiki。结果含引用；修改只能提出建议，不能直接采纳。\",\n          \"score\": 4.139266014099121,\n          \"input_schema\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"properties\": {\n              \"query\": {\n                \"type\": \"string\"\n              },\n              \"page\": {\n                \"type\": \"integer\",\n                \"minimum\": 1\n              }\n            },\n            \"required\": [\n              \"query\"\n            ]\n          }\n        },\n        {\n          \"tool_name\": \"self_wiki_3e6258841994449bb49d31bd492fa216__wiki_read\",\n          \"description\": \"读取一份 Wiki 内容及版本。建议所引用的内容必须先读。\",\n          \"score\": 3.689312696456909,\n          \"input_schema\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"properties\": {\n              \"elementId\": {\n                \"type\": \"integer\",\n                \"minimum\": 1\n              }\n            },\n            \"required\": [\n              \"elementId\"\n            ]\n          }\n        },\n        {\n          \"tool_name\": \"self_wiki_3e6258841994449bb49d31bd492fa216__artifact_read\",\n          \"description\": \"读取本会话有引用权限的产物。图片按受控内容返回，不能传入服务器路径。\",\n          \"score\": 1.5544211864471436,\n          \"input_schema\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"properties\": {\n              \"artifactId\": {\n                \"type\": \"integer\",\n                \"minimum\": 1\n              }\n            },\n            \"required\": [\n              \"artifactId\"\n            ]\n          }\n        },\n        {\n          \"tool_name\": \"self_wiki_3e6258841994449bb49d31bd492fa216__task_status\",\n          \"description\": \"读取本会话任务。相同状态最多查询三次；资源等待时结束本轮，不重新提交。\",\n          \"score\": 0.33110323548316956,\n          \"input_schema\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"properties\": {\n              \"taskId\": {\n                \"type\": \"integer\",\n                \"minimum\": 1\n              }\n            },\n            \"required\": [\n              \"taskId\"\n            ]\n          }\n        },\n        {\n          \"tool_name\": \"self_wiki_3e6258841994449bb49d31bd492fa216__task_cancel\",\n          \"description\": \"取消本会话任务。派发后无法证明取消时为 unknown，不会自动重新生成。\",\n          \"score\": 0.32795417308807373,\n          \"input_schema\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"properties\": {\n              \"taskId\": {\n                \"type\": \"integer\",\n                \"minimum\": 1\n              },\n              \"revision\": {\n                \"type\": \"integer\",\n                \"minimum\": 1\n              },\n              \"requestKey\": {\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"taskId\",\n              \"revision\",\n              \"requestKey\"\n            ]\n          }\n        },\n        {\n          \"tool_name\": \"self_wiki_3e6258841994449bb49d31bd492fa216__image_submit\",\n          \"description\": \"申请独立生图或改图操作，返回待用户批准的 operationId，尚未派发。复用 operationId 不重复生图。任务使用 Grok Build；不要同步等待同引擎排队任务，应结束本轮释放资源。\",\n          \"score\": 0.24258719384670258,\n          \"input_schema\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"properties\": {\n              \"operationId\": {\n                \"type\": \"string\"\n              },\n              \"prompt\": {\n                \"type\": \"string\"\n              },\n              \"referenceArtifactIds\": {\n                \"type\": \"array\",\n                \"maxItems\": 8,\n                \"items\": {\n                  \"type\": \"integer\",\n                  \"minimum\": 1\n                }\n              },\n              \"aspectRatio\": {\n                \"type\": \"string\"\n              }\n            },\n            \"required\": [\n              \"prompt\"\n            ]\n          }\n        }\n      ]\n    }\n  ],\n  \"total_hidden_tools\": 7,\n  \"status\": \"ready\",\n  \"note\": null\n}"
+          }
+        }
+      ]
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "tool.updated",
+      "title": "use_tool"
+    },
+    {
+      "type": "tool.updated",
+      "title": "self_wiki_3e6258841994449bb49d31bd492fa216__wiki_search"
+    },
+    {
+      "type": "tool.updated",
+      "status": "completed"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "tool.updated",
+      "title": "use_tool"
+    },
+    {
+      "type": "tool.updated",
+      "title": "self_wiki_3e6258841994449bb49d31bd492fa216__wiki_read"
+    },
+    {
+      "type": "tool.updated",
+      "status": "completed"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "tool.updated",
+      "title": "use_tool"
+    },
+    {
+      "type": "tool.updated",
+      "title": "self_wiki_3e6258841994449bb49d31bd492fa216__wiki_propose"
+    },
+    {
+      "type": "tool.updated",
+      "status": "completed"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "engine.extension"
+    },
+    {
+      "type": "message.delta"
+    },
+    {
+      "type": "workspace.changed"
+    },
+    {
+      "type": "turn.finished"
+    }
+  ]
+}

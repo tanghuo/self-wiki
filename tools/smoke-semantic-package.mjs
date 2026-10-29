@@ -21,10 +21,10 @@ try {
     db.close();
     const app = await createServer({port:0,dataDir:path.resolve('../smoke-data')});
     try {
-      const response = await fetch(new URL('api/organization/semantic/status', app.url));
+      const response = await fetch(new URL('api/organization/semantic/status', app.url), { headers: app.managementHeaders() });
       const status = await response.json();
       if (!response.ok || !status.available || status.enabled) throw new Error('Invalid packaged index status');
-      const videoResponse = await fetch(new URL('api/video-analysis/status', app.url));
+      const videoResponse = await fetch(new URL('api/video-analysis/status', app.url), { headers: app.managementHeaders() });
       const video = await videoResponse.json();
       if (!videoResponse.ok || video.config.enabled || video.visual.enabled) throw new Error('Invalid packaged video analysis status');
       await access('tools/visual-encoder/server.py'); await access('config/video-analysis.example.json');

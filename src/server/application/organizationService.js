@@ -3,8 +3,9 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { defaultOrganizationConfig, organizationConfig, organizationOutput } from "../../shared/domain/organization.js";
 import { elementError, elementId } from "../../shared/domain/elements.js";
+import { childEnvironment } from '../../shared/runtime/childEnvironment.js';
 
-export async function createOrganizationService({ repo, dataDir, semantic, recordUsage, searchMedia }) {
+export async function createOrganizationService({ repo, dataDir, semantic, recordUsage, searchMedia, workerAuthentication }) {
   const configPath = path.join(dataDir, "organization.json");
   const defaultCodexHome = path.resolve(dataDir, "wiki-codex");
   await mkdir(defaultCodexHome, { recursive: true });
@@ -26,9 +27,10 @@ export async function createOrganizationService({ repo, dataDir, semantic, recor
     if (closed || reconfiguring || configError || child || !instance) return;
     diagnostic = { available: false, code: "CHECKING", diagnostic: "正在检测 Codex CLI…" };
     const processHandle = spawn(process.execPath, [path.resolve(import.meta.dirname, "../../agent/main.js")], {
-      windowsHide: true, shell: false, stdio: ["ignore", "ignore", "ignore", "ipc"],
+      windowsHide: true, shell: false, env: childEnvironment(), stdio: ["ignore", "ignore", "ignore", "ipc"],
     });
     child = processHandle;
+    const workerToken = workerAuthentication?.createWorkerCredential();
     const pendingUsage = new Map();
     processHandle.on("message", (event) => {
       if (event.type !== "usage") return;
@@ -38,11 +40,12 @@ export async function createOrganizationService({ repo, dataDir, semantic, recor
     processHandle.once("error", () => { diagnostic = { available: false, code: "START_FAILED", diagnostic: "无法启动整理 worker" }; });
     processHandle.on("message", (event) => { if (event.type === "error") diagnostic = { available: false, code: "WORKER_ERROR", diagnostic: String(event.message).slice(0, 1000) }; });
     processHandle.once("close", () => {
+      if (workerToken) workerAuthentication.revokeWorkerCredential(workerToken);
       for (const event of pendingUsage.values()) recordUsage?.({ ...event, state: "interrupted", elapsedMs: Date.now() - event.startedAt });
       if (child === processHandle) child = null;
       if (!closed && diagnostic.available) diagnostic = { available: false, code: "STOPPED", diagnostic: "整理 worker 已停止，可重新检测启动" };
     });
-    processHandle.send({ type: "start", ...instance, config: { ...config, executor: executionConfig() } });
+    processHandle.send({ type: "start", ...instance, workerToken, config: { ...config, executor: executionConfig() } });
   }
   async function stop() {
     if (stopping) return stopping;

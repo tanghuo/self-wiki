@@ -1,0 +1,45 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { chromium } from 'playwright-core';
+import { createServer } from '../../src/server/server.js';
+import { resolveBrowserPath } from '../resolveBrowserPath.js';
+
+const executablePath = resolveBrowserPath();
+test('a browser pairs once, removes fragment secrets, keeps HttpOnly auth and restores after refresh', { skip: !executablePath, timeout: 30000 }, async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-pairing-ui-'));
+  let app, browser;
+  t.after(async () => {
+    await browser?.close(); await app?.close();
+    assert.equal(path.dirname(root), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(root).startsWith('wiki-pairing-ui-'));
+    await rm(root, { recursive: true, force: true, maxRetries: 3 });
+  });
+  app = await createServer({ port: 0, dataDir: root });
+  browser = await chromium.launch({ executablePath, headless: true });
+  const page = await browser.newPage();
+  page.setDefaultTimeout(5000);
+  const privateRequests = [];
+  page.on('request', request => { if (new URL(request.url()).pathname === '/api/elements') privateRequests.push(request.url()); });
+  await page.goto(app.url);
+  await page.getByRole('heading', { name: '连接本机 self-wiki' }).waitFor();
+  assert.deepEqual(privateRequests, []);
+  assert.equal(await page.evaluate(async () => (await fetch('/api/instance')).status), 401);
+  await page.getByRole('textbox', { name: '一次性配对码或链接' }).fill('invalid-code');
+  await page.getByRole('button', { name: '连接', exact: true }).click();
+  await page.getByRole('alert').waitFor();
+  const code = app.createBootstrapCode();
+  await page.goto(`${app.url}#local-bootstrap=${code}`);
+  await page.locator('.wiki-shell').waitFor();
+  assert.ok(!page.url().includes(code));
+  assert.equal(await page.evaluate(() => document.cookie.includes('self_wiki_local')), false);
+  assert.equal(await page.evaluate(async () => (await fetch('/api/instance')).status), 200);
+  await page.reload(); await page.locator('.wiki-shell').waitFor();
+  const unpaired = await browser.newPage();
+  await unpaired.goto(`${app.url}#local-bootstrap=${code}`);
+  await unpaired.getByRole('heading', { name: '连接本机 self-wiki' }).waitFor();
+  assert.equal(await unpaired.evaluate(async () => (await fetch('/api/instance')).status), 401);
+  assert.ok(!unpaired.url().includes(code));
+});

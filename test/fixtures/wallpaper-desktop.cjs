@@ -19,7 +19,7 @@ app.whenReady().then(async () => {
   await window.loadURL("data:text/html,<html><body>wallpaper bridge</body></html>");
   const result = await window.webContents.executeJavaScript("window.wikiDesktop.setWallpaper(42)");
   assert.deepEqual(result, { ok: true, id: 42 });
-  assert.equal(await window.webContents.executeJavaScript("Object.keys(window.wikiDesktop).join(',')"), "setWallpaper");
+  assert.deepEqual(await window.webContents.executeJavaScript('Object.keys(window.wikiDesktop).sort()'), ['pairLocal', 'pickShareSource', 'setWallpaper']);
   console.log("wallpaper desktop bridge ok");
   app.exit(0);
 }).catch((error) => { console.error(error); app.exit(1); });

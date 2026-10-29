@@ -7,7 +7,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import sharp from "sharp";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
 import { captureChatTrace, mergeChatToolTrace } from "../../src/server/application/chatTrace.js";
 import { codexToolTrace } from "../../src/agent/executors/codexSession.js";

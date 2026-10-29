@@ -8,7 +8,7 @@ import { createServer as createHttpServer } from "node:http";
 import path from "node:path";
 import os from "node:os";
 import sharp from "sharp";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { createVideoStore } from "../../src/server/assets/videoStore.js";
 import { extractVideoFirstFrame, probeVideoTools } from "../../src/server/assets/videoAnalysisFrames.js";
 import { defaultVideoAnalysisConfig } from "../../src/shared/domain/videoAnalysis.js";

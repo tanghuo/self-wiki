@@ -222,3 +222,18 @@ test('workflow templates expose five starters with resultSteps', () => {
   const caption = captionAndSaveExample();
   assert.deepEqual(caption.resultSteps, ['describe', 'save']);
 });
+
+test('run count is an optional workflow setting from 1 to 20', () => {
+  const base = { schemaVersion: 1, nodes: [n('topic', 'element', { source: 'fixed', parameter: 'topic', valueType: 'text', default: '你好' })] };
+  assert.equal(validateDefinition(base).valid, true);
+  assert.equal(validateDefinition({ ...base, runCount: 1 }).valid, true);
+  assert.equal(validateDefinition({ ...base, runCount: 20 }).valid, true);
+  assert.equal(editableDefinition({ ...base, runCount: 2 }).runCount, 2);
+  assert.equal(inferGraphTypes({ ...base, runCount: 4 }).runCount, 4);
+  for (const runCount of [0, 21, 1.5, -1]) {
+    const report = validateDefinition({ ...base, runCount });
+    assert.equal(report.valid, false);
+    assert.equal(report.errors[0].field, 'runCount');
+    assert.match(report.errors[0].message, /1–20/);
+  }
+});

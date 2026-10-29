@@ -9,14 +9,14 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import sharp from "sharp";
-import { chromium } from "playwright-core";
+import { chromium } from "../helpers/authenticatedServer.js";
 import { resolveBrowserPath } from "../resolveBrowserPath.js";
 import { comfyuiConfig, comfyuiWorkflow, configuredComfyuiWorkflow } from "../../src/shared/domain/comfyui.js";
 import { defaultImageGenerationConfig, imageGenerationConfig } from "../../src/shared/domain/imageGeneration.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
 import { createChatImageExecutor } from "../../src/server/application/chatImageExecutor.js";
-import { generateComfyui, probeComfyui } from "../../src/agent/executors/comfyui.js";
-import { createServer } from "../../src/server/server.js";
+import { generateComfyui, probeComfyui, recoverComfyuiImage } from "../../src/agent/executors/comfyui.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { convertComfyuiWorkflow, describeComfyuiWorkflow, loadComfyuiWorkflow } from "../../src/agent/executors/comfyuiWorkflows.js";
 import { chooseOption, selectedValue } from "../ui-select.js";
 import { workflowNode as n, constant as c, output as o } from '../../src/shared/domain/workflow/examples.js';
@@ -62,7 +62,7 @@ async function fixture(t, mode = "success") {
   const root = await mkdtemp(path.join(os.tmpdir(), "wiki-comfyui-"));
   const cleanup = [];
   const png = await sharp({ create: { width: 32, height: 24, channels: 3, background: "#88bbaa" } }).png().toBuffer();
-  const state = { path: "文生图/水彩.json", canvas: structuredClone(canvas), mode, requests: [], submissions: [], uploads: [], deletions: [], cancellations: [], historyReads: 0, otherId: randomUUID() };
+  const state = { path: "文生图/水彩.json", canvas: structuredClone(canvas), mode, requests: [], submissions: [], jobs: new Map(), uploads: [], deletions: [], cancellations: [], historyReads: 0, otherId: randomUUID() };
   const server = httpServer(async (req, res) => {
     try {
       const url = new URL(req.url, "http://fixture"), chunks = [];
@@ -87,23 +87,27 @@ async function fixture(t, mode = "success") {
       }
       if (url.pathname === "/prompt") {
         state.submissions.push(body); state.promptId = state.mode === "old-cancel" ? randomUUID() : body.prompt_id;
-        if (state.mode === "lost-response") { req.socket.destroy(); return; }
+        state.jobs.set(state.promptId, state.submissions.length - 1);
+        if (state.mode === "lost-response" || state.mode === 'second-submit-lost' && state.submissions.length === 2) { req.socket.destroy(); return; }
         if (state.mode === "submit-error") return respond({ error: { message: "工作流验证失败" }, node_errors: { 4: { errors: [{ details: "模型文件不存在" }] } } }, 400);
         if (state.mode === "delayed-submit") await new Promise((resolve) => { state.releaseSubmission = resolve; });
         return respond({ prompt_id: state.promptId, number: 1, node_errors: {} });
       }
       if (url.pathname.startsWith("/history/")) {
         state.historyReads++;
+        const id = decodeURIComponent(url.pathname.slice('/history/'.length)), index = state.jobs.get(id);
+        if (index === undefined) return respond({});
         if (state.mode === "read-retry" && state.historyReads < 3) return respond({ error: "temporary failure" }, 503);
-        if (["running", "old-cancel", "pending", "deleted", "delayed-submit"].includes(state.mode)) return respond({});
+        if (["running", "old-cancel", "pending", "deleted", "delayed-submit"].includes(state.mode) || state.mode === 'second-running' && index === 1) return respond({});
         const images = [{ filename: "结果 #1.png", subfolder: "测试 子目录", type: "output" }];
-        if (state.mode === "multiple") images.push({ ...images[0], filename: "second.png" });
+        if (state.mode.startsWith('sequential') && index === 1) images[0].filename = 'second.png';
+        if (["multiple", "second-image-error"].includes(state.mode)) images.push({ ...images[0], filename: "second.png" });
         const failed = state.mode === "run-error";
-        return respond({ [state.promptId]: { outputs: state.mode === "no-image" ? {} : { 9: { images } },
+        return respond({ [id]: { outputs: state.mode === "no-image" ? {} : { 9: { images } },
           status: { completed: !failed, status_str: failed ? "error" : "success", messages: failed ? [["execution_error", { exception_message: "显存不足" }]] : [] } } });
       }
       if (url.pathname === "/queue" && req.method === "GET") return respond({
-        queue_running: [[0, state.otherId], ...(["running", "old-cancel", "delayed-submit"].includes(state.mode) ? [[1, state.promptId]] : [])],
+        queue_running: [[0, state.otherId], ...(["running", "old-cancel", "delayed-submit", 'second-running'].includes(state.mode) ? [[1, state.promptId]] : [])],
         queue_pending: state.mode === "pending" ? [[2, state.promptId]] : [],
       });
       if (url.pathname === "/queue" && req.method === "POST") { state.deletions.push(...body.delete); res.end(); return; }
@@ -111,7 +115,11 @@ async function fixture(t, mode = "success") {
         if (state.mode === "old-cancel") return respond({ error: "Not found" }, 404);
         state.cancellations.push(url.pathname.split("/")[3]); return respond({ cancelled: true });
       }
-      if (url.pathname === "/view") { state.imageQuery = Object.fromEntries(url.searchParams); res.end(state.mode === "bad-image" ? "not an image" : png); return; }
+      if (url.pathname === "/view") {
+        state.imageQuery = Object.fromEntries(url.searchParams);
+        if (['second-image-error', 'sequential-second-error'].includes(state.mode) && url.searchParams.get('filename') === 'second.png') return respond({ error: 'download interrupted' }, 503);
+        res.end(state.mode === "bad-image" ? "not an image" : png); return;
+      }
       respond({ error: "Not found" }, 404);
     } catch (error) { res.writeHead(500); res.end(JSON.stringify({ error: error.message })); }
   });
@@ -214,6 +222,106 @@ test("ComfyUI execution preserves literal prompts and template defaults, downloa
   const metadata = events.filter((event) => event.type === "metadata").at(-1).metadata.comfyui;
   assert.equal(metadata.promptId, sent.prompt_id); assert.equal(metadata.workflowSha256.length, 64);
   assert.equal(executor.directInput, true); assert.deepEqual(executor.tool.inputSchema.required, ["prompt"]);
+});
+
+test('ComfyUI multi-image execution saves every output separately and validates count before dispatch', async (t) => {
+  const f = await fixture(t, 'multiple');
+  for (const count of [0, 17, 1.5]) {
+    const config = structuredClone(f.config); config.workflow['5'].inputs.batch_size = count;
+    await assert.rejects(generateComfyui({ prompt: 'two images' }, { config, workspace: f.root, multiple: true }), /生成数量须为/);
+  }
+  assert.equal(f.state.submissions.length, 0);
+  const result = await generateComfyui({ prompt: 'two images' }, { config: f.config, workspace: f.root, multiple: true });
+  assert.equal(result.images.length, 2);
+  assert.notEqual(result.images[0].savedPath, result.images[1].savedPath);
+  for (const image of result.images) assert.deepEqual(await readFile(image.savedPath), f.png);
+  assert.equal(f.state.requests.filter((entry) => entry.path === '/view').length, 2);
+  assert.equal(f.state.submissions.length, 1);
+});
+
+test('ComfyUI image count submits sequential single-image requests with fresh seeds and one reference upload', async (t) => {
+  const f = await fixture(t), events = [];
+  const config = { ...f.config, workflow: convertComfyuiWorkflow(canvas, nodeInfo) };
+  config.workflow['5'].inputs.batch_size = 4;
+  config.workflow['5'].class_type = 'EmptyLatentImage';
+  config.workflow['5'].inputs.reference = ['72', 0];
+  config.workflow['72'] = { class_type: 'LoadImage', inputs: { image: 'original.png' } };
+  config.imageInputs = [{ nodeId: '72', input: 'image' }];
+  const before = structuredClone(config);
+  await writeFile(path.join(f.root, 'reference.png'), f.png);
+  let dispatches = 0;
+  const result = await generateComfyui({ prompt: 'four single images', referencePaths: ['reference.png'] }, {
+    config, workspace: f.root, multiple: true, onProgress: (event) => events.push(event), onDispatch() { dispatches++; },
+  });
+  assert.equal(result.images.length, 4);
+  assert.equal(f.state.submissions.length, 4);
+  assert.equal(f.state.uploads.length, 1);
+  assert.equal(dispatches, 1);
+  const sent = f.state.submissions;
+  assert.ok(sent.every((request) => request.prompt['5'].inputs.batch_size === 1 && request.prompt['6'].inputs.text === 'four single images'));
+  assert.equal(new Set(sent.map((request) => request.prompt['3'].inputs.seed)).size, 4);
+  assert.equal(new Set(sent.map((request) => request.prompt['72'].inputs.image)).size, 1);
+  assert.equal(new Set(sent.map((request) => request.prompt_id)).size, 4);
+  const requests = f.state.requests;
+  const posts = requests.map((request, i) => request.path === '/prompt' ? i : -1).filter((i) => i >= 0);
+  for (let i = 1; i < posts.length; i++) assert.ok(requests.slice(posts[i-1]+1, posts[i]).some((request) => request.path === `/history/${sent[i-1].prompt_id}`));
+  assert.ok(requests.findIndex((request) => request.path === '/view') > posts.at(-1), 'all requests finish before downloading');
+  const metadata = events.filter((event) => event.type === 'metadata').at(-1).metadata.comfyui;
+  assert.equal(metadata.sequence.count, 4);
+  assert.deepEqual(metadata.sequence.requests.map((request) => request.promptId), sent.map((request) => request.prompt_id));
+  assert.deepEqual(metadata.sequence.requests.map((request) => request.seeds[0].value), sent.map((request) => request.prompt['3'].inputs.seed));
+  assert.deepEqual(config, before);
+});
+
+test('ComfyUI sequential requests preserve fixed seeds and refuse incompatible counts before dispatch', async (t) => {
+  const f = await fixture(t);
+  f.config.workflow['5'].inputs.batch_size = 2;
+  const result = await generateComfyui({ prompt: 'fixed seed' }, { config: f.config, workspace: f.root, multiple: true });
+  assert.equal(result.images.length, 2);
+  assert.deepEqual(f.state.submissions.map((request) => request.prompt['3'].inputs.seed), [42, 42]);
+  f.config.workflow['3'].inputs.batch_size = 3;
+  await assert.rejects(generateComfyui({ prompt: 'conflicting counts' }, { config: f.config, workspace: f.root, multiple: true }), /数量不一致/);
+  assert.equal(f.state.submissions.length, 2);
+});
+
+test('ComfyUI sequential recovery fetches every task after a failed download without submitting again', async (t) => {
+  const f = await fixture(t, 'sequential-second-error'), events = [];
+  f.config.workflow['5'].inputs.batch_size = 2;
+  await assert.rejects(generateComfyui({ prompt: 'two images' }, {
+    config: f.config, workspace: f.root, multiple: true, onProgress: (event) => events.push(event),
+  }), /download interrupted/);
+  assert.equal(f.state.submissions.length, 2);
+  const sequence = events.filter((event) => event.type === 'metadata').at(-1).metadata.comfyui.sequence;
+  const ticket = { count: sequence.count, promptIds: sequence.requests.map((request) => request.promptId) };
+  f.state.mode = 'sequential';
+  const result = await recoverComfyuiImage(f.config, ticket, { multiple: true });
+  assert.equal(result.images.length, 2);
+  assert.ok(result.images.every((image) => image.bytes.equals(f.png)));
+  assert.equal(f.state.submissions.length, 2);
+});
+
+test('ComfyUI sequential submission uncertainty stops later requests and cannot recover a partial list as success', async (t) => {
+  const f = await fixture(t, 'second-submit-lost'), events = [];
+  f.config.workflow['5'].inputs.batch_size = 4;
+  await assert.rejects(generateComfyui({ prompt: 'four images' }, { config: f.config, workspace: f.root, multiple: true, onProgress: (event) => events.push(event) }), /提交状态未知/);
+  assert.equal(f.state.submissions.length, 2);
+  const sequence = events.filter((event) => event.type === 'metadata').at(-1).metadata.comfyui.sequence;
+  assert.equal(sequence.count, 4);
+  assert.equal(sequence.requests.length, 2);
+  await assert.rejects(recoverComfyuiImage(f.config, { count: sequence.count, promptIds: sequence.requests.map((request) => request.promptId || request.requestedPromptId) }, { multiple: true }), /尚未全部提交/);
+  assert.equal(f.state.submissions.length, 2);
+});
+
+test('ComfyUI sequential cancellation stops the active request and never submits the remainder', async (t) => {
+  const f = await fixture(t, 'second-running'), controller = new AbortController();
+  f.config.workflow['5'].inputs.batch_size = 4;
+  await assert.rejects(generateComfyui({ prompt: 'four images' }, {
+    config: f.config, workspace: f.root, multiple: true, signal: controller.signal,
+    onProgress(event) { if (f.state.submissions.length === 2 && event.type === 'progress' && event.message.includes('正在执行')) controller.abort(); },
+  }), /已停止/);
+  assert.equal(f.state.submissions.length, 2);
+  assert.deepEqual(f.state.cancellations, [f.state.submissions[1].prompt_id]);
+  assert.ok(!f.state.requests.some((request) => request.path === '/interrupt'));
 });
 
 for (const [mode, error] of [["submit-error", /模型文件不存在/], ["lost-response", /提交状态未知/], ["run-error", /显存不足/], ["no-image", /没有返回图片/], ["multiple", /2 张图片/], ["bad-image", /不是有效的单张/], ["deleted", /不在队列或历史/]]) {
@@ -387,6 +495,52 @@ test('runtime resolution choices follow aspect ratio and submit the matching pre
   assert.deepEqual((await w.api(`workflows/${created.id}`)).definition, created.definition);
 });
 
+for (const recover of [false, true]) test(`workflow generates multiple images and reviews them individually (${recover ? 'recover interrupted download' : 'normal completion'})`, { timeout: 30000, skip: !browserPath && 'Browser required' }, async (t) => {
+  const f = await fixture(t, recover ? 'sequential-second-error' : 'sequential'), w = await wikiFixture(t, f);
+  const record = await w.api('workflows/adapters/comfyui/load', { path: f.state.path });
+  const adapterConfig = { workflow: record.workflow, workflowName: f.state.path, prompt: record.prompt, outputNodeId: record.outputNodeId, promptMode: 'input', imageInputs: [] };
+  const created = await w.api('workflows', { name: '多张生成测试', definition: { schemaVersion: 1, nodes: [
+    n('generate', 'image.generate', { adapterId: 'comfyui', adapterConfig }, { prompt: c('two images'), images: c([]) }),
+    n('check', 'review', { valueType: 'list<image>' }, { value: o('generate') }),
+  ], outputs: {} }, requestKey: randomUUID() });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true }); f.cleanup.push(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } }); page.setDefaultTimeout(10000);
+  await page.goto(`${w.app.url}#workflow`);
+  await page.locator('.workflow-home-card').filter({ hasText: '多张生成测试' }).getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '调整本次生图参数', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '本次生图参数', exact: true });
+  const count = dialog.getByLabel(/^工作流参数 .*→ batch_size$/);
+  await count.waitFor();
+  assert.equal(await count.isVisible(), true, 'image count is visible among common parameters');
+  await count.fill('17');
+  await dialog.getByRole('button', { name: '应用到本次运行', exact: true }).click();
+  await dialog.getByRole('alert').filter({ hasText: '请修正' }).waitFor();
+  assert.equal(f.state.submissions.length, 0);
+  await count.fill('2');
+  await dialog.getByRole('button', { name: '应用到本次运行', exact: true }).click();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  if (recover) {
+    await page.locator('.workflow-run h2 [data-state="needs_attention"]').waitFor();
+    assert.equal(await page.locator('.workflow-review-images').count(), 0, 'partial downloads cannot reach review');
+    f.state.mode = 'sequential';
+    await page.getByRole('button', { name: '核对并取回结果', exact: true }).click();
+  }
+  const cards = page.locator('.workflow-review-images');
+  await cards.getByRole('checkbox', { name: '保留图片 2' }).waitFor();
+  assert.equal(await cards.locator('.workflow-review-image').count(), 2);
+  assert.equal(f.state.submissions.length, 2, 'generation uses two single-image tasks; recovery submits neither again');
+  assert.ok(f.state.submissions.every((request) => request.prompt['5'].inputs.batch_size === 1));
+  await cards.getByRole('checkbox', { name: '保留图片 2' }).uncheck();
+  await page.getByRole('button', { name: '通过选中的 1 / 2 张', exact: true }).click();
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  const workflow = await w.api(`workflows/${created.id}`), run = await w.api(`workflow-runs/${workflow.runs[0].id}`);
+  const generated = await w.api(`workflow-artifacts/${run.instances.find((i) => i.nodeId === 'generate').outputs.value}?runId=${run.id}`);
+  const accepted = await w.api(`workflow-artifacts/${run.instances.find((i) => i.nodeId === 'check').outputs.value}?runId=${run.id}`);
+  assert.equal(generated.value.length, 2);
+  assert.deepEqual(accepted.value, [generated.value[0]], 'only the selected image continues downstream');
+  assert.deepEqual(workflow.definition, created.definition, 'runtime count does not change workflow defaults');
+});
+
 test('run-time ComfyUI parameters stay local to the run and regeneration reuses upstream results', { timeout: 45000, skip: !browserPath && 'Browser required' }, async (t) => {
   const f = await fixture(t), w = await wikiFixture(t, f);
   const record = await w.api('workflows/adapters/comfyui/load', { path: f.state.path });
@@ -429,19 +583,19 @@ test('run-time ComfyUI parameters stay local to the run and regeneration reuses 
   assert.deepEqual(saved.definition, created.definition, 'temporary parameters never change the saved draft');
   const result = page.locator('.workflow-run-results .workflow-node-result[data-node-id="generate"]');
   await result.locator('.workflow-result-heading').click();
-  await result.getByRole('button', { name: '调整参数', exact: true }).click();
+  await result.getByRole('button', { name: '调整本次生图参数', exact: true }).click();
   assert.equal(await parameter('seed').inputValue(), '123', 'regeneration starts from the executed parameters');
   await parameter('seed').fill('456'); await parameter('width').fill('1024');
-  await dialog.getByRole('button', { name: '保存参数', exact: true }).click();
+  await dialog.getByRole('button', { name: '应用到本次运行', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
   assert.equal(f.state.submissions.length, 1, 'saving parameters does not generate');
   assert.equal((await w.api(`workflows/${created.id}`)).runs.length, 1, 'saving parameters does not create a run');
-  await result.getByText('参数已调整，点击“重新生成”后生效。', { exact: false }).waitFor();
-  await result.getByRole('button', { name: '调整参数', exact: true }).click();
+  await page.getByRole('region', { name: '运行设置', exact: true }).getByText('已修改 1 个节点', { exact: true }).waitFor();
+  await result.getByRole('button', { name: '调整本次生图参数', exact: true }).click();
   assert.equal(await parameter('seed').inputValue(), '456', 'saved pending parameters reopen for editing');
   await parameter('seed').fill('789');
   await dialog.getByRole('button', { name: '取消', exact: true }).click();
-  await result.getByRole('button', { name: '重新生成', exact: true }).click();
+  await page.getByRole('region', { name: '运行设置', exact: true }).getByRole('button', { name: '运行', exact: true }).click();
   await page.waitForFunction((id) => !document.querySelector('.workflow-run h2')?.textContent.includes(`#${id} `), parentId);
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   assert.equal(f.state.submissions.length, 2);
@@ -454,22 +608,22 @@ test('run-time ComfyUI parameters stay local to the run and regeneration reuses 
   assert.deepEqual(latest.definition, created.definition);
   assert.deepEqual((await w.api(`workflow-runs/${parentId}`)).definition, parent.definition, 'parent parameters and output remain immutable');
   await page.locator('.workflow-run-results .workflow-node-result[data-node-id="generate"] .workflow-result-heading').click();
-  await page.getByRole('button', { name: '调整参数', exact: true }).click();
+  await page.getByRole('button', { name: '调整本次生图参数', exact: true }).click();
   await dialog.getByLabel(/^种子模式 /).selectOption('randomize');
-  await dialog.getByRole('button', { name: '保存参数', exact: true }).click();
+  await dialog.getByRole('button', { name: '应用到本次运行', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
   assert.equal(f.state.submissions.length, 2, 'saving random mode still does not generate');
-  await page.getByRole('button', { name: '恢复本次原参数', exact: true }).click();
-  await page.getByRole('button', { name: '调整参数', exact: true }).click();
+  await page.getByRole('button', { name: '取消修改', exact: true }).click();
+  await page.getByRole('button', { name: '调整本次生图参数', exact: true }).click();
   assert.equal(await dialog.getByLabel(/^种子模式 /).inputValue(), 'fixed', 'reset restores the executed parameters');
   await dialog.getByLabel(/^种子模式 /).selectOption('randomize');
-  await dialog.getByRole('button', { name: '保存参数', exact: true }).click();
-  await page.getByRole('button', { name: '重新生成', exact: true }).click();
+  await dialog.getByRole('button', { name: '应用到本次运行', exact: true }).click();
+  await page.getByRole('button', { name: '运行', exact: true }).click();
   await page.waitForFunction((id) => !document.querySelector('.workflow-run h2')?.textContent.includes(`#${id} `), child.id);
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   const randomRun = (await w.api(`workflows/${created.id}`)).runs[0].id;
   await page.locator('.workflow-run-results .workflow-node-result[data-node-id="generate"] .workflow-result-heading').click();
-  await page.getByRole('button', { name: '重新生成', exact: true }).click();
+  await page.getByRole('button', { name: '运行', exact: true }).click();
   await page.waitForFunction((id) => !document.querySelector('.workflow-run h2')?.textContent.includes(`#${id} `), randomRun);
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
   assert.equal(f.state.submissions.length, 4);
@@ -483,8 +637,8 @@ test('workflow image nodes select saved ComfyUI workflows and explicitly map pro
   const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } }); page.setDefaultTimeout(10000);
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${w.app.url}#workflow`);
-  await page.getByRole('button', { name: '新建空白', exact: true }).click();
-  await page.getByRole('button', { name: '画布（高级）', exact: true }).click();
+  await page.getByRole('button', { name: '＋ 从空白开始搭建', exact: true }).click();
+  await page.locator('.workflow-canvas').waitFor();
   await page.locator('.workflow-palette').getByRole('button', { name: /^AI 生成图片/ }).click();
   await page.locator('.workflow-inspector select').first().waitFor();
   await page.getByLabel('使用的 AI', { exact: true }).selectOption('comfyui');

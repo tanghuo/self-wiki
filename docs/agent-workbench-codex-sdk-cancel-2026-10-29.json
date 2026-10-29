@@ -1,0 +1,18 @@
+{
+  "root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-sdk-r1CYuE",
+  "modelCalls": 1,
+  "paidImageCalls": 0,
+  "checks": {
+    "applicationTool": true,
+    "cancelled": true
+  },
+  "calls": [
+    {
+      "name": "wiki_search",
+      "query": "NATIVE_SDK_FIXTURE",
+      "bound": true
+    }
+  ],
+  "cancelRequested": true,
+  "stopReason": "cancelled"
+}

@@ -28,6 +28,7 @@ export default function WikiSidebar({ activeTab, onChooseTab, busy, readOnly = f
       <div className="wiki-sidebar-heading">我的内容</div>
       {contentSections.map(sectionButton)}
       <div className="wiki-sidebar-heading">工具</div>
+      {!readOnly && local && <a className={`nav-item ${activeTab === 'workbench' ? 'active' : ''}`} href="#workbench" aria-current={activeTab === 'workbench' ? 'page' : undefined} onClick={guard}><MessageCircle size={18} /><span>Agent 工作台</span></a>}
       {!readOnly && local && <a className={`nav-item wiki-share-entry ${activeTab === 'workflow' ? 'active' : ''}`} href="#workflow" aria-current={activeTab === 'workflow' ? 'page' : undefined} onClick={guard}><Workflow size={18} /><span>工作流</span></a>}
       <a className={`nav-item wiki-share-entry ${activeTab === "shares" ? "active" : ""}`} href="#shares" aria-current={activeTab === "shares" ? "page" : undefined} onClick={guard}><Share2 size={18} /><span>临时分享</span></a>
       {!readOnly && <div className="wiki-sidebar-bottom">{sectionButton(wikiSections.at(-1))}</div>}

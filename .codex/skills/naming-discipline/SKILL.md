@@ -30,7 +30,6 @@ Names should expose domain, action, and ownership clearly, instead of mixing mul
 
 - Choose a hash tag only after identifying the keys that must share a slot. A fixed domain tag sends all matching entities to one slot.
 - Keep the action or sub-resource path outside the tag. Use no tag when co-location is unnecessary.
-- For slot design or a change to existing keys, use `redis-key-discipline`; preserve storage identity and coordination semantics.
 
 ## Decision rule
 

@@ -6,7 +6,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import sharp from "sharp";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { migrateWiki } from "../../src/server/data/wikiMigrations.js";
 import { createElementRepository } from "../../src/server/data/elementRepository.js";
 import { createElementService } from "../../src/server/application/elementService.js";

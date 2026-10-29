@@ -24,11 +24,12 @@ summary 简短描述主元素。bodyExcerpts 是正文中命中的原始片段�
 需要补资料时 queries 最多 3 个短关键词；已有足够资料时 queries 为空数组。
 最多 12 个标签、8 个关联；每项理由不超过 120 字，引用不超过 200 字。未附图片的元素不可声称观察过画面。`;
 
-export async function runWorker({ url, instanceId, config, signal, recordUsage }) {
+export async function runWorker({ url, instanceId, config, signal, recordUsage, workerToken }) {
   const executor = executorFor(config.executor.type);
+  const authHeaders = workerToken ? { authorization: `Bearer ${workerToken}` } : {};
   async function api(route, body, requestSignal = signal) {
     const response = await fetch(new URL(`api/organization/${route}`, url), { method: "POST", signal: requestSignal,
-      headers: { "content-type": "application/json", "x-self-wiki-instance": instanceId }, body: JSON.stringify(body) });
+      headers: { ...authHeaders, "content-type": "application/json", "x-self-wiki-instance": instanceId }, body: JSON.stringify(body) });
     const result = await response.json();
     if (!response.ok) throw Object.assign(new Error(result.error || "整理请求失败"), { retryable: response.status === 409 || response.status >= 500 });
     return result;
@@ -81,7 +82,7 @@ export async function runWorker({ url, instanceId, config, signal, recordUsage }
           const e = material.elements.find((e) => e.id === id && ["image", "video"].includes(e.kind));
           if (!e) throw Object.assign(new Error("请求的图片不属于已读取候选"), { retryable: false });
           if (attachments.has(id)) continue;
-          const response = await fetch(new URL(`api/elements/${e.id}/${e.kind === "video" ? "video-first-frame" : "thumbnail?width=800"}`, url), { signal: taskSignal, headers: { "x-self-wiki-instance": instanceId } });
+          const response = await fetch(new URL(`api/elements/${e.id}/${e.kind === "video" ? "video-first-frame" : "thumbnail?width=800"}`, url), { signal: taskSignal, headers: { ...authHeaders, "x-self-wiki-instance": instanceId } });
           if (!response.ok) {
             if (["image", "video"].includes(source.kind) && id !== source.id && !imageRequests.includes(id)) continue;
             const failure = await response.json().catch(() => ({}));
@@ -117,7 +118,7 @@ export async function runWorker({ url, instanceId, config, signal, recordUsage }
       try { await api(`jobs/${job.id}/submit`, body, taskSignal); }
       catch (error) {
         // Resolve an uncertain commit before reporting/retrying the analysis.
-        const response = await fetch(new URL(`api/organization/status?elementId=${job.elementId}`, url), { signal: taskSignal, headers: { "x-self-wiki-instance": instanceId } });
+        const response = await fetch(new URL(`api/organization/status?elementId=${job.elementId}`, url), { signal: taskSignal, headers: { ...authHeaders, "x-self-wiki-instance": instanceId } });
         const status = await response.json();
         if (!response.ok || !status.results?.some((r) => r.jobId === job.id)) throw error;
       }

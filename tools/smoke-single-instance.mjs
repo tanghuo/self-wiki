@@ -20,7 +20,8 @@ try {
   const page = await desktop.firstWindow();
   await page.waitForLoadState();
   const url = page.url();
-  assert.equal((await fetch(new URL("api/instance", url))).status, 200);
+  assert.equal((await fetch(new URL('api/instance', url))).status, 401);
+  assert.equal(await page.evaluate(async () => (await fetch('/api/instance')).status), 200);
   await desktop.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].minimize());
   const second = spawn(electron, args, { env, cwd: root, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";

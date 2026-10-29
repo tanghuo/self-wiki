@@ -46,7 +46,7 @@ function runPython(config, request, { workspace, signal, onProgress }) {
   signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const child = spawn(config.python, ["-u", script], { cwd: workspace, shell: false, windowsHide: true,
-      env: { ...process.env, PYTHONUTF8: "1", PYTHONDONTWRITEBYTECODE: "1", SELF_WIKI_NODE: process.execPath }, stdio: ["pipe", "pipe", "pipe"] });
+      env: { ...childEnvironment(), PYTHONUTF8: "1", PYTHONDONTWRITEBYTECODE: "1", SELF_WIKI_NODE: process.execPath }, stdio: ["pipe", "pipe", "pipe"] });
     const decoder = new StringDecoder("utf8");
     let buffer = "", stderr = "", result, error, killTimer;
     function kill() {
@@ -147,3 +147,4 @@ async function generateImage(value, { config, workspace, signal, onProgress, ver
   if (result.path !== output || (await stat(output)).size > 25 * 1024 * 1024) throw new Error("网页版执行器返回了无效的图片路径或大小");
   return { bytes: await readFile(output), savedPath: output };
 }
+import { childEnvironment } from '../../shared/runtime/childEnvironment.js';

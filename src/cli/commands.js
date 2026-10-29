@@ -9,6 +9,7 @@ const input = { input: string("UTF-8 JSON object file, or - for stdin"), data: s
 const content = { ...input, body: string("Full text, preserving whitespace"), "body-file": string("UTF-8 text file, or - for stdin"), tag: string("Tag; repeat to set multiple tags", { multiple: true }) };
 
 export const globalOptions = {
+  'token-file': string('Local management credential file for explicit --url; otherwise SELF_WIKI_TOKEN_FILE'),
   url: string("Explicit local API origin; otherwise SELF_WIKI_URL or discovery in the data directory"),
   "data-dir": string("Discovery directory; otherwise APP_DATA_DIR or project data/"),
   timeout: integer("Timeout per HTTP request in milliseconds (default 30000)", 1, 2147483647),
@@ -18,6 +19,7 @@ export const globalOptions = {
 };
 
 export const commands = [
+  { name: 'pair', description: 'Create a one-use browser pairing link valid for 60 seconds', action: 'pair' },
   { name: "video-analysis status", description: "Read video analysis configuration and jobs", method: "GET", route: "/api/video-analysis/status", options: { "video-id": integer("Filter by video ID", 1) } },
   { name: "video-analysis configure", description: "Save video analysis and visual encoder settings", method: "PUT", route: "/api/video-analysis/config", action: "input", options: input },
   { name: "video-analysis probe", description: "Check FFmpeg, vision executor and optional encoder", method: "POST", route: "/api/video-analysis/probe" },

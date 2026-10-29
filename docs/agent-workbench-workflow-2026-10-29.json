@@ -1,0 +1,103 @@
+{
+  "modelCalls": 2,
+  "paidImageCalls": 0,
+  "checks": {
+    "parentCompleted": true,
+    "approvedOnce": true,
+    "workflowSucceeded": true,
+    "restrictedChild": true,
+    "artifactsSaved": true,
+    "markerSaved": true
+  },
+  "taskId": 1,
+  "state": "succeeded",
+  "task": {
+    "id": 1,
+    "sessionId": 1,
+    "turnId": 1,
+    "operationId": 1,
+    "kind": "workflow.submit",
+    "inputHash": "14ce7e2a1e5848f6ee19b36cfe409e42d18b4f64de60ce49e77f63d90e60e7e0",
+    "executor": {
+      "id": "workflow",
+      "snapshot": {
+        "workflowId": 1,
+        "name": "合成 Agent 桥接验收",
+        "revision": 1,
+        "definition": {
+          "schemaVersion": 1,
+          "outputs": {},
+          "nodes": [
+            {
+              "id": "agent",
+              "type": "agent",
+              "version": 1,
+              "name": "agent",
+              "config": {
+                "adapterId": "grok-agent",
+                "outputType": "text",
+                "adapterConfig": {
+                  "tools": [
+                    "wiki_search"
+                  ]
+                },
+                "adapterInputs": {
+                  "prompt": "text",
+                  "images": "list<image>"
+                }
+              },
+              "inputs": {
+                "prompt": {
+                  "kind": "constant",
+                  "value": "Synthetic acceptance: discover wiki_search and call exactly once with query WORKFLOW_AGENT_LIVE_MARKER. Report its matching excerpt including marker. No other tool calls, images, files, terminal, web, agents, retries or workflow submission."
+                },
+                "images": {
+                  "kind": "constant",
+                  "value": []
+                }
+              },
+              "position": {
+                "x": 0,
+                "y": 0
+              }
+            }
+          ]
+        },
+        "executors": {
+          "root/agent": {
+            "id": "grok-agent",
+            "version": 1,
+            "settings": {
+              "executable": "grok",
+              "model": "grok-4.6",
+              "aspectRatio": "auto"
+            },
+            "allowedTools": [
+              "wiki_search"
+            ]
+          }
+        },
+        "prepared": {
+          "inputs": {},
+          "images": []
+        },
+        "maxCalls": 1
+      }
+    },
+    "state": "succeeded",
+    "attemptId": 1,
+    "cancelRequested": false,
+    "revision": 6,
+    "data": {
+      "workflowRunId": 1,
+      "workflowId": 1,
+      "workflowState": "succeeded",
+      "progress": "工作流正在执行",
+      "saved": true,
+      "inWiki": false,
+      "artifactIds": [
+        1
+      ]
+    }
+  }
+}

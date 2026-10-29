@@ -14,6 +14,8 @@ export default function ChatPanel({ selection, onSelectionConsumed, currentIds, 
   const { activity, refresh: refreshActivity } = useChatActivity(id, visible);
   const newDraft = useNewChatDraft();
   const [preference, setPreference] = useState(null);
+  const [workbenchEnabled, setWorkbenchEnabled] = useState(false);
+  useEffect(() => { request('/api/agent/status').then(value => setWorkbenchEnabled(value.agentWorkbenchEnabled)).catch(error => setError(error.message)); }, []);
   const [imagePreference, setImagePreference] = useState(null);
   const [status, setStatus] = useState(null), [checking, setChecking] = useState(false), [error, setError] = useState("");
   const [catalog, setCatalog] = useState(null), [modelsLoading, setModelsLoading] = useState(false), [modelsError, setModelsError] = useState("");
@@ -77,6 +79,7 @@ export default function ChatPanel({ selection, onSelectionConsumed, currentIds, 
     window.addEventListener("hashchange", focus); return () => window.removeEventListener("hashchange", focus);
   }, []);
   function create() {
+    if (workbenchEnabled) { request('/api/agent/wiki-template', { method: 'POST', body: JSON.stringify({ requestKey: crypto.randomUUID(), text: newDraft.text, sourceIds: newDraft.sources.map(s => s.id), attachmentIds: newDraft.attachments.map(a => a.id) }) }).then(session => { window.location.hash = '#workbench?session=' + session.id; }).catch(error => setError(error.message)); return; }
     requestedSession.current = null; setId(null);
     if (isPage) window.history.replaceState(null, "", "#agent?new=1");
     request("/api/chat/image-generation/preference").then(setImagePreference).catch((e) => setError(e.message));

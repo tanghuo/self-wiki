@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
+import { createLocalAuthentication } from './application/localAuthentication.js';
+import { saveLocalCredentials } from './assets/localCredentials.js';
 import { createVectorQueries } from "./data/vectorQueries.js";
 import { initDb } from "./data/sqlite.js";
 import { createRequestHandler } from "./http/routes.js";
@@ -28,6 +30,14 @@ import { createTemporaryShares } from "./application/temporaryShares.js";
 import { createWorkflowRepository } from './data/workflowRepository.js';
 import { createWorkflowStore } from './assets/workflowStore.js';
 import { createWorkflowService } from './application/workflow/service.js';
+import { createAgentWorkbenchRepository } from './data/agentWorkbenchRepository.js';
+import { createAgentWorkbenchService } from './application/agentWorkbench/service.js';
+import { createAgentTaskRepository } from './data/agentTaskRepository.js';
+import { createAgentWikiRepository } from './data/agentWikiRepository.js';
+import { createAgentArtifactStore } from './assets/agentArtifactStore.js';
+import { createAgentCommandStore } from './assets/agentCommandStore.js';
+import { createAgentTaskService } from './application/agentTasks/service.js';
+import { createAgentTools } from './application/agentTools/service.js';
 
 const projectRoot = path.resolve(import.meta.dirname, "../..");
 // Fetch Standard port blocking: https://fetch.spec.whatwg.org/#port-blocking
@@ -40,6 +50,7 @@ const browserBlockedPorts = new Set([
 ]);
 
 export async function createServer(options = {}) {
+  const authentication = createLocalAuthentication();
   const port = Number(options.port ?? 8765);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error("Invalid port");
   if (port !== 0 && browserBlockedPorts.has(port)) throw new Error(`Port ${port} is blocked by browsers; choose another port or 0 for automatic selection`);
@@ -64,7 +75,7 @@ export async function createServer(options = {}) {
     },
   };
   const organization = await createOrganizationService({
-    repo: createOrganizationRepository(db), dataDir, semantic, recordUsage,
+    repo: createOrganizationRepository(db), dataDir, semantic, recordUsage, workerAuthentication: authentication,
     searchMedia: (elementId) => mediaSearch.searchFirstFrame(elementId),
   });
   const videoAnalysis = await createVideoAnalysisService({
@@ -75,9 +86,20 @@ export async function createServer(options = {}) {
   });
   mediaSearch.searchFirstFrame = (elementId) => videoAnalysis.search({ elementId, firstFrame: true });
   const chat = createChatService({ repo: createChatRepository(db), wiki, archive, organization, dataDir, recordUsage });
-  const workflow = createWorkflowService({ repo: createWorkflowRepository(db), store: createWorkflowStore(dataDir), wiki, imageStore, executionConfig: () => organization.executionConfig() });
+  let agentWorkbench;
+  const workflow = createWorkflowService({ repo: createWorkflowRepository(db), store: createWorkflowStore(dataDir), wiki, imageStore, executeAgent: (...args) => agentWorkbench.executeWorkflowAgent(...args), executionConfig: () => organization.executionConfig() });
+  const workbenchRepo = createAgentWorkbenchRepository(db);
+  // Kept closed until the installed ACP SDK tool path passes live validation.
+  const applicationToolsVerified = options.agentApplicationToolsEnabled !== false;
+  const agentTasks = createAgentTaskService({ repo: createAgentTaskRepository(db), sessions: workbenchRepo, store: createAgentArtifactStore(dataDir), wiki, workflow, executionConfig: () => organization.executionConfig(), enabled: () => applicationToolsVerified && agentWorkbench?.status().agentWorkbenchEnabled, imageExecutor: options.workbenchImageExecutor });
+  const agentTools = createAgentTools({ wiki, repo: createAgentWikiRepository(db), tasks: agentTasks });
+  const artifactInspection = await agentTasks.inspectStorage();
+  if (artifactInspection.unreferenced.length) console.warn(`[self-wiki] Agent artifact inspection: ${artifactInspection.unreferenced.length} unreferenced files preserved; inspect /api/agent/storage-inspection`);
+  agentWorkbench = await createAgentWorkbenchService({ repo: workbenchRepo, dataDir, legacyChat: chat, wiki, executionConfig: () => organization.executionConfig(), initiallyEnabled: options.agentWorkbenchEnabled === true, openEngine: options.openWorkbenchEngine, tools: agentTools, tasks: agentTasks, commandStore: createAgentCommandStore(dataDir), applicationToolsVerified, codexVerified: options.agentCodexWorkbenchEnabled !== false });
+  agentTasks.schedule();
   const instance = { application: "self-wiki", protocolVersion: 1, instanceId: randomUUID(), dataDir };
   const services = {
+    authentication,
     instance,
     wiki,
     organization,
@@ -85,6 +107,8 @@ export async function createServer(options = {}) {
     videoAnalysis,
     chat,
     workflow,
+    agentWorkbench,
+    agentTasks,
     usage,
     rendererDist,
   };
@@ -116,6 +140,8 @@ export async function createServer(options = {}) {
     }
     if (browserBlockedPorts.has(actualPort)) throw new Error("Unable to allocate a browser-accessible port after 10 attempts");
   } catch (error) {
+    await agentWorkbench.close();
+    await agentTasks.close();
     await workflow.close();
     await temporaryShares.close();
     await videoAnalysis.close();
@@ -129,11 +155,17 @@ export async function createServer(options = {}) {
   instance.url = `http://127.0.0.1:${actualPort}/`;
   const runtimeDir = path.join(dataDir, ".runtime");
   const runtimePath = path.join(runtimeDir, `server-${instance.instanceId}.json`);
+  let credentialsPath;
   let closing;
   const app = {
     port: actualPort, dataDir, url: `http://127.0.0.1:${actualPort}/`,
+    createBootstrapCode: () => authentication.createBootstrapCode(),
+    managementHeaders: () => authentication.managementHeaders(),
+    get credentialFile() { return credentialsPath; },
     close() {
       closing ||= (async () => {
+        await agentWorkbench.close();
+        await agentTasks.close();
         await workflow.close();
         await videoAnalysis.close();
         await chat.close();
@@ -148,12 +180,14 @@ export async function createServer(options = {}) {
         await vectorQueries.close();
         db.close();
         await rm(runtimePath, { force: true });
+        if (credentialsPath) await rm(credentialsPath, { force: true });
       })();
       return closing;
     },
   };
   try {
     await mkdir(runtimeDir, { recursive: true });
+    credentialsPath = await saveLocalCredentials(runtimeDir, instance.instanceId, authentication.credential());
     await writeFile(runtimePath, JSON.stringify(instance), { flag: "wx", mode: 0o600 });
     organization.initialize({ url: instance.url, instanceId: instance.instanceId });
     chat.initialize({ url: instance.url, instanceId: instance.instanceId });
@@ -185,12 +219,13 @@ async function runCli() {
   process.once("SIGTERM", close);
   process.on("message", (message) => { if (message?.type === "shutdown") void close(); });
   process.once("disconnect", close);
-  process.send?.({ type: "ready", url: server.url });
+  process.send?.({ type: "ready", url: server.url, bootstrapCode: server.createBootstrapCode() });
   console.log(`self-wiki API running at ${server.url}`);
   console.log(`Data: ${server.dataDir}`);
   if (open) {
+    const browserUrl = `${server.url}#local-bootstrap=${server.createBootstrapCode()}`;
     const command = process.platform === "win32" ? "cmd" : process.platform === "darwin" ? "open" : "xdg-open";
-    const child = spawn(command, process.platform === "win32" ? ["/c", "start", "", server.url] : [server.url], {
+    const child = spawn(command, process.platform === "win32" ? ["/c", "start", "", browserUrl] : [browserUrl], {
       detached: true, stdio: "ignore", windowsHide: true,
     });
     child.on("error", (error) => console.error(`Unable to open browser: ${error.message}`));

@@ -10,7 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { setTimeout as sleep } from "node:timers/promises";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { initDb } from "../../src/server/data/sqlite.js";
 import { createChatRepository } from "../../src/server/data/chatRepository.js";
 import { migrateChat } from "../../src/server/data/chatMigration.js";

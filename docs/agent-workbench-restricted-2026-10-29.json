@@ -1,0 +1,19 @@
+{
+  "modelCalls": 1,
+  "paidImageCalls": 0,
+  "checks": {
+    "sdkCalledOnce": true,
+    "nativeRegistryAbsent": true,
+    "noHostSideEffects": true,
+    "restrictedCapabilities": true
+  },
+  "hostRequests": [],
+  "sdkCalls": 1,
+  "policyViolations": [
+    "run_terminal_cmd"
+  ],
+  "tools": [
+    "search_tool",
+    "use_tool"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "createdAt": "2026-10-29T11:22:41.744Z",
+  "root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-workbench-live-ui-9HpVQS",
+  "modelCalls": 1,
+  "paidImageCalls": 0,
+  "checks": {
+    "completed": true,
+    "fileChanged": true,
+    "outputVisible": true,
+    "referenceAccepted": true,
+    "narrow": true,
+    "refresh": true
+  },
+  "approvals": [
+    {
+      "kind": "engine.permission",
+      "hash": "67c34ef564d034a0c57b963d0583d26f938578cf609cd392e06fa63178cac639"
+    },
+    {
+      "kind": "file.write",
+      "hash": "a687e4532a427ccc6fa910563a1c5d3a59454528bf007c698319dea375e548e9"
+    },
+    {
+      "kind": "engine.permission",
+      "hash": "d34edafee89aa9430abe180ab90e1fdeac8d73eba5a39850abdbfd3c3e379432"
+    },
+    {
+      "kind": "command",
+      "hash": "0b9d3bc759fbabf724af8698d2991e67c982586ecfcc17b9caea6852aa1fe0ba"
+    }
+  ],
+  "state": "completed"
+}

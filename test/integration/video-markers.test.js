@@ -7,7 +7,7 @@ import path from "node:path";
 import { migrateWiki } from "../../src/server/data/wikiMigrations.js";
 import { migrateVideoMarkers } from "../../src/server/data/videoMarkerMigration.js";
 import { createElementRepository } from "../../src/server/data/elementRepository.js";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { createElementService } from "../../src/server/application/elementService.js";
 import { videoMarkerInput, parseMarkerTime, formatMarkerTime } from "../../src/shared/domain/videoMarkers.js";
 

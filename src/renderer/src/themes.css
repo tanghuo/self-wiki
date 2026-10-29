@@ -22,6 +22,7 @@
   --media-dark: #111; --on-media: #fff; --media-scrim: rgb(0 0 0 / .55); --media-scrim-strong: rgb(0 0 0 / .78); --qr-bg: #fff;
   --hover: color-mix(in srgb, var(--ink) 6%, transparent); --press: color-mix(in srgb, var(--ink) 10%, transparent);
   --on-bad: #fff;
+  --info: #3986d5;
   --ease-out: cubic-bezier(.2, .7, .2, 1); --duration-fast: 120ms; --duration: 180ms;
   --z-sticky: 5; --z-menu: 20; --z-toast: 40;
 }
@@ -142,6 +143,7 @@
   --on-accent: #1c0a0e;
   --focus: #ff8a9a;
   --good: #6fd1ad;
+  --info: #70b4ff;
   --bad: #ff8f86;
   --warn: #f0c674;
   --good-soft: #16302a;
@@ -176,6 +178,7 @@
     --on-accent: #1c0a0e;
     --focus: #ff8a9a;
     --good: #6fd1ad;
+  --info: #70b4ff;
     --bad: #ff8f86;
     --warn: #f0c674;
     --good-soft: #16302a;

@@ -5,7 +5,7 @@ import { createServer as httpServer, request as httpRequest } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { crc32 } from "node:zlib";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { createTemporaryShares } from "../../src/server/application/temporaryShares.js";
 
 async function fixture(t) {

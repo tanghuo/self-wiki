@@ -4,6 +4,7 @@ import { startBackendProcess } from "./backendProcess.js";
 import { copyVideoFile, prepareVideoFile, videoDownloadUrl } from "./videoClipboard.js";
 import { prepareWallpaperFile, setDesktopWallpaper } from "./wallpaper.js";
 import { createQuitController } from './quitController.js';
+import { connect } from '../cli/client.js';
 
 let backend;
 let mainWindow;
@@ -30,6 +31,11 @@ async function createMainWindow() {
         port: Number(process.env.API_PORT || 0),
       });
     const current = backend;
+    if (process.env.EXTERNAL_API_URL) {
+      const client = await connect({ 'data-dir': process.env.APP_DATA_DIR || path.join(dataRoot, 'data') });
+      if (new URL(client.instance.url).origin !== new URL(current.url).origin) throw new Error('外部 API 与本机数据目录不匹配');
+      current.bootstrapCode = (await client.request('/api/auth/code', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).code;
+    }
     current.onExit?.((info) => { void handleBackendExit(current, info); });
   }
   if (quitting) return;
@@ -58,6 +64,25 @@ async function createMainWindow() {
     if (new URL(url).origin !== pageOrigin) { event.preventDefault(); openExternal(url); }
   });
   const window = mainWindow;
+  async function pairLocal() {
+    if (!backend.localCookie) {
+      const response = await fetch(new URL('/api/auth/bootstrap', backend.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: backend.bootstrapCode }), redirect: 'error' });
+      if (!response.ok) throw new Error('本机连接配对失败，请重新启动窗口');
+      backend.localCookie = response.headers.get('set-cookie')?.split(';')[0];
+      backend.bootstrapCode = undefined;
+    }
+    if (!backend.localCookie) throw new Error('本机服务未返回连接凭据');
+    const at = backend.localCookie.indexOf('=');
+    await window.webContents.session.cookies.set({ url: pageOrigin, name: backend.localCookie.slice(0, at), value: backend.localCookie.slice(at + 1), path: '/', httpOnly: true, sameSite: 'strict' });
+    return { ok: true };
+  }
+  ipcMain.removeHandler('wiki:pair-local');
+  ipcMain.handle('wiki:pair-local', async event => {
+    if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || new URL(event.senderFrame.url).origin !== pageOrigin) throw new Error('此页面不能配对本机服务');
+    return pairLocal();
+  });
+  // Pair before load so desktop media and smoke requests have the same authority.
+  await pairLocal();
   quitController.registerWindow(window);
   ipcMain.removeHandler("wiki:pick-share-source");
   ipcMain.handle("wiki:pick-share-source", async (event, kind) => {
@@ -79,7 +104,7 @@ async function createMainWindow() {
     if (settingWallpaper) return { ok: false, error: "正在设置壁纸，请稍候" };
     settingWallpaper = true;
     try {
-      const file = await prepareWallpaperFile(elementId, backend.url, path.join(app.getPath("userData"), "wallpapers"));
+      const file = await prepareWallpaperFile(elementId, backend.url, path.join(app.getPath("userData"), "wallpapers"), { cookie: backend.localCookie });
       await setDesktopWallpaper(file);
       return { ok: true };
     } catch (error) { return { ok: false, error: `设置桌面壁纸失败：${error.message}` }; }
@@ -97,7 +122,7 @@ async function createMainWindow() {
           if (copyingVideo) return;
           copyingVideo = true;
           try {
-            const file = await prepareVideoFile(downloadUrl, path.join(app.getPath("userData"), "clipboard-videos"));
+            const file = await prepareVideoFile(downloadUrl, path.join(app.getPath("userData"), "clipboard-videos"), { cookie: backend.localCookie });
             await copyVideoFile(file);
           } catch (error) {
             if (!window.isDestroyed()) await dialog.showMessageBox(window, { type: "error", message: "复制视频文件失败", detail: error.message });

@@ -8,7 +8,7 @@ import { defaultImageGenerationConfig, imageGenerationConfig } from "../../src/s
 import { chatImageOptions } from "../../src/shared/domain/chatImageOptions.js";
 import { createChatImageExecutor } from "../../src/server/application/chatImageExecutor.js";
 import { createChatImageSettings } from "../../src/server/application/chatImageSettings.js";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
 import { setTimeout as sleep } from "node:timers/promises";
 

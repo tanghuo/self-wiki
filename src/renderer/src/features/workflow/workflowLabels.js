@@ -3,7 +3,7 @@ import { nodeTypes, dependencies, bindings, outputType, isRuntimeElement, valida
 const catalogLabels = Object.fromEntries(nodeTypes.map((node) => [node.type, node.label]));
 // Everyday names shown to people. The catalog labels stay in the shared contract
 // (and in saved definitions as default names), so both count as "unnamed".
-export const friendlyTypeLabels = { element: '内容', input: '内容', template: '文字组合', model: 'AI 写文字', 'image.generate': 'AI 生成图片', transform: '整理数据', foreach: '对每一项重复', review: '我来确认', preview: '预览', 'library.save': '存进资料库' };
+export const friendlyTypeLabels = { element: '内容', input: '内容', template: '文字组合', agent: '受限 Agent', model: 'AI 写文字', 'image.generate': 'AI 生成图片', transform: '整理数据', foreach: '对每一项重复', review: '我来确认', preview: '预览', 'library.save': '存进资料库' };
 export const typeLabel = (type) => friendlyTypeLabels[type] || catalogLabels[type] || type;
 const internalId = /^n_[0-9a-f]{6,}$/;
 export const isDefaultName = (node) => !node.name || node.name === catalogLabels[node.type] || node.name === friendlyTypeLabels[node.type] || internalId.test(node.name);

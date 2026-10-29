@@ -1,0 +1,42 @@
+{
+  "root": "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-workbench-gmitb9",
+  "modelCalls": 0,
+  "paidImageCalls": 0,
+  "checks": {
+    "authenticated": true,
+    "profileSelected": true,
+    "nativeApprovals": true,
+    "noExternalMcp": true
+  },
+  "version": "self_wiki/0.159.0 (Windows 10.0.22631; x86_64) unknown (self_wiki; 0.2.0)",
+  "policy": {
+    "activePermissionProfile": {
+      "id": "wiki_1d1af006e7114bf18ab03842cb31cff2",
+      "extends": null
+    },
+    "approvalPolicy": "untrusted",
+    "approvalsReviewer": "user",
+    "sandbox": {
+      "type": "readOnly",
+      "networkAccess": false
+    },
+    "model": "gpt-6.1-sol",
+    "runtimeWorkspaceRoots": [
+      "C:\\Users\\Administrator\\AppData\\Local\\Temp\\wiki-codex-workbench-gmitb9\\project"
+    ]
+  },
+  "threadId": "01a1877c-70ec-7c42-aeaf-596dab785bf8",
+  "catalog": [
+    {
+      "name": "node_repl",
+      "runtimeStatus": "disabled",
+      "tools": 0
+    }
+  ],
+  "mcpConfig": [
+    {
+      "name": "node_repl",
+      "enabled": false
+    }
+  ]
+}

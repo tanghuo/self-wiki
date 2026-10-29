@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 // POSIX callers must spawn detached so descendants share a dedicated process group.
 export function terminateProcessTree(child, { graceMs = 1500 } = {}) {
   return new Promise((resolve) => {
-    let done = false, killer, killerDone = false, childClosed = false, hardTimer, deadline;
+    let done = false, killer, killerDone = false, treeConfirmed = false, childClosed = false, hardTimer, deadline;
     function kill(signal) {
       if (!child.pid) return;
       if (process.platform === 'win32') { child.kill(signal); return; }
@@ -14,15 +14,15 @@ export function terminateProcessTree(child, { graceMs = 1500 } = {}) {
       done = true;
       clearTimeout(hardTimer); clearTimeout(deadline); child.off('close', onClose);
       // Reap descendants even if the group leader exited first.
-      if (process.platform !== 'win32') kill('SIGKILL');
-      killer?.kill(); resolve();
+      if (process.platform !== 'win32') { kill('SIGKILL'); treeConfirmed = true; }
+      killer?.kill(); resolve({ treeConfirmed: treeConfirmed && childClosed && !force });
     }
     function onClose() { childClosed = true; finish(); }
     child.once('close', onClose);
     if (process.platform === 'win32' && child.pid) {
       killer = spawn('taskkill.exe', ['/PID', String(child.pid), '/T', '/F'], { shell: false, windowsHide: true, stdio: 'ignore' });
       killer.on('error', () => { killerDone = true; kill('SIGKILL'); if (childClosed) finish(); });
-      killer.on('exit', (code) => { killerDone = true; if (code) kill('SIGKILL'); if (childClosed) finish(); });
+      killer.on('exit', (code) => { killerDone = true; treeConfirmed = code === 0; if (code) kill('SIGKILL'); if (childClosed) finish(); });
     } else kill('SIGTERM');
     hardTimer = setTimeout(() => kill('SIGKILL'), graceMs);
     deadline = setTimeout(() => {

@@ -2,12 +2,13 @@
 export const workflowLimits = { scopeNodes: 100, nodes: 300, items: 1000, instances: 20000 };
 export const workflowError = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 export const terminalNodeStates = new Set(['succeeded', 'failed', 'blocked', 'cancelled']);
-export const externalNodeTypes = new Set(['model', 'image.generate']);
+export const externalNodeTypes = new Set(['model', 'agent', 'image.generate']);
 export const nodeTypes = [
   { type: 'element', label: '元素', version: 1 },
   { type: 'input', label: '输入', version: 1 },
   { type: 'template', label: '文字组合', version: 1 },
   { type: 'model', label: '模型调用', version: 1 },
+  { type: 'agent', label: '受限 Agent', version: 1 },
   { type: 'image.generate', label: '图片生成', version: 1 },
   { type: 'transform', label: '数据处理', version: 1 },
   { type: 'foreach', label: '批量循环', version: 1 },
@@ -69,13 +70,13 @@ export function outputType(node) {
   if (node.type === 'image.generate') return 'list<image>';
   if (node.type === 'foreach') return 'list<json>';
   if (node.type === 'library.save') return 'list<number>';
-  if (node.type === 'model') return node.config?.outputType || 'text';
+  if (['model', 'agent'].includes(node.type)) return node.config?.outputType || 'text';
   return node.config?.valueType || 'text';
 }
 // Public variable names are independent of the historical artifact storage ports.
 export function outputVariables(node) {
   const primary = outputType(node);
-  const roots = node.type === 'model'
+  const roots = ['model', 'agent'].includes(node.type)
     ? [{ name: 'text', type: 'text', port: 'text', path: [] }, ...(primary === 'json' ? [{ name: 'structured_output', type: 'json', port: 'structured_output', path: [] }] : [])]
     : [{ name: node.type === 'image.generate' ? 'images' : 'value', type: primary, port: node.type === 'image.generate' ? 'images' : 'value', path: [] }];
   const fields = [];
@@ -88,7 +89,7 @@ export function outputVariables(node) {
       visit(field, next, depth + 1);
     }
   }
-  if (node.type === 'model' && primary === 'json') visit(node.config.jsonSchema, []);
+  if (['model', 'agent'].includes(node.type) && primary === 'json') visit(node.config.jsonSchema, []);
   return [...roots, ...fields];
 }
 function schemaValueType(schema) {
@@ -99,12 +100,12 @@ function schemaValueType(schema) {
 }
 export function outputBindingType(node, binding) {
   if (!node) return undefined;
-  const type = binding.port === 'value' ? outputType(node) : node.type === 'model' && ['text', 'raw'].includes(binding.port) ? 'text'
-    : node.type === 'model' && binding.port === 'structured_output' && outputType(node) === 'json' ? 'json'
+  const type = binding.port === 'value' ? outputType(node) : ['model', 'agent'].includes(node.type) && ['text', 'raw'].includes(binding.port) ? 'text'
+    : ['model', 'agent'].includes(node.type) && binding.port === 'structured_output' && outputType(node) === 'json' ? 'json'
     : node.type === 'image.generate' && binding.port === 'images' ? 'list<image>' : undefined;
   if (!binding.path?.length) return type;
   if (type !== 'json') return undefined;
-  if (node.type === 'model' && node.config.jsonSchema) {
+  if (['model', 'agent'].includes(node.type) && node.config.jsonSchema) {
     let schema = node.config.jsonSchema;
     for (const key of binding.path) {
       if (schema?.type === 'array' && /^(0|[1-9]\d*)$/.test(String(key))) schema = schema.items;
@@ -119,7 +120,7 @@ export function outputVariableName(node, binding) {
   return [outputPortName(node, binding.port), ...(binding.path || [])].join('.');
 }
 export function outputPortName(node, port) {
-  if (node?.type === 'model') return port === 'raw' ? 'text' : port === 'value' ? outputType(node) === 'json' ? 'structured_output' : 'text' : port;
+  if (['model', 'agent'].includes(node?.type)) return port === 'raw' ? 'text' : port === 'value' ? outputType(node) === 'json' ? 'structured_output' : 'text' : port;
   return node?.type === 'image.generate' && port === 'value' ? 'images' : port;
 }
 export function inputPorts(node) {
@@ -127,7 +128,7 @@ export function inputPorts(node) {
   switch (node.type) {
     case 'element': return c.source === 'upstream' ? { value: c.valueType || 'text' } : {};
     case 'input': case 'template': return {};
-    case 'model': case 'image.generate': return c.adapterInputs || { prompt: 'text', images: 'list<image>' };
+    case 'model': case 'agent': case 'image.generate': return c.adapterInputs || { prompt: 'text', images: 'list<image>' };
     case 'foreach': return { items: c.itemsType || 'list<image>', ...c.captureTypes };
     case 'transform': return c.operation === 'list' || c.operation === 'concat' ? Object.fromEntries((c.keys || ['a', 'b']).map((k) => [k, c.operation === 'concat' ? 'text' : c.valueType === 'list<image>' ? 'list<image>' : listItemType(c.valueType)]))
       : c.operation === 'zip' ? { a: c.listType || 'list<image>', b: c.otherListType || c.listType || 'list<image>' }
@@ -171,6 +172,9 @@ export function validateDefinition(definition, { limits = workflowLimits } = {})
       return { valid: false, errors: [{ field: 'resultSteps', message: 'resultSteps 须为节点 ID 字符串数组' }], orders, maxCalls: 0 };
     }
   }
+  if (definition.runCount !== undefined && (!Number.isInteger(definition.runCount) || definition.runCount < 1 || definition.runCount > 20)) {
+    return { valid: false, errors: [{ field: 'runCount', message: '运行次数须为 1–20 的整数' }], orders, maxCalls: 0 };
+  }
   let total = 0, maxCalls = 0, maxInstances = 0;
   function scope(graph, name, parent = null, multiplier = 1) {
     if (!graph || !Array.isArray(graph.nodes)) { add(parent?.id, 'body', '缺少循环子图'); return; }
@@ -200,7 +204,7 @@ export function validateDefinition(definition, { limits = workflowLimits } = {})
         if (Object.hasOwn(c, 'default') && !matchesType(c.default, outputType(node)) && !libraryValue) add(node.id, 'config.default', '内容类型错误');
       }
       if (node.type === 'element' && c.parts !== undefined && (c.source !== 'fixed' || outputType(node) !== 'text' || !validTextParts(c.parts))) add(node.id, 'config.parts', '文字引用只能用于固定文字元素');
-      if (node.type === 'model' && !['text', 'json'].includes(outputType(node))) add(node.id, 'config.outputType', '模型只输出 text 或 json');
+      if (['model', 'agent'].includes(node.type) && !['text', 'json'].includes(outputType(node))) add(node.id, 'config.outputType', '模型只输出 text 或 json');
       if (node.type === 'review' && !['text', 'list<image>'].includes(outputType(node))) add(node.id, 'config.valueType', '检查仅支持文字或图片列表');
       if (node.type === 'library.save' && !['text', 'image', 'list<image>'].includes(c.valueType)) add(node.id, 'config.valueType', '保存仅支持文字或图片');
       if (node.type === 'transform' && !['field', 'concat', 'list', 'nth', 'zip', 'successes'].includes(c.operation)) add(node.id, 'config.operation', '未知数据操作');
@@ -209,7 +213,7 @@ export function validateDefinition(definition, { limits = workflowLimits } = {})
       for (const [port, type] of Object.entries(ports)) {
         if (!validName(port)) add(node.id, `inputs.${port}`, '端口名称无效');
         if (!valueTypes.includes(type)) add(node.id, `inputs.${port}`, '端口类型无效');
-        if (!node.inputs?.[port] && !(['model', 'image.generate'].includes(node.type) && port === 'images')) add(node.id, `inputs.${port}`, '必填输入未绑定');
+        if (!node.inputs?.[port] && !(['model', 'agent', 'image.generate'].includes(node.type) && port === 'images')) add(node.id, `inputs.${port}`, '必填输入未绑定');
       }
       for (const key of Object.keys(node.inputs || {})) if (!Object.hasOwn(ports, key)) add(node.id, `inputs.${key}`, '未知输入端口');
       for (const { field, binding: b } of bindings(node)) {
@@ -263,10 +267,10 @@ export function validateDefinition(definition, { limits = workflowLimits } = {})
   }
   return { valid: errors.length === 0, errors, orders, maxCalls, maxInstances };
 }
-export function downstreamClosure(nodes, changed) {
-  const result = new Set(changed);
+export function downstreamClosure(nodes, changed, reuse = new Set()) {
+  const result = new Set([...changed].filter((id) => !reuse.has(id)));
   let grew = true;
-  while (grew) { grew = false; for (const n of nodes) if (!result.has(n.id) && dependencies(n).some((id) => result.has(id))) { result.add(n.id); grew = true; } }
+  while (grew) { grew = false; for (const n of nodes) if (!reuse.has(n.id) && !result.has(n.id) && dependencies(n).some((id) => result.has(id))) { result.add(n.id); grew = true; } }
   return result;
 }
 export function executionNode(node) {

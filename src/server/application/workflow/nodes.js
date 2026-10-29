@@ -3,7 +3,7 @@ import { modelAdapters } from '../modelAdapters/index.js';
 import { createHash } from 'node:crypto';
 import { checkJsonSchema } from '../../../shared/domain/workflow/jsonSchema.js';
 
-export function createWorkflowNodes({ repo, store, imageStore, adapters = modelAdapters, model = (snapshot, value) => adapters.model(snapshot, value), generate = (snapshot, value, options) => adapters.generate(snapshot, value, options) }) {
+export function createWorkflowNodes({ repo, store, imageStore, adapters = modelAdapters, executeAgent, model = (snapshot, value) => adapters.model(snapshot, value), generate = (snapshot, value, options) => adapters.generate(snapshot, value, options) }) {
   function readValue(id) {
     const a = repo.artifact(id);
     return a.type === 'image' ? { artifactId: a.id } : a.value;
@@ -28,7 +28,7 @@ export function createWorkflowNodes({ repo, store, imageStore, adapters = modelA
     return context[binding.kind];
   }
   function inputs(node, siblings, context) {
-    if (['model', 'image.generate'].includes(node.type)) node = adapters.normalizeNode(node);
+    if (['model', 'agent', 'image.generate'].includes(node.type)) node = adapters.normalizeNode(node);
     const values = {};
     for (const [key, type] of Object.entries(inputPorts(node))) {
       values[key] = node.inputs?.[key] ? resolve(node.inputs[key], siblings, context) : key === 'images' ? [] : undefined;
@@ -85,7 +85,7 @@ export function createWorkflowNodes({ repo, store, imageStore, adapters = modelA
       if (n.type === 'foreach') return { foreach: true, values };
       if (n.type === 'review') return { review: true, value: values.value };
       if (local[n.type]) return { value: await local[n.type]({ n, i, run, siblings, values }) };
-      if (['model', 'image.generate'].includes(n.type)) {
+      if (['model', 'agent', 'image.generate'].includes(n.type)) {
         const directory = await store.attemptDirectory(i.attemptId);
         const scope = i.scope === 'root' ? 'root' : `root/${i.context.foreachId}`;
         const snapshot = run.executors[`${scope}/${n.id}`];
@@ -102,8 +102,8 @@ export function createWorkflowNodes({ repo, store, imageStore, adapters = modelA
         };
         const progress = (event) => { if (event.type === 'metadata') repo.attemptMetadata(i.attemptId, event.metadata); };
         try {
-          if (n.type === 'model') {
-            const result = await model(snapshot, { prompt: values.prompt, images, workspace: directory, signal, onRequest: dispatch, onProgress: progress });
+          if (['model', 'agent'].includes(n.type)) {
+            const result = await (n.type === 'agent' ? executeAgent : model)(snapshot, { workflowId: run.workflowId, runId: run.id, instanceId: i.id, prompt: values.prompt, images, workspace: directory, signal, onRequest: dispatch, onProgress: progress });
             const raw = { type: 'text', value: result.text, metadata: { role: 'raw_model_output' } };
             if (outputType(n) === 'json') {
               try { const value = JSON.parse(result.text); if (c.jsonSchema) checkJsonSchema(c.jsonSchema, value); return { value, extra: [{ ...raw, port: 'raw' }] }; }
@@ -112,8 +112,9 @@ export function createWorkflowNodes({ repo, store, imageStore, adapters = modelA
             return { value: result.text, extra: [{ ...raw, port: 'raw' }] };
           }
           const result = await generate(snapshot, { prompt: values.prompt, images }, { workspace: directory, signal, onDispatch: dispatch, onProgress: progress });
-          const image = await store.saveImage(result.bytes, { prompt: values.prompt, referenceIds: values.images.map((r) => r.artifactId), executor: snapshot.id });
-          return { images: [image] };
+          const generatedImages = [];
+          for (const image of result.images || [result]) generatedImages.push(await store.saveImage(image.bytes, { prompt: values.prompt, referenceIds: values.images.map((r) => r.artifactId), executor: snapshot.id }));
+          return { images: generatedImages };
         } catch (error) {
           throw adapters.classifyFailure(snapshot, error, dispatched);
         }

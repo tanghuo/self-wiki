@@ -7,8 +7,10 @@ import { handleWorkflowRoute } from './workflowRoutes.js';
 import { handleTemporaryShareRoute, handleSharedDownloadRoute } from "./temporaryShareRoutes.js";
 import { validateLanRequest, lanRequestToken, lanTokenMatches, lanRestriction, lanPairingPage, lanTokenCookie } from "./lanRoutes.js";
 import { createPairingLimiter } from "./pairingLimiter.js";
+import { handleLocalAuthRoute } from './localAuthRoutes.js';
+import { handleAgentWorkbenchRoute } from './agentWorkbenchRoutes.js';
 
-export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, chat, workflow, usage, instance, rendererDist, access = "local" }) {
+export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, chat, workflow, agentWorkbench, agentTasks, usage, instance, authentication, rendererDist, access = "local" }) {
   const routes = new Map([
     ["GET /api/token-usage", async (_req, res, url) => {
       const days = Number(url.searchParams.get("days") ?? 7);
@@ -72,10 +74,23 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
       const url = new URL(req.url || "/", host);
       if (temporaryShares && await handleSharedDownloadRoute(temporaryShares, req, res, url)) return;
       if (access === "lan" && await lanGate(req, res, host)) return;
+      if (access === 'local') {
+        if (url.pathname === '/api/health' && req.method === 'GET') { json(res, 200, { ok: true, application: 'self-wiki' }); return; }
+        if (authentication && await handleLocalAuthRoute(authentication, req, res, url)) return;
+        if (url.pathname.startsWith('/api/') || url.pathname === '/image') {
+          res.setHeader('cache-control', 'no-store');
+          const management = authentication?.isManagement(req), worker = !management && authentication?.isWorker(req, url);
+          if (worker) req.localPrincipal = 'organizer-worker';
+          if (!management && !worker && !chat?.authorizeToolRequest?.(req, url)) {
+            throw httpError(401, '需要本机配对或管理凭据');
+          }
+        }
+      }
       if (req.headers["x-self-wiki-instance"] && req.headers["x-self-wiki-instance"] !== instance?.instanceId) {
         throw httpError(409, "Server instance changed; reconnect before retrying");
       }
       if (workflow && await handleWorkflowRoute(workflow, req, res, url, access)) return;
+      if (agentWorkbench && await handleAgentWorkbenchRoute(agentWorkbench, req, res, url, access, agentTasks)) return;
       if (temporaryShares && await handleTemporaryShareRoute(temporaryShares, req, res, url, access)) return;
       if (chat && await handleChatRoute(chat, req, res, url)) return;
       if (organization && await handleOrganizationRoute(organization, req, res, url)) return;
@@ -87,7 +102,7 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
       else if (req.method === "GET") await serveStatic(res, url, rendererDist, access === "lan" ? { access: sharing.policy().allowWrite ? "lan-edit" : "read-only" } : {});
       else throw httpError(405, "Method not allowed");
     } catch (error) {
-      if (!res.destroyed && !res.headersSent) json(res, error.statusCode || 500, { ok: false, error: error.message, jobId: error.jobId || "" });
+      if (!res.destroyed && !res.headersSent) json(res, error.statusCode || 500, { ok: false, error: error.message, message: error.message, code: error.code || 'REQUEST_FAILED', retryable: error.retryable === true, stateKnown: error.stateKnown !== false, jobId: error.jobId || "" });
     }
   };
 }

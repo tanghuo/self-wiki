@@ -10,7 +10,7 @@ import { createSemanticRepository } from "../../src/server/data/semanticReposito
 import { createOrganizationRepository } from "../../src/server/data/organizationRepository.js";
 import { defaultEmbeddingConfig } from "../../src/shared/domain/embedding.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 
 async function until(read) {
   const end = Date.now() + 8000;

@@ -1,0 +1,28 @@
+{
+  "modelCalls": 1,
+  "paidImageCalls": 0,
+  "checks": {
+    "boundaryVisible": true,
+    "completed": true,
+    "fileChanged": true,
+    "nativeApprovals": true,
+    "outputVisible": true,
+    "narrow": true,
+    "refresh": true
+  },
+  "approvals": [
+    {
+      "kind": "native.command",
+      "allowed": true
+    },
+    {
+      "kind": "native.file",
+      "allowed": true
+    },
+    {
+      "kind": "native.command",
+      "allowed": true
+    }
+  ],
+  "state": "completed"
+}

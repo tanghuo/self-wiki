@@ -5,7 +5,7 @@ import path from "node:path";
 import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import sharp from "sharp";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { migrateWiki } from "../../src/server/data/wikiMigrations.js";
 
 async function setup(t) {

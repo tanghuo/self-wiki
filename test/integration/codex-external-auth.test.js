@@ -7,7 +7,7 @@ import { codexCli } from "../../src/agent/executors/codexCli.js";
 import { startCodexAppServer } from "../../src/agent/executors/codexAppServer.js";
 import { localCodexAuth } from "../../src/agent/executors/codexLocalAuth.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 
 async function setup(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "wiki-external-auth-")), previous = process.env.CODEX_HOME;

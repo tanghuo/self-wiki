@@ -9,6 +9,7 @@ import { acquireExternalResource } from '../../src/agent/executors/resourceGate.
 import { modelAdapters } from '../../src/server/application/modelAdapters/index.js';
 import { createWorkflowNodes } from '../../src/server/application/workflow/nodes.js';
 import sharp from 'sharp';
+import { startGrokAcp } from '../../src/agent/executors/grokProcess.js';
 
 test('adapter-owned compatibility reads legacy configuration and frozen snapshots without rewriting them', async () => {
   const legacy = { id: 'image', type: 'image.generate', version: 1, config: { executor: 'comfyui', comfyui: {
@@ -24,6 +25,9 @@ test('adapter-owned compatibility reads legacy configuration and frozen snapshot
   assert.equal(snapshot.promptMode, 'workflow');
   assert.equal(modelAdapters.resource(snapshot), 'comfyui:http://127.0.0.1:8188');
   assert.equal(modelAdapters.recoveryTicket(snapshot, { data: { comfyui: { promptId: 'known-job' } } }), 'known-job');
+  assert.deepEqual(modelAdapters.recoveryTicket(snapshot, { data: { comfyui: { promptId: 'second-job', sequence: { count: 2, requests: [
+    { promptId: 'first-job', requestedPromptId: 'first-request' }, { requestedPromptId: 'second-request' },
+  ] } } } }), { count: 2, promptIds: ['first-job', 'second-request'] }, 'sequential recovery includes the entire ordered task set, including an uncertain final submission');
   assert.deepEqual(legacy, before, 'compatibility never mutates historical definitions');
   assert.deepEqual(modelAdapters.configurationRoute('/api/workflows/comfyui/workflows/load'), { adapter: 'comfyui', operation: 'load' });
   await assert.rejects(modelAdapters.configure('comfyui', 'load', server, {}, 'GET'), /HTTP 方法/);
@@ -38,7 +42,7 @@ test('adapter-owned compatibility reads legacy configuration and frozen snapshot
   assert.equal(modelAdapters.catalog().find((entry) => entry.id === 'grok-text').parameterFields.some((field) => field.name === 'model'), false);
 });
 
-test('workflow Grok text adapter uses isolated sessions and blocks shell, image and Wiki tools at the client hook', async (t) => {
+test('workflow Grok text adapter verifies an empty tool profile, isolates sessions and rejects shell, image and Wiki attempts', async (t) => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workflow-adapter-'));
   const previous = process.env.GROK_HOME; process.env.GROK_HOME = root;
   const executable = path.join(root, 'grok.mjs');
@@ -50,10 +54,16 @@ test('workflow Grok text adapter uses isolated sessions and blocks shell, image 
   await assert.rejects(call('DENY_SHELL'), /受限模型节点拒绝工具/);
   await assert.rejects(call('GENERATE_CAT'), /受限模型节点拒绝工具/);
   await assert.rejects(call('WIKI'), /受限模型节点拒绝工具/);
+  const client = await startGrokAcp(snapshot.settings, { cwd: root, signal: AbortSignal.timeout(5000) });
+  try {
+    await assert.rejects(client.request('session/new', { cwd: root, mcpServers: [], _meta: { agentProfile: { injectDefaultTools: false, toolConfig: { tools: [] } } } }), /session\/new: Internal error.*invalid configuration: curated tool list is empty/);
+  } finally { await client.close(); }
   const requests = (await readFile(path.join(root, 'acp-requests.ndjson'), 'utf8')).trim().split('\n').map(JSON.parse);
   assert.equal(requests.length, 4);
   assert.equal(new Set(requests.map((r) => r.thread)).size, 4);
   assert.ok(requests.every((r) => r.method === 'session/new'));
+  assert.ok(requests.every(r => r.profile.injectDefaultTools === false && r.profile.toolConfig.tools.length === 1 && r.profile.disallowedTools.includes('read_file') && !r.mcpUrl));
+  await assert.rejects(call('INJECT_TOOLS'), /出现可调用工具/);
   for (const format of ['jpeg', 'webp']) {
     const file = path.join(root, `reference.${format}`);
     await sharp({ create: { width: 2, height: 2, channels: 3, background: 'red' } }).toFormat(format).toFile(file);

@@ -179,6 +179,12 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
     sendInFlight.current = true; setSending(true); setError("");
     if (!id) newDraft.setSending(true);
     try {
+      const workbench = await request('/api/agent/status');
+      if (workbench.agentWorkbenchEnabled) {
+        await draft.flush(); if (id) await savedImages.flush();
+        const converted = await request(id ? `/api/agent/legacy/${id}/continue` : '/api/agent/wiki-template', { method: 'POST', body: JSON.stringify({ requestKey: pending.current.requestKey, text: payload.text, sourceIds: payload.sourceIds, attachmentIds: payload.attachmentIds || [] }) });
+        window.location.hash = `#workbench?session=${converted.id}`; return;
+      }
       if (!id) {
         await draft.flush();
         const value = await post("sessions/start", { ...payload, requestKey: await newDraft.prepare(payload) });

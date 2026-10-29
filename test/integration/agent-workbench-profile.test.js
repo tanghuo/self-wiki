@@ -1,0 +1,31 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
+import { randomUUID } from 'node:crypto';
+import { grokWorkbenchProfile, verifyGrokWorkbenchProfile } from '../../src/agent/engines/grokWorkbenchProfile.js';
+
+test('profile fallback and injected native tools prevent prompting; workflow profile contains no tools', async t => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-profile-'));
+  t.after(async () => { assert.equal(path.dirname(home), path.resolve(os.tmpdir())); assert.ok(path.basename(home).startsWith('wiki-workbench-profile-')); await rm(home, { recursive: true, force: true, maxRetries: 3 }); });
+  const cwd = path.resolve('synthetic-project'), sessionId = randomUUID(), profile = grokWorkbenchProfile();
+  const folder = path.join(home, 'sessions', encodeURIComponent(cwd), sessionId); await mkdir(folder, { recursive: true });
+  const save = agent_profile => writeFile(path.join(folder, 'summary.json'), JSON.stringify({ agent_profile }));
+  await save(profile); assert.equal((await verifyGrokWorkbenchProfile({ cwd, sessionId, profile, home })).verified, true);
+  await save({ ...profile, name: 'grok-build' }); await assert.rejects(verifyGrokWorkbenchProfile({ cwd, sessionId, profile, home }), /禁止发送任务/);
+  await save({ ...profile, toolConfig: { tools: [...profile.toolConfig.tools, { id: 'GrokBuild:image_gen' }] } });
+  await assert.rejects(verifyGrokWorkbenchProfile({ cwd, sessionId, profile, home }), /禁止发送任务/);
+  const text = grokWorkbenchProfile({ restricted: true });
+  assert.deepEqual(text.toolConfig.tools, [{ id: 'GrokBuild:read_file' }]);
+  assert.ok(text.disallowedTools.includes('read_file'));
+  await save(text);
+  assert.deepEqual((await verifyGrokWorkbenchProfile({ cwd, sessionId, profile: text, home })).toolIds, []);
+  await save({ ...text, disallowedTools: ['Agent'] });
+  await assert.rejects(verifyGrokWorkbenchProfile({ cwd, sessionId, profile: text, home }), /禁止发送任务/);
+  await save(text);
+  await writeFile(path.join(folder, 'tool_definitions.json'), '[]');
+  assert.equal((await verifyGrokWorkbenchProfile({ cwd, sessionId, profile: text, home, requireEmptyTools: true })).verified, true);
+  await writeFile(path.join(folder, 'tool_definitions.json'), '[{"function":{"name":"read_file"}}]');
+  await assert.rejects(verifyGrokWorkbenchProfile({ cwd, sessionId, profile: text, home, requireEmptyTools: true }), /出现可调用工具/);
+});

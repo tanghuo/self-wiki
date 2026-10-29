@@ -7,10 +7,10 @@ import sharp from "sharp";
 import { pruneCache } from "./cacheCleanup.js";
 import { maxImageBytes } from "../shared/domain/elements.js";
 
-export async function prepareWallpaperFile(elementId, backendUrl, cacheRoot) {
+export async function prepareWallpaperFile(elementId, backendUrl, cacheRoot, headers = {}) {
   if (!Number.isSafeInteger(elementId) || elementId <= 0) throw new Error("无效的图片编号");
   const response = await fetch(new URL(`/api/elements/${elementId}/image`, backendUrl), {
-    redirect: "error", signal: AbortSignal.timeout(30000),
+    headers, redirect: "error", signal: AbortSignal.timeout(30000),
   });
   if (!response.ok) throw new Error(`读取原图失败（${response.status}）`);
   if (!response.headers.get("content-type")?.startsWith("image/")) {

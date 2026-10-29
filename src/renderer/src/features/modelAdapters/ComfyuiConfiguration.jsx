@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { request } from '../../api.js';
-import { configuredComfyuiWorkflow, maxComfyReferenceImages } from '../../../../shared/domain/comfyui.js';
+import { configuredComfyuiWorkflow, maxComfyReferenceImages, maxComfyOutputImages } from '../../../../shared/domain/comfyui.js';
 import { comfyuiConfig } from '../../../../shared/domain/comfyui.js';
 import Dialog from '../../Dialog.jsx';
 import './comfyuiConfiguration.css';
 import { alignComfyuiParameters, comfyuiParameterOptions } from '../../../../shared/domain/comfyuiParameters.js';
 
-const parameterNames = { seed: '种子', noise_seed: '噪声种子', steps: '步数', cfg: '提示词强度', denoise: '降噪强度', width: '宽度', height: '高度', batch_size: '图片数量', sampler_name: '采样器', scheduler: '调度器', negative_prompt: '负面提示词', ckpt_name: '模型', unet_name: '扩散模型', clip_name: '文本编码器', vae_name: 'VAE', filename_prefix: '保存文件名前缀', strength_model: 'LoRA 强度' };
-const commonParameters = new Set(['seed', 'noise_seed', 'steps', 'cfg', 'denoise', 'width', 'height', 'sampler_name', 'scheduler', 'strength_model']);
+const parameterNames = { seed: '种子', noise_seed: '噪声种子', steps: '步数', cfg: '提示词强度', denoise: '降噪强度', width: '宽度', height: '高度', batch_size: '生成数量', sampler_name: '采样器', scheduler: '调度器', negative_prompt: '负面提示词', ckpt_name: '模型', unet_name: '扩散模型', clip_name: '文本编码器', vae_name: 'VAE', filename_prefix: '保存文件名前缀', strength_model: 'LoRA 强度' };
+const commonParameters = new Set(['batch_size', 'seed', 'noise_seed', 'steps', 'cfg', 'denoise', 'width', 'height', 'sampler_name', 'scheduler', 'strength_model']);
 const isCommonParameter = (field) => commonParameters.has(field.input) || /width|height|resolution|aspect|output_size|宽|高|分辨率|画幅|比例/i.test(field.input);
 
 function imageEntries(workflow, outputNodeId) {
@@ -100,7 +100,10 @@ function ComfyuiEditor({ value = {}, onChange, adapterId, onBusyChange, paramete
   const mappings = value.imageInputs || [];
   const patch = (fields) => onChange({ ...value, ...fields });
   const parameters = (record?.workflow === value.workflow ? record.fields : []).filter((field) => reachable[field.nodeId] && graph[field.nodeId]?.class_type !== 'LoadImage' && !(value.promptMode !== 'workflow' && value.prompt?.nodeId === field.nodeId && value.prompt.input === field.input));
-  const renderParameter = (field) => <div key={`${field.nodeId}:${field.input}`}><WorkflowParameter field={{ ...field, options: comfyuiParameterOptions(field, graph[field.nodeId].inputs) }} value={graph[field.nodeId].inputs[field.input]} onChange={(nextValue) => changeParameter(field, nextValue)} />{['seed', 'noise_seed'].includes(field.input) && <label>种子模式<select aria-label={`种子模式 ${field.label}`} value={graph[field.nodeId]._meta?.seedControls?.[field.input]?.mode || 'fixed'} onChange={(event) => changeSeedMode(field, event.target.value)}><option value="randomize">每次随机</option><option value="fixed">固定</option>{['increment', 'decrement'].includes(graph[field.nodeId]._meta?.seedControls?.[field.input]?.mode) && <option value={graph[field.nodeId]._meta.seedControls[field.input].mode}>递增/递减（请选择随机或固定）</option>}</select></label>}</div>;
+  const renderParameter = (parameter) => {
+    const field = parameter.input === 'batch_size' ? { ...parameter, min: Math.max(1, parameter.min ?? 1), max: Math.min(maxComfyOutputImages, parameter.max ?? maxComfyOutputImages) } : parameter;
+    return <div key={`${field.nodeId}:${field.input}`}><WorkflowParameter field={{ ...field, options: comfyuiParameterOptions(field, graph[field.nodeId].inputs) }} value={graph[field.nodeId].inputs[field.input]} onChange={(nextValue) => changeParameter(field, nextValue)} />{['seed', 'noise_seed'].includes(field.input) && <label>种子模式<select aria-label={`种子模式 ${field.label}`} value={graph[field.nodeId]._meta?.seedControls?.[field.input]?.mode || 'fixed'} onChange={(event) => changeSeedMode(field, event.target.value)}><option value="randomize">每次随机</option><option value="fixed">固定</option>{['increment', 'decrement'].includes(graph[field.nodeId]._meta?.seedControls?.[field.input]?.mode) && <option value={graph[field.nodeId]._meta.seedControls[field.input].mode}>递增/递减（请选择随机或固定）</option>}</select></label>}</div>;
+  };
   function changeSeedMode(field, mode) {
     const node = graph[field.nodeId];
     const nextGraph = { ...graph, [field.nodeId]: { ...node, _meta: { ...node._meta, seedControls: { ...node._meta?.seedControls, [field.input]: { mode, min: Math.max(0, field.min ?? 0), max: Math.min(Number.MAX_SAFE_INTEGER, field.max ?? Number.MAX_SAFE_INTEGER) } } } } };
@@ -135,7 +138,7 @@ function ComfyuiEditor({ value = {}, onChange, adapterId, onBusyChange, paramete
       <button disabled={mappings.length >= Math.min(maxComfyReferenceImages, images.length)} onClick={() => { const nodeId = images.find((id) => !mappings.some((entry) => entry.nodeId === id)); if (nodeId) patch({ imageInputs: [...mappings, { nodeId, input: 'image' }] }); }}>添加参考图映射</button>
       <span>已配置 {mappings.filter((entry) => images.includes(entry.nodeId)).length} / {Math.min(maxComfyReferenceImages, images.length)} 个参考图入口</span>
       </section>}
-      <section className="comfyui-section comfyui-parameters"><h3>生成参数</h3>
+      <section className="comfyui-section comfyui-parameters"><h3>生成参数</h3><p>「生成数量」设为多张时，会逐张生成并汇总结果，最多 {maxComfyOutputImages} 张；随机种子每张重新取值，固定种子可能生成相同图片。生成后可逐张选择保留。</p>
         {parametersOnly && <p>沿用本次的提示词、参考图和工作流。尺寸由工作流控制：选择「跟随参考图」时以图片为准；要用自定义宽高，请同时调整对应的尺寸来源或分辨率档位。</p>}
         {!record && !error && <p>正在读取参数定义…</p>}
         <div className="comfyui-parameter-grid">

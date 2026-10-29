@@ -1,4 +1,5 @@
 import { configurationEditors } from './configurationEditors.js';
+import { workflowAgentTools } from '../../../../shared/domain/agentWorkbench/workflow.js';
 
 const outputLabels = { text: '文字', json: '结构化数据', 'list<image>': '图片' };
 export function newAdapterConfig(adapter) {
@@ -22,5 +23,6 @@ export default function ModelAdapterFields({ node, adapters, onChange }) {
     </select></label>)}
     {Component && <Component key={`${node.id}:${adapter.id}`} adapterId={adapter.id} value={config.adapterConfig} onChange={(value) => onChange(editor.update(config, value))} />}
     {adapter?.configurationEditor && !Component && <p role="alert">当前版本无法编辑此适配器的任务配置。</p>}
+    {node.type === 'agent' && <fieldset><legend>允许的应用工具</legend><p>不提供 Shell、项目文件和管理工具。Wiki 修改仍需采纳，付费任务仍需批准。</p>{workflowAgentTools.map(name => <label key={name}><input type="checkbox" checked={config.adapterConfig?.tools?.includes(name) || false} onChange={event => { const tools = new Set(config.adapterConfig?.tools || []); if (event.target.checked) tools.add(name); else tools.delete(name); onChange({ ...config, adapterConfig: { tools: [...tools] } }); }} />{name}</label>)}</fieldset>}
   </div>;
 }

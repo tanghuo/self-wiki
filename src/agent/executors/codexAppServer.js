@@ -19,17 +19,22 @@ export function chatFeatureArgs(config) {
   return args;
 }
 
-export async function startCodexAppServer(config, { cwd, onNotification, onToolCall, onExit, configurationOnly = false, restricted = false, signal }) {
+export async function startCodexAppServer(config, { cwd, onNotification, onToolCall, onRequest, onExit, configurationOnly = false, restricted = false, workbench = false, configOverrides = [], signal }) {
   signal?.throwIfAborted();
   const command = await resolveCodexCommand(config);
-  const env = await codexEnvironment(config, { shareCapabilities: !configurationOnly && !restricted });
+  const env = await codexEnvironment(config, { shareCapabilities: !configurationOnly && !restricted && !workbench });
   let auth = await localCodexAuth(config);
-  const args = [...command.prefix, "app-server", "--listen", "stdio://", "-c", `web_search="${restricted ? "disabled" : "live"}"`];
+  const args = [...command.prefix, "app-server", "--stdio", "-c", `web_search="${restricted || workbench ? "disabled" : "live"}"`];
   if (auth) args.push("-c", 'cli_auth_credentials_store="ephemeral"');
   if (restricted) {
     args.push("-c", "project_doc_max_bytes=0", ...await codexMcpOverrides(env));
     for (const feature of ["shell_tool", "unified_exec", "apps", "plugins", "hooks", "multi_agent", "browser_use", "in_app_browser", "image_generation", "skill_search", "view_image"]) args.push("--disable", feature);
+  } else if (workbench) {
+    args.push(...await codexMcpOverrides(env));
+    for (const feature of ['apps', 'plugins', 'hooks', 'multi_agent', 'browser_use', 'in_app_browser', 'image_generation', 'skill_search', 'view_image']) args.push('--disable', feature);
+    for (const feature of ['code_mode_host', 'shell_tool', 'unified_exec']) args.push('--enable', feature);
   } else if (!configurationOnly) args.push(...chatFeatureArgs(config));
+  for (const override of configOverrides) args.push('-c', override);
   const child = spawn(command.executable, args, { cwd, shell: false, windowsHide: true,
     env, stdio: ["pipe", "pipe", "pipe"] });
   const decoder = new StringDecoder("utf8"), pending = new Map();
@@ -71,12 +76,12 @@ export async function startCodexAppServer(config, { cwd, onNotification, onToolC
         })();
         return;
       }
-      if (value.method !== "item/tool/call") { write({ id: value.id, error: { code: -32601, message: "This client only supports dynamic tool requests" } }); return; }
+      if (value.method !== "item/tool/call" && !onRequest) { write({ id: value.id, error: { code: -32601, message: "This client only supports dynamic tool requests" } }); return; }
       // Start the call after notifications already received, without blocking
       // later notifications on the tool's asynchronous execution.
-      notifications.then(() => onToolCall(value.params)).then(
+      notifications.then(() => value.method === 'item/tool/call' ? onToolCall(value.params) : onRequest(value.method, value.params || {})).then(
         (result) => write({ id: value.id, result }),
-        (error) => write({ id: value.id, result: { success: false, contentItems: [{ type: "inputText", text: error.message }] } }),
+        (error) => write(value.method === 'item/tool/call' ? { id: value.id, result: { success: false, contentItems: [{ type: "inputText", text: error.message }] } } : { id: value.id, error: { code: -32000, message: error.message } }),
       );
     } else if (value.id !== undefined) {
       const current = pending.get(value.id); if (!current) return;

@@ -11,7 +11,7 @@ import { createOrganizationRepository } from "../../src/server/data/organization
 import { defaultOrganizationConfig, organizationConfig, organizationOutput } from "../../src/shared/domain/organization.js";
 import { codexCli } from "../../src/agent/executors/codexCli.js";
 import { organizationMaterial, organizationEvidence } from "../../src/agent/organizationMaterial.js";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { createServer as createHttpServer } from "node:http";
 import { defaultVideoAnalysisConfig } from "../../src/shared/domain/videoAnalysis.js";
 

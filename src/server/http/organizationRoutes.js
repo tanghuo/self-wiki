@@ -27,6 +27,7 @@ export async function handleOrganizationRoute(organization, req, res, url) {
     else if (record?.[2] && method === "POST") result = organization[record[2]](elementId(record[1]), await readJson(req));
     else throw httpError(404, "Unknown organization route");
   }
+  if (req.localPrincipal === 'organizer-worker' && route === 'status') result = { results: result.results };
   json(res, 200, result);
   return true;
 }

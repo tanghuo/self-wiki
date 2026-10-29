@@ -1,0 +1,151 @@
+{
+  "version": "grok 1.0.70 (f50904eaee6c) [stable]",
+  "root": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\wiki-agent-boundary-4bHwZy",
+  "checks": {
+    "neutralInitDoesNotStartProjectMcp": true,
+    "profileVerifiedBeforePrompt": true,
+    "projectMcpStartedOnNew": false,
+    "nativeSearchNotExecuted": true,
+    "fallbackHostRefused": false,
+    "exactNativeCatalog": true,
+    "cancelAcknowledged": true,
+    "projectMcpAtProcessStart": false,
+    "profilePreservedOnLoad": true
+  },
+  "trace": [],
+  "modelCalls": 2,
+  "paidImageCalls": 0,
+  "denyRules": [
+    "Grep",
+    "Glob"
+  ],
+  "profile": {
+    "name": "self-wiki-workbench-v1",
+    "description": "Self Wiki execution host; exact tools verified before prompting",
+    "toolConfig": {
+      "tools": [
+        {
+          "id": "GrokBuild:read_file"
+        },
+        {
+          "id": "GrokBuild:search_replace"
+        },
+        {
+          "id": "OpenCode:write"
+        },
+        {
+          "id": "GrokBuild:run_terminal_cmd"
+        }
+      ]
+    },
+    "injectDefaultTools": false,
+    "discoverSkills": false,
+    "agentsMd": false,
+    "disallowedTools": [
+      "Agent"
+    ],
+    "mcpInheritance": "none"
+  },
+  "sessionMeta": {
+    "currentWorkingDirectory": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\wiki-agent-boundary-4bHwZy\\project",
+    "isGitRepo": true,
+    "gitRoot": "C:/Users/Administrator/AppData/Local/Temp/wiki-agent-boundary-4bHwZy/project",
+    "showNonGitWarning": false,
+    "feedbackEnabled": true,
+    "codebaseIndexed": [],
+    "x.ai/sessionConfig": {
+      "options": [
+        {
+          "id": "grok-4.7",
+          "category": "model",
+          "label": "Grok 4.7",
+          "selected": true
+        },
+        {
+          "id": "grok-4.7-build-fast",
+          "category": "model",
+          "label": "Grok 4.7 Fast",
+          "selected": false
+        },
+        {
+          "id": "grok-4.6",
+          "category": "model",
+          "label": "Grok 4.6",
+          "selected": false
+        },
+        {
+          "id": "grok-4.5",
+          "category": "model",
+          "label": "Grok 4.5",
+          "selected": false
+        },
+        {
+          "id": "xhigh",
+          "category": "mode",
+          "label": "Extra High",
+          "description": "Maximum reasoning for the hardest tasks.",
+          "selected": false
+        },
+        {
+          "id": "high",
+          "category": "mode",
+          "label": "High",
+          "description": "Thorough reasoning and quality. Recommended.",
+          "selected": true
+        },
+        {
+          "id": "medium",
+          "category": "mode",
+          "label": "Medium",
+          "description": "Strong quality with a faster turnaround.",
+          "selected": false
+        },
+        {
+          "id": "low",
+          "category": "mode",
+          "label": "Low",
+          "description": "Fastest responses. Best for simple tasks.",
+          "selected": false
+        }
+      ]
+    },
+    "x.ai/sessionDetail": {
+      "sessionId": "01a186de-b4b6-7992-8227-8efffc8ba4d6",
+      "kind": "build",
+      "cwd": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\wiki-agent-boundary-4bHwZy\\project",
+      "currentModelId": "grok-4.7"
+    },
+    "x.ai/memoryNotesWritable": false
+  },
+  "profileVerification": {
+    "verified": true,
+    "profile": "self-wiki-workbench-v1",
+    "toolIds": [
+      "GrokBuild:read_file",
+      "GrokBuild:run_terminal_cmd",
+      "GrokBuild:search_replace",
+      "OpenCode:write"
+    ]
+  },
+  "advertisedTools": [
+    "read_file",
+    "run_terminal_cmd",
+    "search_replace",
+    "write"
+  ],
+  "cancelResult": {
+    "stopReason": "cancelled",
+    "_meta": {
+      "sessionId": "01a186de-b4b6-7992-8227-8efffc8ba4d6",
+      "requestId": "cf1f137a-50bf-47bf-9195-5f8700bb531b",
+      "promptId": "cf1f137a-50bf-47bf-9195-5f8700bb531b",
+      "totalTokens": 5686,
+      "modelId": "grok-4.7",
+      "inputTokens": 5274,
+      "outputTokens": 404,
+      "cachedReadTokens": 1536,
+      "reasoningTokens": 322,
+      "cancellationCategory": "MidTurnAbort"
+    }
+  }
+}

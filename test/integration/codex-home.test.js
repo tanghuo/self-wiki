@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, writeFile, rm, unlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
 import { codexEnvironment, codexMcpOverrides } from "../../src/agent/executors/codexEnvironment.js";
 import { parse } from "smol-toml";

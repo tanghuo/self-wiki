@@ -5,11 +5,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 import sharp from "sharp";
 import { withExternalResource } from './resourceGate.js';
 import { comfyuiRequest as request, comfyuiJson as json } from "./comfyuiApi.js";
-import { comfyuiConfig, configuredComfyuiWorkflow } from "../../shared/domain/comfyui.js";
+import { comfyuiConfig, configuredComfyuiWorkflow, maxComfyOutputImages } from "../../shared/domain/comfyui.js";
 import { maxImageBytes } from "../../shared/domain/elements.js";
 import { loadComfyuiWorkflow } from './comfyuiWorkflows.js';
 
-async function prepareSeeds(config, workflow, signal) {
+async function restoreSeedControls(config, workflow, signal) {
   const missing = Object.entries(workflow).filter(([, node]) => ['seed', 'noise_seed'].some((key) => typeof node.inputs[key] === 'number' && !node._meta?.seedControls?.[key]));
   // Older imports discarded the UI controls. Recover only controls from the
   // original saved graph; never replace the user's prompt or parameter values.
@@ -23,6 +23,10 @@ async function prepareSeeds(config, workflow, signal) {
     }
   }
   signal?.throwIfAborted();
+}
+
+async function prepareSeeds(config, workflow, signal) {
+  await restoreSeedControls(config, workflow, signal);
   const seeds = [];
   for (const [nodeId, node] of Object.entries(workflow)) for (const input of ['seed', 'noise_seed']) {
     if (typeof node.inputs[input] !== 'number') continue;
@@ -55,24 +59,49 @@ export const comfyuiImageExecutor = {
   generate: generateComfyui,
 };
 
-// Query only an already recorded task. This path never POSTs /prompt.
-export async function recoverComfyuiImage(settings, promptId, { signal } = {}) {
-  const config = comfyuiConfig(settings);
-  if (typeof promptId !== 'string' || !/^[\w-]{1,128}$/.test(promptId)) throw new Error('缺少已确认的 ComfyUI 任务 ID，不能安全取回');
-  return withExternalResource(`comfyui:${new URL(config.baseUrl).origin}`, signal, async () => {
-    const history = await json(config, `/history/${encodeURIComponent(promptId)}`, { signal });
-    const record = history[promptId];
-    if (!record) throw new Error('远端尚无此任务的完成记录；保留未知状态，请稍后核查');
-    if (record.status?.status_str === 'error') throw new Error('远端记录确认任务失败；保留未知事实，可明确重新执行');
-    const images = record.outputs?.[config.outputNodeId]?.images;
-    if (!Array.isArray(images) || images.length !== 1) throw new Error('远端任务未返回唯一图片，不能取回');
-    const image = images[0];
-    if (typeof image.filename !== 'string' || !image.filename || image.filename.length > 1000 || image.subfolder !== undefined && typeof image.subfolder !== 'string' || ![undefined, 'output', 'temp'].includes(image.type)) throw new Error('远端图片记录无效');
-    const query = new URLSearchParams({ filename: image.filename, subfolder: image.subfolder || '', type: image.type || 'output' });
-    const bytes = await request(config, `/view?${query}`, { signal, maxBytes: maxImageBytes });
+
+function outputImages(record, config, multiple) {
+  const images = record.outputs?.[config.outputNodeId]?.images;
+  if (!Array.isArray(images) || !images.length) throw new Error("ComfyUI 所选输出节点没有返回图片，请检查输出节点和工作流");
+  if (!multiple && images.length !== 1) throw new Error(`ComfyUI 返回了 ${images.length} 张图片；当前入口只接受单张结果，请使用工作流生图接收多张图片`);
+  if (images.length > maxComfyOutputImages) throw new Error(`ComfyUI 单次最多接收 ${maxComfyOutputImages} 张图片，请降低生成数量`);
+  return images;
+}
+
+async function downloadImage(config, image, signal) {
+  if (!image || typeof image.filename !== 'string' || !image.filename || image.filename.length > 1000
+      || image.subfolder !== undefined && typeof image.subfolder !== 'string'
+      || ![undefined, 'output', 'temp'].includes(image.type)) throw new Error('ComfyUI 返回了无效的图片文件信息');
+  const query = new URLSearchParams({ filename: image.filename, subfolder: image.subfolder || '', type: image.type || 'output' });
+  const bytes = await request(config, `/view?${query}`, { signal, maxBytes: maxImageBytes });
+  try {
     const info = await sharp(bytes, { limitInputPixels: 40_000_000 }).metadata();
-    if (!['png', 'jpeg', 'webp'].includes(info.format) || (info.pages || 1) !== 1) throw new Error('取回的文件不是支持的图片');
-    return { bytes };
+    if (!['png', 'jpeg', 'webp'].includes(info.format) || (info.pages || 1) !== 1) throw new Error('Unsupported image');
+    return { bytes, format: info.format };
+  } catch { throw new Error('ComfyUI 返回的文件不是有效的单张 PNG、JPEG 或 WebP 图片，或超过 4000 万像素'); }
+}
+
+// Query only an already recorded task. This path never POSTs /prompt.
+export async function recoverComfyuiImage(settings, ticket, { signal, multiple = false } = {}) {
+  const config = comfyuiConfig(settings);
+  const sequential = typeof ticket !== 'string';
+  const promptIds = sequential ? ticket?.promptIds : [ticket];
+  if (sequential && (!multiple || !Number.isSafeInteger(ticket?.count) || ticket.count < 2 || ticket.count > maxComfyOutputImages
+      || !Array.isArray(promptIds) || promptIds.length !== ticket.count)) throw new Error('单张生成请求尚未全部提交，不能将部分结果作为全部结果取回；请先核对已生成的图片，再明确重新运行，不会自动补交请求');
+  if (!Array.isArray(promptIds) || promptIds.some((id) => typeof id !== 'string' || !/^[\w-]{1,128}$/.test(id))
+      || new Set(promptIds).size !== promptIds.length) throw new Error('缺少已确认的 ComfyUI 任务 ID，不能安全取回');
+  return withExternalResource(`comfyui:${new URL(config.baseUrl).origin}`, signal, async () => {
+    const images = [];
+    for (const promptId of promptIds) {
+      const history = await json(config, `/history/${encodeURIComponent(promptId)}`, { signal });
+      const record = history[promptId];
+      if (!record) throw new Error('远端尚无此任务的完成记录；保留未知状态，请稍后核查');
+      if (record.status?.status_str === 'error') throw new Error('远端记录确认任务失败；保留未知事实，可明确重新执行');
+      images.push(...outputImages(record, config, sequential ? false : multiple));
+    }
+    const results = [];
+    for (const image of images) results.push(await downloadImage(config, image, signal));
+    return multiple ? { images: results } : results[0];
   });
 }
 
@@ -102,7 +131,7 @@ async function cancelComfyui(config, promptId) {
   } catch { return "未能确认远端取消，请到 ComfyUI 查看任务"; }
 }
 
-async function waitForImage(config, promptId, signal, report) {
+async function waitForImages(config, promptId, signal, report, multiple) {
   let poll = 0, failures = 0, missing = 0, lastProgress = "";
   function progress(message) {
     if (message !== lastProgress) { lastProgress = message; report({ type: "progress", message }); }
@@ -124,10 +153,7 @@ async function waitForImage(config, promptId, signal, report) {
     if (record) {
       const error = record.status?.messages?.findLast((entry) => ["execution_error", "execution_interrupted"].includes(entry?.[0]));
       if (record.status?.status_str === "error" || error) throw new Error(`ComfyUI 执行失败：${String(error?.[1]?.exception_message || error?.[0] || "请检查 ComfyUI 执行记录").slice(0, 1500)}`);
-      const images = record.outputs?.[config.outputNodeId]?.images;
-      if (!Array.isArray(images) || !images.length) throw new Error("ComfyUI 所选输出节点没有返回图片，请检查输出节点和工作流");
-      if (images.length !== 1) throw new Error(`ComfyUI 返回了 ${images.length} 张图片；第一版要求单张结果，请将工作流批量数设为 1`);
-      return images[0];
+      return outputImages(record, config, multiple);
     }
     if (queue) {
       if (!Array.isArray(queue.queue_running) || !Array.isArray(queue.queue_pending)) throw new Error("ComfyUI 返回了无效队列信息");
@@ -171,7 +197,66 @@ export async function generateComfyui(value, options) {
   return withExternalResource(`comfyui:${new URL(options.config.baseUrl).origin}`, options.signal, () => generateComfyuiUnlocked(value, options));
 }
 
-async function generateComfyuiUnlocked(value, { config: settings, workspace, signal: callerSignal, onProgress, onDispatch }) {
+async function generateComfyuiUnlocked(value, options) {
+  if (!options.multiple || typeof value?.prompt !== 'string') return generateComfyuiRequest(value, options);
+  const config = comfyuiConfig(options.config), workflow = configuredComfyuiWorkflow(config, { requirePrompt: !!value.prompt.trim() });
+  const counts = Object.values(workflow).map((node) => node.inputs.batch_size).filter((count) => typeof count === 'number');
+  if (counts.some((count) => !Number.isSafeInteger(count) || count < 1 || count > maxComfyOutputImages)) throw new Error(`生成数量须为 1–${maxComfyOutputImages} 的整数`);
+  const count = Math.max(1, ...counts);
+  if (count === 1) return generateComfyuiRequest(value, options);
+  if (counts.some((value) => value !== 1 && value !== count)) throw new Error('多个 batch_size 的生成数量不一致，请设置相同数量或保留为 1');
+  for (const node of Object.values(workflow)) if (typeof node.inputs.batch_size === 'number') node.inputs.batch_size = 1;
+  const settings = { ...config, workflow }, requests = [], images = [];
+  const signal = AbortSignal.any([...(options.signal ? [options.signal] : []), AbortSignal.timeout(1800000 * count)]);
+  let dispatched = false;
+  try {
+    await restoreSeedControls(settings, workflow, signal);
+    for (let index = 0; index < count; index++) {
+      signal.throwIfAborted();
+      const result = await generateComfyuiRequest(index === 0 ? value : { ...value, referencePaths: undefined }, {
+        ...options, config: settings, signal, multiple: false, deferDownload: true,
+        onDispatch() { if (!dispatched) { options.onDispatch?.(); dispatched = true; } },
+        onProgress(event) {
+          if (event.type === 'metadata' && event.metadata.comfyui) {
+            requests[index] = event.metadata.comfyui;
+            // Persist the entire ordered set on each update; recovery must not
+            // mistake the latest task's single image for the complete result.
+            options.onProgress?.({ ...event, metadata: { comfyui: {
+              ...event.metadata.comfyui, sequence: structuredClone({ count, requests }),
+            } } });
+          } else if (event.type === 'prepared_prompt') {
+            if (index === 0) options.onProgress?.(event);
+          } else options.onProgress?.({ ...event, ...(event.message && { message: `第 ${index + 1} / ${count} 张：${event.message}` }) });
+        },
+      });
+      images.push(...result.images);
+      // Reuse uploaded references; later requests still run seed preparation
+      // independently, respecting fixed versus randomize controls.
+      for (const reference of requests[index].referenceImages || []) workflow[reference.nodeId].inputs[reference.input] = reference.filename;
+    }
+    const results = await saveOutputImages(config, images, options.workspace, signal, (event) => options.onProgress?.(event));
+    return { images: results };
+  } catch (error) {
+    if (signal.aborted && !/ComfyUI 生图已停止|ComfyUI 生图等待超过/.test(error.message)) throw new Error('ComfyUI 生图已停止或等待超时；已提交任务的记录仍保留，未提交的请求不会继续生成');
+    throw error;
+  }
+}
+
+async function saveOutputImages(config, images, workspace, signal, report) {
+  const folder = await mkdtemp(path.join(workspace, 'comfyui-image-')), results = [];
+  for (const [index, image] of images.entries()) {
+    report({ type: 'progress', message: `正在取回 ComfyUI 图片 ${index + 1} / ${images.length}` });
+    const { bytes, format } = await downloadImage(config, image, signal);
+    signal.throwIfAborted();
+    const savedPath = path.join(folder, `result-${index + 1}.${format}`);
+    await writeFile(savedPath, bytes, { flag: 'wx' });
+    results.push({ bytes, savedPath });
+  }
+  signal.throwIfAborted();
+  return results;
+}
+
+async function generateComfyuiRequest(value, { config: settings, workspace, signal: callerSignal, onProgress, onDispatch, multiple = false, deferDownload = false }) {
   callerSignal?.throwIfAborted();
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !["prompt", "referencePaths"].includes(key))
       || typeof value.prompt !== "string" || value.prompt.length > 12000
@@ -180,6 +265,10 @@ async function generateComfyuiUnlocked(value, { config: settings, workspace, sig
     throw new Error(Array.isArray(settings?.imageInputs) ? `ComfyUI 只接受不超过 12000 字的 prompt 和最多 ${settings.imageInputs.length} 张已映射参考图；prompt 留空沿用工作流提示词` : "ComfyUI 只接受不超过 12000 字的 prompt 和最多一张参考图；prompt 留空沿用工作流提示词");
   }
   const config = comfyuiConfig(settings), workflow = configuredComfyuiWorkflow(config, { requirePrompt: !!value.prompt.trim() });
+  for (const node of Object.values(workflow)) {
+    const count = node.inputs.batch_size;
+    if (typeof count === 'number' && (!Number.isSafeInteger(count) || count < 1 || count > maxComfyOutputImages)) throw new Error(`生成数量须为 1–${maxComfyOutputImages} 的整数`);
+  }
   const workflowSha256 = createHash("sha256").update(JSON.stringify(workflow)).digest("hex");
   const seeds = await prepareSeeds(config, workflow, callerSignal);
   const promptSource = value.prompt.trim() ? "message" : "workflow";
@@ -235,24 +324,10 @@ async function generateComfyuiUnlocked(value, { config: settings, workspace, sig
     signal.throwIfAborted();
     report({ type: "metadata", metadata: { comfyui: { ...metadata, promptId } } });
     report({ type: "submitted", message: "ComfyUI 已接收工作流，等待生成" });
-    const image = await waitForImage(config, promptId, signal, report); remoteFinished = true;
-    if (!image || typeof image.filename !== "string" || !image.filename || image.filename.length > 1000
-        || image.subfolder !== undefined && typeof image.subfolder !== "string"
-        || ![undefined, "output", "temp"].includes(image.type)) throw new Error("ComfyUI 返回了无效的图片文件信息");
-    const query = new URLSearchParams({ filename: image.filename, subfolder: image.subfolder || "", type: image.type || "output" });
-    report({ type: "progress", message: "正在取回 ComfyUI 图片" });
-    const bytes = await request(config, `/view?${query}`, { signal, maxBytes: maxImageBytes });
-    let format;
-    try {
-      const info = await sharp(bytes, { limitInputPixels: 40_000_000 }).metadata();
-      if (!["png", "jpeg", "webp"].includes(info.format) || (info.pages || 1) !== 1) throw new Error("Unsupported image");
-      format = info.format;
-    } catch { throw new Error("ComfyUI 返回的文件不是有效的单张 PNG、JPEG 或 WebP 图片，或超过 4000 万像素"); }
-    signal.throwIfAborted();
-    const folder = await mkdtemp(path.join(workspace, "comfyui-image-")), savedPath = path.join(folder, `result.${format}`);
-    await writeFile(savedPath, bytes, { flag: "wx" });
-    signal.throwIfAborted();
-    return { bytes, savedPath };
+    const images = await waitForImages(config, promptId, signal, report, multiple); remoteFinished = true;
+    if (deferDownload) return { images };
+    const results = await saveOutputImages(config, images, workspace, signal, report);
+    return multiple ? { images: results } : results[0];
   } catch (error) {
     if (signal.aborted) {
       const cancellation = promptId && !remoteFinished ? await cancelComfyui(config, promptId) : submissionAttempted ? "已提交的远端任务可能仍会完成" : "未提交生成任务";

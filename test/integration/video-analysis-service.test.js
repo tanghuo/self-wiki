@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import path from "node:path";
 import os from "node:os";
 import sharp from "sharp";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultVideoAnalysisConfig, videoAnalysisConfig } from "../../src/shared/domain/videoAnalysis.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
 import { encodeVisual } from "../../src/server/semantic/visualEncoderClient.js";
@@ -129,7 +129,7 @@ test("video HTTP routes reject invalid config and preserve startup without optio
   assert.equal(bad.status, 400);
   assert.equal((await fetch(`${app.url}api/visual-search`)).status, 400);
   assert.equal((await fetch(`${app.url}api/video-analysis/frames/999`)).status, 404);
-  const cli = JSON.parse((await exec(process.execPath, ["src/cli/main.js", "video-analysis", "status", "--url", app.url], { windowsHide: true })).stdout);
+  const cli = JSON.parse((await exec(process.execPath, ["src/cli/main.js", "video-analysis", "status", "--url", app.url, '--token-file', app.credentialFile], { windowsHide: true })).stdout);
   assert.ok(JSON.stringify(cli).includes('"enabled":false'));
   const config = { ...status.config, visual: { ...status.config.visual, enabled: true, model: "fixture", baseUrl: await encoder(t) } };
   const save = (body) => fetch(`${app.url}api/video-analysis/config`, { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });

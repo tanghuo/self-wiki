@@ -12,7 +12,7 @@ import { createImageStore } from '../../src/server/assets/imageStore.js';
 import { createWorkflowService } from '../../src/server/application/workflow/service.js';
 import { workflowNode as n, constant as c, output as o } from '../../src/shared/domain/workflow/examples.js';
 import { lanRestriction } from '../../src/server/http/lanRoutes.js';
-import { createServer } from '../../src/server/server.js';
+import { createServer, fetch } from "../helpers/authenticatedServer.js";
 
 const key = () => randomUUID();
 const definition = (nodes) => ({ schemaVersion: 1, nodes, outputs: {} });
@@ -25,7 +25,7 @@ async function fixture(t, overrides = {}) {
   const service = createWorkflowService({ repo, store, imageStore, executionConfig: config, wiki: { async image() { imageReads++; return { bytes: png }; } }, ...overrides });
   service.start();
   t.after(async () => { await service.close(); db.close(); assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-workflow-')); await rm(dir, { recursive: true, force: true }); });
-  return { service, repo, db, store, png, imageReads: () => imageReads };
+  return { dir, service, repo, db, store, png, imageReads: () => imageReads };
 }
 async function until(fn, predicate, timeout = 7000) {
   const deadline = Date.now() + timeout;
@@ -34,6 +34,84 @@ async function until(fn, predicate, timeout = 7000) {
 }
 function create(service, d) { return service.create({ requestKey: key(), name: 'test', definition: d }); }
 async function run(service, w, inputs = {}) { return service.createRun(w.id, { requestKey: key(), revision: w.revision, inputs }); }
+
+test('unified run supports full execution and repeated changed runs with idempotent creation', async (t) => {
+  const { service } = await fixture(t);
+  const d = definition([
+    n('source', 'element', { source: 'runtime', parameter: 'source', valueType: 'text' }),
+    n('stable', 'element', { source: 'fixed', parameter: 'stable', valueType: 'text', default: 'stable' }),
+    n('result', 'preview', { valueType: 'text' }, { value: o('source') }),
+  ]);
+  const w = create(service, d), first = await run(service, w, { source: 'original' });
+  await until(() => service.run(first.id), (r) => r.state === 'succeeded');
+  const payload = { requestKey: key(), inputs: { source: 'changed' }, count: 2 };
+  const derived = await service.derive(first.id, payload);
+  assert.equal(derived.ids.length, 2);
+  assert.deepEqual(await service.derive(first.id, payload), derived);
+  for (const id of derived.ids) {
+    const child = await until(() => service.run(id), (r) => r.state === 'succeeded');
+    assert.equal(child.parentId, first.id);
+    assert.equal(child.inputs.source, 'changed');
+    assert.ok(child.rootInstances.find((i) => i.nodeId === 'stable').data.reusedFrom);
+    assert.ok(child.rootInstances.filter((i) => i.nodeId !== 'stable').every((i) => !i.data.reusedFrom));
+  }
+  const full = await service.derive(derived.id, { requestKey: key(), regenerate: d.nodes.map((node) => node.id) });
+  const repeated = await until(() => service.run(full.id), (r) => r.state === 'succeeded');
+  assert.equal(repeated.inputs.source, 'changed');
+  assert.ok(repeated.rootInstances.every((i) => !i.data.reusedFrom));
+  for (const count of [0, 21, 1.5, '2']) await assert.rejects(service.derive(first.id, { requestKey: key(), count }), /运行次数/);
+});
+
+test('explicit AI reuse preserves the selected run output across upstream changes and never calls the model again', async (t) => {
+  let calls = 0;
+  const { service } = await fixture(t, { model: async (_snapshot, options) => { calls++; options.onRequest(); return { text: `answer:${options.prompt}` }; } });
+  const d = definition([
+    n('source', 'element', { source: 'runtime', parameter: 'source', valueType: 'text' }),
+    n('model', 'model', { adapterId: 'grok-text', outputType: 'text' }, { prompt: o('source') }),
+    n('check', 'review', { valueType: 'text' }, { value: o('model') }),
+  ]);
+  const started = await run(service, create(service, d), { source: 'old' });
+  const first = await until(() => service.run(started.id), (r) => r.state === 'waiting_review');
+  const original = first.rootInstances.find((i) => i.nodeId === 'model');
+  const payload = { requestKey: key(), inputs: { source: 'new' }, regenerate: d.nodes.map((n) => n.id), reuse: ['model'], count: 2 };
+  const result = await service.derive(first.id, payload);
+  assert.deepEqual(await service.derive(first.id, payload), result);
+  for (const id of result.ids) {
+    const child = await until(() => service.run(id), (r) => r.state === 'waiting_review');
+    assert.equal(child.inputs.source, 'new');
+    const model = child.rootInstances.find((i) => i.nodeId === 'model');
+    assert.deepEqual(model.outputs, original.outputs);
+    assert.equal(model.data.reusedFrom.runId, first.id);
+    assert.equal(child.rootInstances.find((i) => i.nodeId === 'check').state, 'waiting_review');
+  }
+  assert.equal(calls, 1);
+  for (const reuse of [['missing'], ['source'], ['check'], ['model', 'model'], 'model']) await assert.rejects(service.derive(first.id, { requestKey: key(), reuse }), /复用|reuse/);
+  const changed = structuredClone(first.definition); changed.nodes.find((n) => n.id === 'model').inputs.prompt = c('different');
+  await assert.rejects(service.derive(first.id, { requestKey: key(), definition: changed, reuse: ['model'] }), /配置未修改/);
+  const fresh = await service.derive(first.id, { requestKey: key(), regenerate: d.nodes.map((n) => n.id) });
+  await until(() => service.run(fresh.id), (r) => r.state === 'waiting_review');
+  assert.equal(calls, 2, 'without explicit reuse a full run still calls the model');
+});
+
+test('missing explicitly reused images stop derivation without calling the generator', async (t) => {
+  let calls = 0;
+  const fx = await fixture(t, { generate: async (_snapshot, _value, options) => { calls++; options.onDispatch(); return { bytes: fx.png }; } });
+  const started = await run(fx.service, create(fx.service, definition([n('image', 'image.generate', { adapterId: 'grok-build' }, { prompt: c('test') })])));
+  const first = await until(() => fx.service.run(started.id), (r) => r.state === 'succeeded');
+  const instance = first.rootInstances.find((i) => i.nodeId === 'image');
+  const list = fx.repo.artifact(instance.outputs.images || instance.outputs.value);
+  const image = fx.repo.artifact(list.value[0].artifactId);
+  await rm(path.join(fx.dir, 'workflow-artifacts', image.storageKey));
+  await assert.rejects(fx.service.derive(first.id, { requestKey: key(), reuse: ['image'] }), /缺失或损坏/);
+  assert.equal(calls, 1);
+});
+
+test('failed AI steps cannot be explicitly reused', async (t) => {
+  const { service } = await fixture(t, { model: async () => { throw new Error('fixture failure'); } });
+  const started = await run(service, create(service, definition([n('model', 'model', { adapterId: 'grok-text', outputType: 'text' }, { prompt: c('test') })])));
+  const first = await until(() => service.run(started.id), (r) => ['failed', 'partial_failed'].includes(r.state));
+  await assert.rejects(service.derive(first.id, { requestKey: key(), reuse: ['model'] }), /没有成功结果/);
+});
 
 test('temporary generation settings are validated and frozen without saving; changed image settings reuse the model output', async (t) => {
   let modelCalls = 0;
@@ -619,4 +697,51 @@ test('out-of-order human decisions keep loop pairing stable and expansion stays 
   const done = await until(() => service.run(r.id), (v) => v.state === 'succeeded');
   const rows = repo.artifact(done.instances.find((i) => i.nodeId === 'loop').outputs.value).value;
   assert.deepEqual(rows.map((r) => repo.artifact(r.outputs.text.artifactRef).value), Array.from({ length: 20 }, (_, i) => `edited-${i}`));
+});
+
+test('run count creates that many independent runs once per request', async (t) => {
+  let modelCalls = 0;
+  const fx = await fixture(t, { model: async (_snapshot, options) => { options.onRequest(); modelCalls++; return { text: 'ok' }; } });
+  const w = create(fx.service, definition([
+    n('topic', 'element', { source: 'runtime', parameter: 'topic', valueType: 'text' }),
+    n('photo', 'element', { source: 'runtime', parameter: 'photo', valueType: 'image' }),
+    n('model', 'model', { executor: 'grok-text' }, { prompt: o('topic') }),
+  ]));
+  const inputs = { topic: '同一段文字', photo: { elementId: 1 } };
+  const request = { requestKey: key(), revision: w.revision, inputs, count: 2 };
+  const created = await fx.service.createRun(w.id, request);
+  const again = await fx.service.createRun(w.id, request);
+  assert.equal(created.count, 2);
+  assert.deepEqual(again.ids, created.ids);
+  assert.equal(again.id, created.id);
+  assert.equal(created.id, created.ids[1]);
+  assert.notEqual(created.ids[0], created.ids[1]);
+  const runs = [];
+  for (const id of created.ids) runs.push(await until(() => fx.service.run(id), (run) => run.state === 'succeeded'));
+  assert.equal(modelCalls, 2, 'one request executes each run once');
+  assert.equal(fx.imageReads(), 1, 'shared inputs are copied once');
+  assert.equal(runs[0].inputs.topic, '同一段文字');
+  assert.deepEqual(runs[0].inputs.photo, runs[1].inputs.photo);
+  assert.equal(runs[0].inputArtifacts[0].id, runs[1].inputArtifacts[0].id);
+  assert.notEqual(runs[0].version, runs[1].version);
+  assert.equal(fx.service.get(w.id).revision, w.revision);
+  assert.equal(fx.service.get(w.id).definition.runCount, undefined, 'the request count does not rewrite the saved draft');
+  await assert.rejects(fx.service.createRun(w.id, { ...request, count: 1 }), /载荷不同/);
+  for (const count of [0, 21, 1.5, '2']) {
+    await assert.rejects(fx.service.createRun(w.id, { requestKey: key(), revision: w.revision, inputs, count }), /运行次数须为 1–20 的整数/);
+  }
+  const single = await fx.service.createRun(w.id, { requestKey: key(), revision: w.revision, inputs });
+  assert.equal(single.count, 1);
+  assert.deepEqual(single.ids, [single.id]);
+  await until(() => fx.service.run(single.id), (run) => run.state === 'succeeded');
+  assert.equal(modelCalls, 3);
+  const saved = fx.service.save(w.id, { name: w.name, definition: { ...w.definition, runCount: 3 }, revision: w.revision });
+  assert.equal(fx.service.validate(saved.id, { definition: { ...saved.definition, runCount: 21 } }).valid, false);
+  assert.equal(fx.service.validate(saved.id, { definition: saved.definition }).valid, true);
+  const batch = await fx.service.createRun(saved.id, { requestKey: key(), revision: saved.revision, inputs, count: 2 });
+  assert.equal(batch.count, 2);
+  assert.equal(fx.service.run(batch.id).definition.runCount, 3);
+  assert.equal(fx.service.get(saved.id).definition.runCount, 3);
+  assert.equal(fx.service.list().find((item) => item.id === saved.id).latestState === null, false);
+  assert.equal((await fx.service.get(saved.id)).runs.length, 5);
 });

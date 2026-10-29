@@ -6,10 +6,12 @@ import { mkdtemp, readFile, readdir, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import sharp from "sharp";
-import { createServer } from "../../src/server/server.js";
+import { createServer, fetch, tokenFileForUrl } from "../helpers/authenticatedServer.js";
 
 const entry = path.resolve("src/cli/main.js");
 function cli(args, input = "", env = {}) {
+  const url = args[args.indexOf('--url') + 1];
+  if (args.includes('--url') && !args.includes('--token-file')) args = [...args, '--token-file', tokenFileForUrl(url) || path.resolve('test/fixtures/local-credentials.json')];
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [entry, ...args.map(String)], {
       env: { ...process.env, SELF_WIKI_URL: "", APP_DATA_DIR: "", ...env }, windowsHide: true, stdio: ["pipe", "pipe", "pipe"],
@@ -187,7 +189,7 @@ test("CLI discovery verifies identity, rejects ambiguity and cleans each instanc
   assert.equal(discovered.instance.dataDir, dir);
   if (process.platform === "win32") success(await cli(["status", "--data-dir", dir.toUpperCase()]));
   const runtimeDir = path.join(dir, ".runtime");
-  const marker = (await readdir(runtimeDir))[0];
+  const marker = (await readdir(runtimeDir)).find(name => name.startsWith('server-'));
   const record = JSON.parse(await readFile(path.join(runtimeDir, marker), "utf8"));
   await writeFile(path.join(runtimeDir, "server-dead.json"), JSON.stringify({ ...record, instanceId: "stale" }));
   success(await cli(args));
