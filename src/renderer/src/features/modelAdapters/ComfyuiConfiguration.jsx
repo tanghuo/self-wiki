@@ -4,7 +4,7 @@ import { configuredComfyuiWorkflow, maxComfyReferenceImages, maxComfyOutputImage
 import { comfyuiConfig } from '../../../../shared/domain/comfyui.js';
 import Dialog from '../../Dialog.jsx';
 import './comfyuiConfiguration.css';
-import { alignComfyuiParameters, comfyuiParameterOptions } from '../../../../shared/domain/comfyuiParameters.js';
+import { alignComfyuiParameters, comfyuiParameterOptions, matchComfyuiImageSize } from '../../../../shared/domain/comfyuiParameters.js';
 
 const parameterNames = { seed: '种子', noise_seed: '噪声种子', steps: '步数', cfg: '提示词强度', denoise: '降噪强度', width: '宽度', height: '高度', batch_size: '生成数量', sampler_name: '采样器', scheduler: '调度器', negative_prompt: '负面提示词', ckpt_name: '模型', unet_name: '扩散模型', clip_name: '文本编码器', vae_name: 'VAE', filename_prefix: '保存文件名前缀', strength_model: 'LoRA 强度' };
 const commonParameters = new Set(['batch_size', 'seed', 'noise_seed', 'steps', 'cfg', 'denoise', 'width', 'height', 'sampler_name', 'scheduler', 'strength_model']);
@@ -25,29 +25,31 @@ function imageEntries(workflow, outputNodeId) {
   return images;
 }
 
-function WorkflowParameter({ field, value, onChange }) {
+function WorkflowParameter({ field, value, onChange, disabledReason = '' }) {
   const [draft, setDraft] = useState(String(value)), [error, setError] = useState('');
   const id = useId();
-  useEffect(() => { setDraft(String(value)); setError(''); }, [value]);
+  const disabled = !!disabledReason;
+  useEffect(() => { setDraft(String(value)); setError(''); }, [value, disabled]);
   const label = `工作流参数 ${field.label}`;
   const display = parameterNames[field.input] || field.input;
   if (field.type === 'BOOLEAN') return <label title={field.label}><input aria-label={label} type="checkbox" checked={value} onChange={(event) => onChange(event.target.checked)} />{display}</label>;
   if (field.type === 'COMBO') return <label title={field.label}>{display}<select aria-label={label} value={JSON.stringify(value)} onChange={(event) => onChange(JSON.parse(event.target.value))}>{!field.options.some((option) => option === value) && <option value={JSON.stringify(value)}>{String(value)}（当前值）</option>}{field.options.map((option) => <option key={JSON.stringify(option)} value={JSON.stringify(option)}>{String(option)}</option>)}</select></label>;
-  if (field.type === 'INT' || field.type === 'FLOAT') return <label title={field.label}>{display}<small id={`${id}-range`}>{field.type === 'INT' ? '整数' : '数字'} · {field.min ?? '不限'} ～ {field.max ?? '不限'}</small><input aria-label={label} aria-describedby={`${id}-range${error ? ` ${id}-error` : ''}`} aria-invalid={!!error} type="number" min={field.min} max={field.max} step={field.type === 'INT' ? 1 : field.step || 'any'} value={draft} onChange={(event) => {
+  if (field.type === 'INT' || field.type === 'FLOAT') return <label title={field.label}>{display}<small id={`${id}-range`}>{field.type === 'INT' ? '整数' : '数字'} · {field.min ?? '不限'} ～ {field.max ?? '不限'}</small><input aria-label={label} aria-describedby={`${id}-range${disabled ? ` ${id}-disabled` : error ? ` ${id}-error` : ''}`} aria-invalid={!disabled && !!error} disabled={disabled} type="number" min={field.min} max={field.max} step={field.type === 'INT' ? 1 : field.step || 'any'} value={draft} onChange={(event) => {
     const control = event.target, number = control.valueAsNumber;
     setDraft(control.value);
     if (control.value !== '' && control.validity.valid && Number.isFinite(number) && (field.type !== 'INT' || Number.isSafeInteger(number))) { setError(''); onChange(number); }
     else setError(control.value === '' ? '请输入数值' : field.min != null && number < field.min ? `不能小于 ${field.min}` : field.max != null && number > field.max ? `不能大于 ${field.max}` : field.type === 'INT' ? '请输入范围内的整数' : '请输入符合步长的数值');
-  }} />{error && <span id={`${id}-error`} role="alert" className="workflow-field-error">{error}</span>}</label>;
+  }} />{disabled ? <small id={`${id}-disabled`}>{disabledReason}</small> : error && <span id={`${id}-error`} role="alert" className="workflow-field-error">{error}</span>}</label>;
   const props = { 'aria-label': label, value, maxLength: 12000, onChange: (event) => onChange(event.target.value) };
   return <label title={field.label}>{display}{field.multiline ? <textarea {...props} /> : <input {...props} />}</label>;
 }
-function ComfyuiEditor({ value = {}, onChange, adapterId, onBusyChange, parametersOnly = false }) {
+function ComfyuiEditor({ value = {}, onChange, adapterId, onBusyChange, parametersOnly = false, referenceImages = [] }) {
   const endpoint = '/api/workflows/adapters/' + encodeURIComponent(adapterId);
   const operation = useRef(0);
   const describedGraph = useRef(null);
   useEffect(() => () => { operation.current++; }, []);
   const [listing, setListing] = useState(null), [record, setRecord] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  const [referenceId, setReferenceId] = useState(''), [matchNotice, setMatchNotice] = useState('');
   useEffect(() => { onBusyChange(busy); return () => onBusyChange(false); }, [busy, onBusyChange]);
   useEffect(() => { let alive = true; request(endpoint + '/workflows').then((result) => { if (alive) setListing(result); }).catch((failure) => { if (alive) setError(failure.message); }); return () => { alive = false; }; }, []);
   useEffect(() => {
@@ -100,9 +102,29 @@ function ComfyuiEditor({ value = {}, onChange, adapterId, onBusyChange, paramete
   const mappings = value.imageInputs || [];
   const patch = (fields) => onChange({ ...value, ...fields });
   const parameters = (record?.workflow === value.workflow ? record.fields : []).filter((field) => reachable[field.nodeId] && graph[field.nodeId]?.class_type !== 'LoadImage' && !(value.promptMode !== 'workflow' && value.prompt?.nodeId === field.nodeId && value.prompt.input === field.input));
+  const selectedReference = referenceImages.find(image => image.id === referenceId) || referenceImages[0];
+  async function matchReference() {
+    if (!selectedReference) return;
+    const sequence = ++operation.current;
+    setBusy(true); setError(''); setMatchNotice('');
+    const image = new Image();
+    try {
+      image.src = selectedReference.src;
+      await image.decode();
+      if (sequence !== operation.current) return;
+      const result = matchComfyuiImageSize(graph, parameters, image.naturalWidth, image.naturalHeight);
+      describedGraph.current = result.workflow;
+      setRecord(previous => ({ ...previous, workflow: result.workflow }));
+      patch({ workflow: result.workflow });
+      setMatchNotice(`${selectedReference.label}（${image.naturalWidth}×${image.naturalHeight}）→ ${result.matches.map(match => `${match.ratio} · ${match.resolution}`).join('；')}`);
+    } catch { if (sequence === operation.current) setError('匹配失败，请确认参考图片可读取，且工作流提供比例与分辨率档位。'); }
+    finally { image.src = ''; if (sequence === operation.current) setBusy(false); }
+  }
   const renderParameter = (parameter) => {
     const field = parameter.input === 'batch_size' ? { ...parameter, min: Math.max(1, parameter.min ?? 1), max: Math.min(maxComfyOutputImages, parameter.max ?? maxComfyOutputImages) } : parameter;
-    return <div key={`${field.nodeId}:${field.input}`}><WorkflowParameter field={{ ...field, options: comfyuiParameterOptions(field, graph[field.nodeId].inputs) }} value={graph[field.nodeId].inputs[field.input]} onChange={(nextValue) => changeParameter(field, nextValue)} />{['seed', 'noise_seed'].includes(field.input) && <label>种子模式<select aria-label={`种子模式 ${field.label}`} value={graph[field.nodeId]._meta?.seedControls?.[field.input]?.mode || 'fixed'} onChange={(event) => changeSeedMode(field, event.target.value)}><option value="randomize">每次随机</option><option value="fixed">固定</option>{['increment', 'decrement'].includes(graph[field.nodeId]._meta?.seedControls?.[field.input]?.mode) && <option value={graph[field.nodeId]._meta.seedControls[field.input].mode}>递增/递减（请选择随机或固定）</option>}</select></label>}</div>;
+    const node = graph[field.nodeId];
+    if (node.class_type === 'CharacterVideoImageSize' && ['自定义宽', '自定义高'].includes(field.input) && node.inputs['分辨率档位'] !== '自定义') return null;
+    return <div key={`${field.nodeId}:${field.input}`}><WorkflowParameter field={{ ...field, options: comfyuiParameterOptions(field, node.inputs) }} value={node.inputs[field.input]} onChange={(nextValue) => changeParameter(field, nextValue)} />{['seed', 'noise_seed'].includes(field.input) && <label>种子模式<select aria-label={`种子模式 ${field.label}`} value={graph[field.nodeId]._meta?.seedControls?.[field.input]?.mode || 'fixed'} onChange={(event) => changeSeedMode(field, event.target.value)}><option value="randomize">每次随机</option><option value="fixed">固定</option>{['increment', 'decrement'].includes(graph[field.nodeId]._meta?.seedControls?.[field.input]?.mode) && <option value={graph[field.nodeId]._meta.seedControls[field.input].mode}>递增/递减（请选择随机或固定）</option>}</select></label>}</div>;
   };
   function changeSeedMode(field, mode) {
     const node = graph[field.nodeId];
@@ -112,6 +134,7 @@ function ComfyuiEditor({ value = {}, onChange, adapterId, onBusyChange, paramete
     patch({ workflow: nextGraph });
   }
   function changeParameter(field, nextValue) {
+    setMatchNotice('');
     const node = graph[field.nodeId];
     const nextGraph = alignComfyuiParameters({ ...graph, [field.nodeId]: { ...node, inputs: { ...node.inputs, [field.input]: nextValue } } }, record?.fields || []);
     describedGraph.current = nextGraph;
@@ -139,6 +162,12 @@ function ComfyuiEditor({ value = {}, onChange, adapterId, onBusyChange, paramete
       <span>已配置 {mappings.filter((entry) => images.includes(entry.nodeId)).length} / {Math.min(maxComfyReferenceImages, images.length)} 个参考图入口</span>
       </section>}
       <section className="comfyui-section comfyui-parameters"><h3>生成参数</h3><p>「生成数量」设为多张时，会逐张生成并汇总结果，最多 {maxComfyOutputImages} 张；随机种子每张重新取值，固定种子可能生成相同图片。生成后可逐张选择保留。</p>
+        {parametersOnly && parameters.some(field => field.optionsByInput) && <div className="comfyui-reference-match">
+          {referenceImages.length > 1 && <label>匹配用的参考图<select aria-label="匹配用的参考图" value={selectedReference?.id || ''} onChange={event => { setReferenceId(event.target.value); setMatchNotice(''); }}>{referenceImages.map(image => <option key={image.id} value={image.id}>{image.label}</option>)}</select></label>}
+          <button type="button" disabled={!selectedReference} onClick={matchReference}>按参考图匹配</button>
+          <small>{selectedReference ? '按图片比例匹配，分辨率尽量保持当前像素总量；匹配后仍可手动修改。' : '先在运行素材中选择参考图片，再匹配比例。'}</small>
+          {matchNotice && <p role="status">{matchNotice}</p>}
+        </div>}
         {parametersOnly && <p>沿用本次的提示词、参考图和工作流。尺寸由工作流控制：选择「跟随参考图」时以图片为准；要用自定义宽高，请同时调整对应的尺寸来源或分辨率档位。</p>}
         {!record && !error && <p>正在读取参数定义…</p>}
         <div className="comfyui-parameter-grid">
@@ -150,7 +179,7 @@ function ComfyuiEditor({ value = {}, onChange, adapterId, onBusyChange, paramete
   </fieldset>;
 }
 
-export default function ComfyuiConfiguration({ value = {}, onChange, adapterId, parametersOnly = false, buttonLabel = '配置 ComfyUI', applyLabel = '应用到节点' }) {
+export default function ComfyuiConfiguration({ value = {}, onChange, adapterId, parametersOnly = false, buttonLabel = '配置 ComfyUI', applyLabel = '应用到节点', referenceImages = [] }) {
   const [draft, setDraft] = useState(null), [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   function close() { setDraft(null); setError(''); }
@@ -172,7 +201,7 @@ export default function ComfyuiConfiguration({ value = {}, onChange, adapterId, 
     </div>
     {draft && <Dialog open label={parametersOnly ? '本次生图参数' : '配置 ComfyUI'} className="comfyui-dialog" onClose={close} onKeyDown={(event) => event.stopPropagation()}>
       <header className="comfyui-dialog-header"><div><h2>{parametersOnly ? '本次生图参数' : '配置 ComfyUI'}</h2><p>{parametersOnly ? '只用于新一次运行，不修改流程默认值或已有结果。固定 seed 和相同输入可能生成相同图片。' : '选择已保存的工作流，设置本节点的输入与生成参数。'}</p></div><button type="button" aria-label="关闭 ComfyUI 配置" onClick={close}>关闭</button></header>
-      <div className="comfyui-dialog-body"><ComfyuiEditor value={draft} onChange={(next) => { setDraft(next); setError(''); }} adapterId={adapterId} onBusyChange={setBusy} parametersOnly={parametersOnly} /></div>
+      <div className="comfyui-dialog-body"><ComfyuiEditor value={draft} onChange={(next) => { setDraft(next); setError(''); }} adapterId={adapterId} onBusyChange={setBusy} parametersOnly={parametersOnly} referenceImages={referenceImages} /></div>
       <footer className="comfyui-dialog-footer">{error && <p role="alert">{error}</p>}<button type="button" onClick={close}>取消</button><button type="button" className="primary" disabled={busy} onClick={apply}>{applyLabel}</button></footer>
     </Dialog>}
   </>;

@@ -28,9 +28,16 @@ export async function registerWorkspace(repo, dataDir, input) {
   }
   const canonical = await realpath(localPath(userPath));
   if (!(await stat(canonical)).isDirectory()) throw agentError('INVALID_WORKSPACE', '工作区必须是目录');
-  if (kind === 'project' && pathsOverlap(dataRoot, canonical)) throw agentError('PROTECTED_PATH', '工作区不能包含应用数据目录，也不能位于其中', 403);
   if (canonical === path.parse(canonical).root) throw agentError('PROTECTED_PATH', '不能把整个磁盘作为工作区', 403);
-  return repo.createWorkspace({ kind, userPath, path: canonical, identity: pathIdentity(canonical) });
+  let name = '';
+  if (kind === 'project') {
+    name = typeof input.name === 'string' ? input.name.trim().slice(0, 80) : '';
+    if (input.name != null && !name) throw agentError('INVALID_PROJECT', '请填写项目名称');
+    if (!name) name = path.basename(canonical) || '项目';
+    const existing = repo.projectByIdentity(pathIdentity(canonical));
+    if (existing) return input.name != null && existing.name !== name ? repo.renameProject(existing.id, name) : existing;
+  }
+  return repo.createWorkspace({ kind, userPath, path: canonical, identity: pathIdentity(canonical), name });
 }
 
 // Idle sessions hold no lock. FIFO among overlapping roots; unrelated roots can run.

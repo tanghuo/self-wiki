@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import WorkflowContentField from './WorkflowContentField.jsx';
 import { apiUrl, request } from '../../api.js';
 import RuntimeGenerationParameters, { generationParameterConfig } from '../modelAdapters/RuntimeGenerationParameters.jsx';
+import { workflowReferenceImages } from './workflowReferenceImages.js';
 import { downstreamClosure, executionNode, isRuntimeElement, outputType, safePath } from '../../../../shared/domain/workflow/contracts.js';
 import { workflowSteps, stepLabel } from './workflowLabels.js';
 import { rerunChanges } from './workflowRerun.js';
@@ -42,7 +43,7 @@ function applicableReuse(run, definition, ids) {
   return [...new Set(ids)].filter((id) => {
     const node = definition?.nodes?.find((item) => item.id === id);
     const original = originals.get(id);
-    if (!node || !original) return false;
+    if (!node || !original || node.type === 'image.generate') return false;
     if (JSON.stringify(executionNode(node)) !== JSON.stringify(executionNode(original))) return false;
     return instances.some((instance) => instance.nodeId === id && instance.state === 'succeeded' && Object.keys(instance.outputs || {}).length);
   });
@@ -95,7 +96,11 @@ function SourceValue({ run, binding }) {
   return <pre className="workflow-source-text">{typeof value === 'string' ? value : JSON.stringify(value, null, 2)}</pre>;
 }
 
-function Source({ run, binding }) {
+function Source({ run, binding, collapsed = false }) {
+  if (collapsed) {
+    const step = workflowSteps(run.definition).find((s) => s.node.id === binding.nodeId && !s.parentId);
+    return <details className="workflow-composed-source"><summary>{binding.kind === 'constant' ? '查看引用内容' : `查看引用内容 · ${step ? stepLabel(step) : '循环中的内容'}`}</summary><Source run={run} binding={binding} /></details>;
+  }
   if (binding.kind === 'constant') return <pre className="workflow-source-text">{String(binding.value ?? '')}</pre>;
   const step = workflowSteps(run.definition).find((s) => s.node.id === binding.nodeId && !s.parentId);
   const source = run.rootInstances?.find((i) => i.nodeId === binding.nodeId);
@@ -106,16 +111,9 @@ function ComposedText({ run, parts, originalParts = [], label, onChange }) {
   const [opened, setOpened] = useState([]);
   const original = editableTextParts(originalParts);
   const changedAt = (index, text) => text !== (original[index]?.text || '');
-  const visibleChange = (before, after) => {
-    if (after.startsWith(before) && after.length > before.length) return after.slice(before.length).trim();
-    if (before && after.endsWith(before) && after.length > before.length) return after.slice(0, after.length - before.length).trim();
-    return after.trim();
-  };
-  const changes = parts.flatMap((part, index) => part.kind === 'ref' || !changedAt(index, part.text) ? [] : [visibleChange(original[index]?.text || '', part.text)]).filter(Boolean);
   return <div className="workflow-composed-content">
-    <p className="workflow-composed-caption">修改后的完整文字。虚线框是这一步可以改的内容，其余是前面步骤这次的原文。</p>
-    {!!changes.length && <p className="workflow-composed-change">这次的修改：{changes.join('\n')}</p>}
-    <div className="workflow-composed-sheet">{parts.map((part, index) => part.kind === 'ref' ? <Source key={index} run={run} binding={part.ref} /> : !part.text && parts.length > 1 && !opened.includes(index) ? <button key={index} type="button" className="text-button" onClick={() => setOpened((old) => [...old, index])}>{index === 0 ? '在前面添加文字' : '在后面添加文字'}</button> : <label key={index} className="workflow-composed-edit" data-changed={changedAt(index, part.text) ? '' : undefined}><span>{changedAt(index, part.text) ? '已修改' : '可修改'}</span><textarea aria-label={label} rows={Math.min(40, Math.max(2, part.text.split('\n').length + 1))} value={part.text} onChange={(event) => onChange(parts.map((p, i) => i === index ? { kind: 'text', text: event.target.value } : p))} /></label>)}</div>
+    <p className="workflow-composed-caption">直接修改框内文字，引用内容可展开查看。</p>
+    <div className="workflow-composed-sheet">{parts.map((part, index) => part.kind === 'ref' ? <Source key={index} run={run} binding={part.ref} collapsed /> : !part.text && parts.length > 1 && !opened.includes(index) ? <button key={index} type="button" className="text-button" onClick={() => setOpened((old) => [...old, index])}>{index === 0 ? '在前面添加文字' : '在后面添加文字'}</button> : <label key={index} className="workflow-composed-edit" data-changed={changedAt(index, part.text) ? '' : undefined}><span>{changedAt(index, part.text) ? '已修改' : '可修改'}</span><textarea aria-label={label} rows={Math.min(40, Math.max(2, part.text.split('\n').length + 1))} value={part.text} onChange={(event) => onChange(parts.map((p, i) => i === index ? { kind: 'text', text: event.target.value } : p))} /></label>)}</div>
   </div>;
 }
 
@@ -145,12 +143,12 @@ export function WorkflowNodeEdit({ run, nodeId, draft, setDefinition, setInputs,
         const adapter = adapters.find((a) => a.id === (config.adapterId || config.executor));
         const reusable = run.rootInstances?.find((instance) => instance.nodeId === node.id && instance.state === 'succeeded' && Object.keys(instance.outputs).length);
         const configChanged = JSON.stringify(executionNode(node)) !== JSON.stringify(executionNode(run.definition.nodes.find((n) => n.id === node.id) || node));
-        const reuseOn = reuse.includes(node.id) && !!reusable && !configChanged;
+        const reuseOn = node.type !== 'image.generate' && reuse.includes(node.id) && !!reusable && !configChanged;
         return <div key={step.id} className="workflow-rerun-node">
-          {!parent && setReuse && <div className="workflow-reuse-control"><label><input type="checkbox" role="switch" aria-label={`复用${label}的已有结果`} checked={reuseOn} disabled={!reusable || configChanged} onChange={(event) => setReuse((old = []) => event.target.checked ? [...old, node.id] : old.filter((id) => id !== node.id))} />复用已有结果，不重新调用</label><small>{!reusable ? '这条运行记录没有成功结果，暂不能复用。' : configChanged ? '本步骤配置已修改，恢复配置后可复用已有结果。' : reuseOn ? `将沿用运行 #${run.id} 的结果，上游修改不会更新此结果。` : '开启后，下次运行沿用这条记录的成功结果。'}</small></div>}
+          {!parent && node.type !== 'image.generate' && setReuse && <div className="workflow-reuse-control"><label><input type="checkbox" role="switch" aria-label={`复用${label}的已有结果`} checked={reuseOn} disabled={!reusable || configChanged} onChange={(event) => setReuse((old = []) => event.target.checked ? [...old, node.id] : old.filter((id) => id !== node.id))} />复用已有结果，不重新调用</label></div>}
           <fieldset className="workflow-model-parameters" disabled={reuseOn}>
           {(adapter?.parameterFields || []).map((field) => <label key={field.name}>{field.label}<select aria-label={field.label} value={config.parameters?.[field.name] || ''} onChange={(event) => { const parameters = { ...config.parameters }; if (event.target.value) parameters[field.name] = event.target.value; else delete parameters[field.name]; update(node, parent, { config: { ...config, parameters } }); }}>{field.optional && <option value="">使用默认值</option>}{field.options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>)}
-          {generationParameterConfig(node) && <RuntimeGenerationParameters node={node} value={generationParameterConfig(node)} onChange={(adapterConfig) => update(node, parent, { config: { ...config, adapterConfig } })} />}
+          {generationParameterConfig(node) && <RuntimeGenerationParameters node={node} value={generationParameterConfig(node)} referenceImages={workflowReferenceImages(definition, inputs, run)} onChange={(adapterConfig) => update(node, parent, { config: { ...config, adapterConfig } })} />}
           </fieldset>
         </div>;
       })}

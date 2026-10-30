@@ -34,3 +34,45 @@ test('runtime approvals survive snapshots; duplicate requests do not redispatch;
   assert.throws(() => service.decide(pending.id, { decision: 'allow', operationHash: pending.operationHash, revision: pending.policyRevision }), { statusCode: 409 });
   assert.equal(await readFile(path.join(workspace.path, 'result.txt'), 'utf8'), 'first');
 });
+test('grok workbench asks the live catalog instead of returning one configured id', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-models-')), data = path.join(root, 'data'); await mkdir(data);
+  t.after(async () => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-workbench-models-')); await rm(root, { recursive: true, force: true, maxRetries: 3 }); });
+  const db = initDb(':memory:'); t.after(() => db.close()); const repo = createAgentWorkbenchRepository(db);
+  let requested;
+  const service = await createAgentWorkbenchService({ repo, dataDir: data, initiallyEnabled: true, executionConfig: () => ({ chat: { grokBuild: { executable: 'grok', model: 'grok-4.6' } } }), async openEngine() { throw new Error('must not open a session'); }, async describeGrok(settings) {
+    requested = settings;
+    return { models: [{ id: 'grok-4.7', label: 'Grok 4.7' }, { id: 'grok-4.6', label: 'Grok 4.6' }], defaultModel: 'grok-4.7' };
+  } });
+  t.after(() => service.close());
+  const result = await service.models('grok-build');
+  assert.deepEqual(requested, { executable: 'grok', model: 'grok-4.6' });
+  assert.deepEqual(result.models.map(model => model.id), ['grok-4.7', 'grok-4.6']);
+  assert.equal(result.defaultModel, 'grok-4.7');
+});
+test('an existing session can change model and effort for the next turn', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-switch-')), data = path.join(root, 'data'); await mkdir(data);
+  t.after(async () => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-workbench-switch-')); await rm(root, { recursive: true, force: true, maxRetries: 3 }); });
+  const db = initDb(':memory:'); t.after(() => db.close()); const repo = createAgentWorkbenchRepository(db);
+  const seen = [];
+  const service = await createAgentWorkbenchService({ repo, dataDir: data, initiallyEnabled: true, executionConfig: () => ({ chat: { grokBuild: { model: 'grok-4.6' } } }), async openEngine(settings, callbacks) {
+    seen.push({ model: settings.model, effort: settings.effort });
+    return { sessionId: 'synthetic', version: 'synthetic', capabilities: {}, cancel() {}, async close() {}, async prompt(_text, delivery) {
+      delivery('attempted'); await callbacks.onEvent('message.delta', { text: 'ok' }); return { stopReason: 'end_turn' };
+    } };
+  } });
+  t.after(() => service.close());
+  const workspace = await service.workspace({ kind: 'scratch', trusted: true });
+  const session = service.createSession({ engine: 'grok-build', workspaceId: workspace.id, model: 'grok-4.6', effort: 'medium' });
+  const updated = service.configureSession(session.id, { model: ' grok-4.7 ', effort: 'high' });
+  assert.equal(updated.data.model, 'grok-4.7');
+  assert.equal(updated.data.effort, 'high');
+  assert.equal(service.detail(session.id).session.data.model, 'grok-4.7');
+  const turn = service.submit(session.id, { requestKey: 'model-switch-turn', text: '继续' });
+  await until(() => repo.turn(turn.id).state === 'completed');
+  assert.deepEqual(seen, [{ model: 'grok-4.7', effort: 'high' }]);
+  assert.throws(() => service.configureSession(session.id, { model: 'grok-4.7', effort: 'ultra' }), { code: 'INVALID_EFFORT' });
+  assert.throws(() => service.configureSession(session.id, { model: '   ', effort: 'low' }), { code: 'INVALID_MODEL' });
+  const workflow = repo.createSession({ workspaceId: workspace.id, engine: 'grok-build', purpose: 'workflow', policy: { write: 'ask' }, data: { model: 'frozen', effort: 'low' } });
+  assert.throws(() => service.configureSession(workflow.id, { model: 'grok-4.7', effort: 'high' }), { code: 'MODEL_LOCKED' });
+  assert.equal(repo.session(workflow.id).data.model, 'frozen');
+});

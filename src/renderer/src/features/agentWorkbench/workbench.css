@@ -41,3 +41,93 @@
 .workbench-prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 900px) { .workbench-layout { grid-template-columns: minmax(0, 1fr); } .workbench-sessions { flex-direction: row; overflow-x: auto; } .workbench-sessions > button { flex: 0 0 auto; max-width: 220px; } }
 @media (max-width: 600px) { .workbench-diff { grid-template-columns: minmax(0, 1fr); } .workbench-create, .workbench-approval { padding: var(--sp-3); } }
+
+/* Own the viewport so the transcript scrolls while the composer stays in view. */
+.wiki-shell.workbench-shell { height: 100dvh; min-height: 0; overflow: hidden; }
+.wiki-main.workbench-page[data-c-surface="workbench"] { display: flex; flex-direction: column; height: 100%; min-height: 0; padding-bottom: var(--sp-4); overflow: hidden; }
+.workbench-page > .page-header { flex-shrink: 0; }
+.workbench-page[data-c-surface="workbench"] .workbench-layout { flex: 1; min-height: 0; overflow: hidden; grid-template-columns: 200px minmax(0, 1fr); }
+.workbench-page[data-c-surface="workbench"] .workbench-sessions { overflow-y: auto; align-content: start; }
+.workbench-sessions strong { overflow-wrap: anywhere; }
+.workbench-rail-title { margin: var(--sp-2) var(--sp-3); font-size: var(--fs-caption); color: var(--muted); }
+.workbench-page[data-c-surface="workbench"] .workbench-conversation { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.workbench-session-header { flex: 0 0 auto; padding-bottom: var(--sp-3); border-bottom: 1px solid var(--line); }
+.workbench-session-header > div { min-width: 0; }
+.workbench-session-header > button { flex: 0 0 auto; }
+.workbench-session-header p { margin: var(--sp-1) 0; }
+.workbench-session-grid { position: relative; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.workbench-session-grid.inspecting { grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); }
+.workbench-chat-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.workbench-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--sp-4); scrollbar-gutter: stable; }
+.workbench-scroll > * { max-width: 840px; margin-inline: auto; }
+.workbench-chat-empty { padding: var(--sp-6) var(--sp-2); color: var(--muted); }
+.workbench-inspector { min-width: 0; overflow-y: auto; padding: var(--sp-4); border-left: 1px solid var(--line); }
+.workbench-inspector .workbench-actions { flex-wrap: wrap; }
+.workbench-inspector .workbench-artifacts { grid-template-columns: minmax(0, 1fr); }
+.workbench-inspector .workbench-artifacts figure { margin: 0; }
+.workbench-inspector h3 { font-size: var(--fs-body); }
+.workbench-inspector .workbench-create { padding: var(--sp-2); }
+.workbench-inspector .workbench-results { margin-bottom: var(--sp-4); }
+.workbench-page[data-c-surface="workbench"] .workbench-composer { flex: 0 0 auto; margin: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); }
+.workbench-composer textarea { min-height: 68px; max-height: 180px; resize: vertical; }
+.workbench-composer .workbench-attachments label { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-caption); }
+.workbench-composer input[type="file"] { width: 200px; }
+.workbench-execution { color: var(--muted); margin-block: var(--sp-3); font-size: var(--fs-small); }
+.workbench-execution > summary { cursor: pointer; padding-block: var(--sp-2); }
+.workbench-execution[open] { padding: var(--sp-3); background: var(--hover); border-radius: var(--r-lg); }
+/* The new task surface stays a composer; configuration opens beside its trigger. */
+.workbench-start { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: var(--sp-6) var(--sp-4); }
+.workbench-welcome { width: min(100%, 760px); margin-bottom: var(--sp-6); text-align: center; }
+.workbench-welcome h2 { font-size: clamp(24px, 2.5vw, 32px); margin: 0; font-weight: 600; }
+.workbench-launcher { width: min(100%, 760px); flex-shrink: 0; padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--e-card-c); }
+.workbench-launcher:focus-within { border-color: var(--accent); }
+.workbench-launcher > textarea { display: block; width: 100%; min-height: 100px; max-height: 220px; resize: vertical; padding: var(--sp-2); background: transparent; border: 0; border-radius: 0; box-shadow: none; outline: none; }
+.workbench-launcher > textarea:focus, .workbench-launcher > textarea:focus-visible { border: 0; box-shadow: none; outline: none; }
+.workbench-launcher-toolbar { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; padding-top: var(--sp-2); }
+.workbench-launcher-toolbar > .workbench-config-trigger { display: inline-flex; gap: var(--sp-2); align-items: center; min-width: 0; max-width: 45%; border: 0; box-shadow: none; background: transparent; color: var(--muted); font-size: var(--fs-small); }
+.workbench-config-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workbench-config-trigger > svg { flex-shrink: 0; }
+.workbench-effort-label { font-size: var(--fs-caption); color: var(--muted); }
+.workbench-launcher-toolbar .workbench-launch-send { margin-left: auto; flex-shrink: 0; }
+.workbench-settings-fields, .workbench-settings-fields > label { display: grid; gap: var(--sp-3); }
+.workbench-settings-fields { gap: var(--sp-4); }
+.workbench-settings-fields input, .workbench-settings-fields select { width: 100%; min-width: 0; }
+.workbench-settings-fields .workbench-path-input > button { flex-shrink: 0; }
+.workbench-settings-dialog .workbench-trust { display: flex; gap: var(--sp-2); align-items: flex-start; }
+@media (max-width: 1200px) {
+  .workbench-session-grid.inspecting { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 35%); }
+  .workbench-inspector { border-left: 0; border-top: 1px solid var(--line); }
+  .workbench-key-hint { display: none; }
+}
+@media (max-width: 900px) {
+  .workbench-page[data-c-surface="workbench"] .workbench-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: var(--sp-2); }
+  .workbench-page[data-c-surface="workbench"] .workbench-sessions { max-height: 90px; overflow-y: hidden; }
+  .workbench-rail-title { display: none; }
+  .workbench-session-header { align-items: flex-start; flex-wrap: wrap; }
+  .workbench-start { padding: var(--sp-4) 0; }
+}
+@media (max-width: 600px) {
+  .workbench-page[data-c-surface="workbench"] .workbench-composer { margin-inline: 0; }
+  .workbench-scroll { padding-inline: var(--sp-2); }
+}
+@media (max-width: 720px) {
+  .wiki-shell.workbench-shell { display: flex; flex-direction: column; }
+  .workbench-shell > .wiki-sidebar { flex-shrink: 0; }
+  .wiki-main.workbench-page[data-c-surface="workbench"] { flex: 1; height: auto; }
+}
+
+.workbench-model-control { display: flex; align-items: center; min-width: 0; max-width: 100%; }
+.workbench-model-control > .workbench-config-trigger { display: inline-flex; align-items: center; gap: 6px; min-width: 0; border: 0; box-shadow: none; background: transparent; color: var(--muted); font-size: var(--fs-small); }
+.workbench-model-popover { position: fixed; z-index: 1000; width: min(300px, calc(100vw - 24px)); overflow-y: auto; padding: 8px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); box-shadow: var(--e-2); }
+.workbench-model-popover > header { padding: 8px 10px; color: var(--muted); font-size: var(--fs-small); }
+.workbench-model-popover .workbench-model-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 10px; border: 0; border-radius: 10px; background: transparent; box-shadow: none; text-align: left; }
+.workbench-model-option > span { overflow-wrap: anywhere; min-width: 0; }
+.workbench-model-option > svg { flex-shrink: 0; }
+.workbench-model-popover button:hover, .workbench-model-popover button:focus-visible { background: var(--bg); }
+.workbench-engine-options { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px 8px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.workbench-engine-options button { border: 0; box-shadow: none; background: transparent; padding: 5px 8px; font-size: var(--fs-caption); color: var(--muted); }
+.workbench-engine-options button[aria-pressed="true"] { background: var(--bg); color: var(--ink); }
+.workbench-custom-model { border-top: 1px solid var(--line); margin-top: 6px; padding: 10px; font-size: var(--fs-small); color: var(--muted); }
+.workbench-custom-model summary { cursor: pointer; }
+.workbench-custom-model > div { display: flex; gap: 6px; margin-top: 8px; }
+.workbench-custom-model input { width: 100%; min-width: 0; }

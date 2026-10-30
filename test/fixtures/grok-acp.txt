@@ -4,12 +4,13 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 if (process.argv.includes('--version')) { console.log('grok 1.0.70 (f50904eaee6c) stable'); process.exit(0); }
 let thread, cwd, mcp, state, hooks, hanging, profile;
+let model = 'grok-4.7', effort = 'high';
 const pending = new Map(); let sequence = 0;
 const send = (value) => process.stdout.write(JSON.stringify({jsonrpc:'2.0', ...value})+'\n');
 const respond = (id,result) => send({id,result});
 const request = (method,params) => new Promise(resolve => {const id='client-'+(++sequence);pending.set(id,resolve);send({id,method,params});});
 const update = (value) => send({method:'session/update',params:{sessionId:thread,update:value}});
-const models = [{modelId:'grok-4.6',name:'Grok 4.6',_meta:{reasoningEffort:'high',reasoningEfforts:[{id:'high',value:'high',label:'High'}]}}];
+const models = [{modelId:'grok-4.7',name:'Grok 4.7',_meta:{reasoningEffort:'low',reasoningEfforts:[{id:'low',value:'low',label:'Low'}]}},{modelId:'grok-4.6',name:'Grok 4.6',_meta:{reasoningEffort:'high',reasoningEfforts:[{id:'high',value:'high',label:'High'}]}}];
 const folder = () => path.join(process.env.GROK_HOME,'sessions',encodeURIComponent(cwd),thread);
 const save = async () => {await mkdir(folder(),{recursive:true});await writeFile(path.join(folder(),'state.json'),JSON.stringify(state));await writeFile(path.join(folder(),'summary.json'),JSON.stringify({agent_profile:profile}));};
 async function gate(toolName,toolInput={}) {
@@ -32,7 +33,11 @@ async function handle(value) {
     return respond(value.id,{sessionId:thread,models:{availableModels:models}});
   }
   if(value.method==='session/set_config_option'){
-    if(typeof value.params.value!=='string')throw new Error('Invalid params');return respond(value.id,{configOptions:[]});
+    if(typeof value.params.value!=='string')throw new Error('Invalid params');
+    await appendFile(path.join(process.env.GROK_HOME,'acp-config.ndjson'),JSON.stringify(value.params)+'\n');
+    if(value.params.configId==='model'&&value.params.value!=='ignored-model') model=value.params.value;
+    if(value.params.configId==='reasoning_effort') effort=value.params.value;
+    return respond(value.id,{configOptions:[{id:'model',currentValue:model},{id:'reasoning_effort',currentValue:effort}]});
   }
   if(value.method==='session/cancel'){if(hanging){respond(hanging,{stopReason:'cancelled'});hanging=undefined;}return;}
   if(value.method!=='session/prompt')throw new Error('unsupported method');
@@ -43,6 +48,11 @@ async function handle(value) {
   await appendFile(path.join(process.env.GROK_HOME,'acp-inputs.ndjson'),JSON.stringify({thread,prompt:value.params.prompt})+'\n');
   let answer='fixture Grok reply';
   if(text.startsWith('HANG')){hanging=value.id;return;}
+  if(text==='SLOW_PROGRESS'){
+    update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:'partial fixture answer'}});
+    await new Promise(resolve=>setTimeout(resolve,5000));
+    answer=' final fixture answer';
+  }
   if(text.startsWith('REMEMBER ')){state.word=text.split('\n')[0].slice(9);await save();answer='remembered';}
   if(text.startsWith('RECALL'))answer=state.word||'missing';
   if(text.startsWith('DENY_SHELL')){const decision=await gate('run_terminal_command',{command:'echo forbidden'});answer=decision.decision==='deny'?'SHELL_BLOCKED':'SHELL_ALLOWED';}
@@ -67,6 +77,7 @@ async function handle(value) {
     update({sessionUpdate:'tool_call_update',toolCallId:id,status:'completed',rawOutput:{type:editing?'ImageEdit':'ImageGen',path:text.startsWith('BAD_IMAGE')?path.join(process.env.GROK_HOME,'outside.png'):file}});
     answer=editing?'edited cat':'generated cat';
   }
+  if (answer === 'fixture Grok reply') { try { const custom = await readFile(path.join(process.env.GROK_HOME, 'fixture-answer.txt'), 'utf8'); if (custom) answer = custom; } catch { /* Keep the default reply. */ } }
   update({sessionUpdate:'agent_message_chunk',content:{type:'text',text:answer}});
   respond(value.id,{stopReason:'end_turn'});
 }

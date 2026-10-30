@@ -15,10 +15,10 @@ export function withGenerationParameters(definition, overrides) {
   return { ...definition, nodes: definition.nodes.map((node) => update(node)) };
 }
 
-export default function RuntimeGenerationParameters({ node, value, onChange, regenerate = false }) {
+export default function RuntimeGenerationParameters({ node, value, onChange, regenerate = false, referenceImages = [] }) {
   const config = value || generationParameterConfig(node);
   if (!config) return null;
-  return <ComfyuiConfiguration adapterId="comfyui" value={config} parametersOnly
+  return <ComfyuiConfiguration adapterId="comfyui" value={config} parametersOnly referenceImages={referenceImages}
     buttonLabel={regenerate ? '调整参数' : '调整本次生图参数'}
     applyLabel={regenerate ? '保存参数' : '应用到本次运行'} onChange={onChange} />;
 }

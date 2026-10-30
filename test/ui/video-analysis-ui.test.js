@@ -170,7 +170,7 @@ test("video settings preserve dirty drafts, show model destination and save auto
   await settings.getByLabel("视频标注模式", { exact: true }).selectOption("auto");
   await settings.getByLabel("启用图片与视频帧视觉索引", { exact: true }).check();
   await settings.getByLabel("视觉服务地址", { exact: true }).fill("http://127.0.0.1:9876");
-  await settings.getByText("本机抽取视频画面，分析帧会交给", { exact: false }).waitFor();
+  await settings.getByLabel("FFmpeg 程序路径", { exact: true }).waitFor();
   assert.equal(await settings.getByRole("button", { name: "检测视频依赖", exact: true }).isDisabled(), true);
   await page.getByRole("button", { name: "关闭设置", exact: true }).click();
   await page.getByRole("dialog", { name: "未保存的设置", exact: true }).getByRole("button", { name: "继续编辑", exact: true }).click();

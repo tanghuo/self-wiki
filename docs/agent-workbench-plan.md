@@ -73,7 +73,7 @@ Grok 的 [官方脚本入口](https://docs.x.ai/build/cli/headless-scripting)支
 
 | 对象/建议表 | 核心字段与约束 |
 | --- | --- |
-| `agent_workspaces` | id、kind(project/scratch)、用户路径、规范路径、路径身份、信任确认时间；scratch 由应用创建；不把业务数据库目录当任务目录 |
+| `agent_workspaces` | id、kind(project/scratch)、用户路径、规范路径、路径身份、信任确认时间；scratch 由应用创建；项目目录可以包含或位于应用数据目录 |
 | `agent_sessions` | id、workspaceId、engine、purpose(interactive/workflow)、policySnapshot、capabilitySnapshot、engineSessionId、engineVersion、revision、state、createdAt；engine/workspace/purpose 创建后不可改，切换创建新会话 |
 | `agent_turns` | id、sessionId、requestKey、inputHash、state、delivery(not_sent/attempted/acknowledged/unknown)、connectionGeneration、开始/结束时间；唯一 `(sessionId,requestKey)`；同 key 异载荷 409 |
 | `agent_events` | sessionId、递增 seq、turnId、generation、type、schemaVersion、data、sourceEventId(可空)、rawRef；唯一 `(sessionId,seq)` |
@@ -115,7 +115,7 @@ workspace/purpose 正交：project 与 scratch 都可交互；workflow 使用应
 
 首版采用本机可信用户的交互工作台：命令经批准后使用当前用户权限执行。cwd、文件网关、审批卡均不是操作系统沙箱。项目配置可能引入 MCP、钩子和规则；打开项目先显示信任确认。P0 必须核对项目配置何时加载，确认前只允许不加载项目的能力探测，不启动项目会话。
 
-project 路径经 realpath 规范化；拒绝设备路径/网络路径作为首版 workspace，拒绝应用数据目录和包含该目录的宽泛根。Windows 大小写、junction、符号链接和父子目录重叠纳入锁判断。应用内重叠目录同一时刻只允许运行一个交互轮次，排队可取消；空闲会话不占锁。此规则不约束外部编辑器。
+project 路径经 realpath 规范化；拒绝设备路径、网络路径和整块磁盘根作为 workspace。项目目录可以包含或位于应用数据目录。Windows 大小写、junction、符号链接和父子目录重叠纳入锁判断。应用内重叠目录同一时刻只允许运行一个交互轮次，排队可取消；空闲会话不占锁。此规则不约束外部编辑器。
 
 workflow purpose 无任意 Shell、无任意文件写、只允许节点声明工具。若无法证明所选引擎在受限配置中可执行这些边界，禁止注册该引擎为 workflow Agent 节点；不能只靠提示词或可能放行的 hook。
 

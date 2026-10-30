@@ -31,8 +31,9 @@ export async function createVideoAnalysisService({ repo, wiki, dataDir, recordUs
   const unreadable = new Map();
   const usage = (purpose, context = {}) => (event) => recordUsage?.({ ...event, purpose, context: { ...event.context, ...context } });
   function key() {
-    const { type, codexCli } = executionConfig();
-    return hash(["video-analysis-v1", config.ffmpeg, config.ffprobe, config.frameIntervalMs, { type, codexCli }]);
+    const executor = executionConfig();
+    const identity = executor.type === "grok-build" ? { type: executor.type, grokBuild: executor.grokBuild } : { type: executor.type, codexCli: executor.codexCli };
+    return hash(["video-analysis-v1", config.ffmpeg, config.ffprobe, config.frameIntervalMs, identity]);
   }
   let currentKey = key();
   repo.initialize(currentKey);

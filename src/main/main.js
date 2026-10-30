@@ -95,6 +95,13 @@ async function createMainWindow() {
     return result.canceled ? null : result.filePaths[0];
   });
   let settingWallpaper = false;
+  ipcMain.removeHandler("wiki:pick-project-directory");
+  ipcMain.handle("wiki:pick-project-directory", async (event) => {
+    if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame ||
+        new URL(event.senderFrame.url).origin !== pageOrigin) throw new Error("此页面无法选择项目目录");
+    const result = await dialog.showOpenDialog(window, { title: "选择项目目录", properties: ["openDirectory"] });
+    return result.canceled ? null : result.filePaths[0];
+  });
   ipcMain.removeHandler("wiki:set-wallpaper");
   ipcMain.handle("wiki:set-wallpaper", async (event, elementId) => {
     if (process.platform !== "win32" || event.sender !== window.webContents ||

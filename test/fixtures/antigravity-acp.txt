@@ -1,0 +1,69 @@
+import readline from 'node:readline';
+import { readFile, writeFile, access } from 'node:fs/promises';
+import path from 'node:path';
+const send = value => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n');
+const reply = (id, result) => send({ id, result });
+const fail = (id, code, message) => send({ id, error: { code, message } });
+const pending = new Map(); let counter = 0, thread, model = 'fixture-model', effort = 'medium', mode = 'yolo', hanging;
+const stateFile = () => path.join(process.cwd(), 'state-' + thread + '.json');
+const config = () => [
+  { id: 'model', type: 'select', currentValue: model, options: [{ value: 'fixture-model', name: 'Fixture Model' }] },
+  { id: 'thinking_level', type: 'select', currentValue: effort, options: ['low', 'medium', 'high'].map(value => ({ value, name: value })) },
+  { id: 'mode', type: 'select', currentValue: mode, options: ['default', 'auto_edit', 'yolo'].map(value => ({ value, name: value })) },
+];
+const update = update => send({ method: 'session/update', params: { sessionId: thread, update } });
+function ask(toolCall, onlyAlways = false) {
+  const id = 'permission-' + ++counter;
+  return new Promise(resolve => {
+    pending.set(id, resolve);
+    send({ id, method: 'session/request_permission', params: { sessionId: thread, toolCall,
+      options: [{ kind: onlyAlways ? 'allow_always' : 'allow_once', optionId: 'yes' }, { kind: 'reject_once', optionId: 'no' }] } });
+  });
+}
+readline.createInterface({ input: process.stdin }).on('line', async line => {
+  const value = JSON.parse(line);
+  if (!value.method) { pending.get(value.id)?.(value.result); pending.delete(value.id); return; }
+  const { method, params = {} } = value;
+  if (method === 'initialize') return reply(value.id, { protocolVersion: 1, agentInfo: { name: 'antigravity-acp', version: '1.4.5' }, authMethods: [{ id: 'oauth-personal' }], agentCapabilities: { loadSession: true, promptCapabilities: { image: true } } });
+  if (method === 'authenticate') { await writeFile(path.join(process.cwd(), '.authenticated'), 'yes'); return reply(value.id, {}); }
+  if (method === 'session/new' || method === 'session/load') {
+    try { await access(path.join(process.cwd(), '.authenticated')); } catch { return fail(value.id, -32000, 'Authentication required'); }
+    thread = params.sessionId || 'fixture-session';
+    if (method === 'session/load') {
+      try { await access(stateFile()); } catch { return fail(value.id, -32002, 'Missing session'); }
+      update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'REPLAY_MUST_NOT_LEAK' } });
+    } else await writeFile(stateFile(), '{}');
+    return reply(value.id, { sessionId: thread, configOptions: config() });
+  }
+  if (method === 'session/set_config_option') {
+    if (params.configId === 'model') model = params.value;
+    if (params.configId === 'thinking_level') effort = params.value;
+    if (params.configId === 'mode') mode = params.value;
+    return reply(value.id, { configOptions: config() });
+  }
+  if (method === 'session/cancel') { if (hanging) { reply(hanging, { stopReason: 'cancelled' }); hanging = null; } return; }
+  if (method !== 'session/prompt') return fail(value.id, -32601, 'Unsupported method');
+  const text = params.prompt[0].text;
+  await writeFile(path.join(process.cwd(), 'last-prompt.json'), JSON.stringify(params));
+  if (text === 'HANG') { hanging = value.id; return; }
+  if (text === 'DISCONNECT') return process.exit(1);
+  if (text === 'UNKNOWN_STOP') return reply(value.id, { stopReason: 'max_tokens' });
+  if (text === 'BAD_MODE') { update({ sessionUpdate: 'config_option_update', configOptions: [{ id: 'mode', currentValue: 'yolo' }] }); return; }
+  let answer = 'fixture reply';
+  if (text.startsWith('REMEMBER ')) { await writeFile(stateFile(), JSON.stringify({ word: text.slice(9) })); answer = 'remembered'; }
+  if (text === 'RECALL') answer = JSON.parse(await readFile(stateFile(), 'utf8')).word;
+  if (text === 'WRITE' || text === 'ALWAYS') {
+    const target = path.join(process.cwd(), 'result.txt');
+    const diff = { type: 'diff', path: target, oldText: '', newText: 'approved\n' };
+    const toolCall = { toolCallId: 'write-1', title: 'Write result.txt', kind: 'edit', status: 'pending', rawInput: { path: target }, content: [diff], locations: [{ path: target }] };
+    update({ ...toolCall, sessionUpdate: 'tool_call' });
+    const decision = await ask(toolCall, text === 'ALWAYS');
+    const allowed = decision?.outcome?.optionId === 'yes';
+    if (allowed) await writeFile(target, 'approved\n');
+    update({ sessionUpdate: 'tool_call_update', toolCallId: 'write-1', status: allowed ? 'completed' : 'failed' });
+    answer = allowed ? 'written' : 'rejected';
+  }
+  update({ sessionUpdate: 'plan', entries: [{ content: 'Complete fixture', status: 'completed' }] });
+  update({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: answer } });
+  reply(value.id, { stopReason: 'end_turn' });
+});

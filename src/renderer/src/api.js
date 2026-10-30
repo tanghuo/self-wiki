@@ -26,7 +26,7 @@ export async function request(path, options = {}) {
     ? await response.json()
     : await response.text();
   if (!response.ok || payload?.ok === false) {
-    throw new Error(payload?.error || payload?.message || `HTTP ${response.status}`);
+    throw Object.assign(new Error(payload?.error || payload?.message || `HTTP ${response.status}`), { code: payload?.code });
   }
   return payload;
 }

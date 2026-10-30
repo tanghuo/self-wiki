@@ -25,7 +25,7 @@ export async function createOrganizationService({ repo, dataDir, semantic, recor
 
   function start() {
     if (closed || reconfiguring || configError || child || !instance) return;
-    diagnostic = { available: false, code: "CHECKING", diagnostic: "正在检测 Codex CLI…" };
+    diagnostic = { available: false, code: "CHECKING", diagnostic: config.executor.type === "grok-build" ? "正在检测 Grok…" : "正在检测 Codex CLI…" };
     const processHandle = spawn(process.execPath, [path.resolve(import.meta.dirname, "../../agent/main.js")], {
       windowsHide: true, shell: false, env: childEnvironment(), stdio: ["ignore", "ignore", "ignore", "ipc"],
     });

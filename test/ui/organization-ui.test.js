@@ -72,6 +72,13 @@ test("organization UI saves config, displays evidence, accepts and undoes additi
   assert.equal(await page.getByLabel("整理超时（秒）").isVisible(), false);
   await page.getByRole("navigation", { name: "设置分类" }).getByRole("button", { name: "自动整理与检索" }).click();
   assert.equal(await page.getByLabel("整理超时（秒）").inputValue(), "240");
+  const org = page.locator("#settings-agent-org");
+  await org.getByLabel("整理执行器").selectOption("grok-build");
+  await org.getByLabel("整理模型", { exact: true }).fill("grok-4.7");
+  assert.equal(await org.getByLabel("Codex 程序路径").count(), 0);
+  await org.getByLabel("整理执行器").selectOption("codex-cli");
+  assert.equal(await org.getByLabel("整理模型（可选）").isVisible(), true);
+  assert.equal(await page.getByLabel("整理超时（秒）").inputValue(), "240");
   await page.getByLabel("建立语义索引，帮助 Agent 查找相关内容").check();
   await page.getByLabel("向量服务地址").fill(`http://127.0.0.1:${embeddingServer.address().port}/v1`);
   await page.getByLabel("向量维数").fill("2");

@@ -1,0 +1,46 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { chromium, createServer, fetch } from '../helpers/authenticatedServer.js';
+import { resolveBrowserPath } from '../resolveBrowserPath.js';
+import { defaultOrganizationConfig } from '../../src/shared/domain/organization.js';
+import { workflowNode as n, constant as c } from '../../src/shared/domain/workflow/examples.js';
+
+const browserPath = resolveBrowserPath();
+test('workflow shows verified model, elapsed time and partial answer before completion', { timeout: 30000, skip: !browserPath && 'Browser required' }, async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'wiki-model-progress-'));
+  const previous = process.env.GROK_HOME; process.env.GROK_HOME = dir;
+  const config = defaultOrganizationConfig();
+  config.chat.grokBuild.executable = path.join(dir, 'grok.mjs');
+  await writeFile(config.chat.grokBuild.executable, await readFile(new URL('../fixtures/grok-acp.txt', import.meta.url)));
+  await writeFile(path.join(dir, 'organization.json'), JSON.stringify(config));
+  const app = await createServer({ port: 0, dataDir: dir });
+  const browser = await chromium.launch({ executablePath: browserPath, headless: true });
+  t.after(async () => {
+    await browser.close(); await app.close();
+    if (previous === undefined) delete process.env.GROK_HOME; else process.env.GROK_HOME = previous;
+    assert.equal(path.dirname(dir), path.resolve(os.tmpdir())); assert.ok(path.basename(dir).startsWith('wiki-model-progress-'));
+    await rm(dir, { recursive: true, force: true, maxRetries: 3 });
+  });
+  const node = n('model', 'model', { adapterId: 'grok-text', outputType: 'text', parameters: {} }, { prompt: c('SLOW_PROGRESS'), images: c([]) });
+  const response = await fetch(new URL('api/workflows', app.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: '模型进度测试', definition: { schemaVersion: 1, nodes: [node], outputs: {} }, requestKey: 'model-progress' }) });
+  assert.ok(response.ok, await response.clone().text());
+  const workflow = await response.json();
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } }); page.setDefaultTimeout(12000);
+  const errors = []; page.on('pageerror', e => errors.push(e.message));
+  await page.goto(`${app.url}#workflow`);
+  await page.locator('.workflow-list article').filter({ hasText: '模型进度测试' }).getByRole('button', { name: '运行', exact: true }).click();
+  await page.getByRole('button', { name: '开始运行', exact: true }).click();
+  const progress = page.locator('.workflow-model-progress');
+  await progress.getByText(/正在生成回答.*已耗时.*grok-4.6.*low/).waitFor();
+  assert.equal(await progress.locator('pre').textContent(), 'partial fixture answer');
+  assert.equal(await page.locator('.workflow-progress-label').textContent(), '处理中 · 第 1 / 1 项');
+  await page.screenshot({ path: '.local/workflow-model-progress.png', fullPage: true });
+  const detail = await (await fetch(new URL(`api/workflows/${workflow.id}`, app.url))).json();
+  await page.goto(`${app.url}#workflow?run=${detail.runs[0].id}`);
+  await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
+  assert.equal(await page.locator('.workflow-model-progress').count(), 0);
+  assert.deepEqual(errors, []);
+});

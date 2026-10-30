@@ -61,7 +61,6 @@ export default function LanSharingSettings({ onBusyChange, onDirtyChange, regist
   return <section className="settings-section" aria-labelledby="lan-sharing-heading">
     <header className="settings-section-header"><Wifi size={19} /><h3 id="lan-sharing-heading">局域网共享</h3></header>
     <div className="wiki-form-fields lan-sharing-fields">
-      <p>开启后，同一局域网内的设备打开下方地址，输入 6 位数字配对码即可访问。默认只读；Agent 会话、自动整理、视频分析和全部设置始终仅限本机使用。</p>
       {!status && !error && <p role="status">正在读取设置…</p>}
       {status && <>
         <div className="lan-sharing-state"><strong>{status.enabled ? "共享已开启" : "共享已关闭"}</strong><button role="switch" aria-label="局域网共享开关" aria-checked={status.enabled} onClick={() => update(true)} disabled={busy}>{status.enabled ? "关闭共享" : "开启共享"}</button></div>
@@ -74,11 +73,9 @@ export default function LanSharingSettings({ onBusyChange, onDirtyChange, regist
           {(status.pairUrls || status.urls)[0] && <div className="lan-sharing-qr-block">
             <p><strong>用手机扫这个码即可打开</strong></p>
             <QrCode value={(status.pairUrls || status.urls)[0]} label="局域网配对二维码" />
-            <p className="wiki-muted">手机需与电脑在同一 Wi-Fi；扫码后浏览器会记住本机。</p>
           </div>}
-          {status.requireToken && <div className="wiki-muted">{status.pairingExpiresAt > now ? <p>6 位配对码：<code>{status.pairingCode}</code>（{Math.ceil((status.pairingExpiresAt - now) / 60000)} 分钟内有效，仅可使用一次）</p> : <p>短码配对未开启或已到期，请先生成配对码。扫码仍可直接配对。</p>}<button disabled={busy} onClick={beginPairing}>生成 10 分钟配对码</button><button disabled={busy} onClick={regenerate}>更换配对码</button><p>“更换配对码”会撤销所有已配对设备的访问权限。</p></div>}
+          {status.requireToken && <div className="wiki-muted">{status.pairingExpiresAt > now && <p>6 位配对码：<code>{status.pairingCode}</code>（{Math.ceil((status.pairingExpiresAt - now) / 60000)} 分钟内有效，仅可使用一次）</p>}<button disabled={busy} onClick={beginPairing}>生成 10 分钟配对码</button><button disabled={busy} onClick={regenerate}>更换配对码</button></div>}
           {!status.urls.length && <p>未发现局域网 IPv4 地址，请连接 Wi-Fi 或有线网络后重新打开设置。</p>}
-          <p className="wiki-muted">{status.enabled ? "也可复制地址到同一网络的其他设备浏览器中打开。" : "共享尚未开启；可以先扫码或复制地址，开启共享后才能访问。"}</p>
           {Number(port) !== status.port && <p className="wiki-muted">以上为已保存端口的地址，保存共享配置后更新。</p>}
         </section>
         <details className="settings-advanced">
@@ -92,7 +89,6 @@ export default function LanSharingSettings({ onBusyChange, onDirtyChange, regist
         {!registerSave && <button className="primary" disabled={busy} onClick={() => update(false)}>{busy ? "正在处理…" : "保存共享配置"}</button>}
         </div>
         </details>
-        {status.enabled && <p className="wiki-muted">设备需连接同一网络；Windows 防火墙需允许此端口的专用网络入站访问。</p>}
         {status.error && !error && <p className="wiki-error" role="alert">{status.error}</p>}
       </>}
       {error && <p className="wiki-error" role="alert">{error}{!status && <button onClick={load}>重试</button>}</p>}

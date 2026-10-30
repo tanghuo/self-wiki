@@ -78,7 +78,7 @@ export default function SettingsDialog({ theme, onThemeChange, atmosphere = "ful
     contentRef.current?.scrollTo(0, 0);
   }
   return <><Dialog open label="设置" className="wiki-dialog settings-dialog" onClose={close}>
-    <header className="wiki-dialog-header"><div><h2>设置</h2><p>外观改动立即生效；连接和服务类设置改完后在底部统一保存。</p></div><button className="icon-only" aria-label="关闭设置" onClick={close} disabled={busy}><X size={18} /></button></header>
+    <header className="wiki-dialog-header"><h2>设置</h2><button className="icon-only" aria-label="关闭设置" onClick={close} disabled={busy}><X size={18} /></button></header>
     <div className="settings-layout">
       <nav className="settings-nav" aria-label="设置分类">
         {navGroups.map((group) => <div key={group.label} className="settings-nav-group">
@@ -92,7 +92,7 @@ export default function SettingsDialog({ theme, onThemeChange, atmosphere = "ful
       <div id="settings-general" hidden={activeSection !== "general"}>
       <section className="settings-section" aria-labelledby="appearance-settings-heading">
         <header className="settings-section-header"><Palette size={19} /><h3 id="appearance-settings-heading">外观</h3></header>
-        <fieldset className="theme-picker" aria-describedby="theme-help">
+        <fieldset className="theme-picker">
           <legend>主题色</legend>
           <div className="theme-options">
             {themes.map(({ id, name, description }) => <label key={id} className="theme-option">
@@ -101,29 +101,26 @@ export default function SettingsDialog({ theme, onThemeChange, atmosphere = "ful
               <span className="theme-option-name">{name}</span><span className="theme-option-description">{description}</span>
             </label>)}
           </div>
-          <p id="theme-help" className="wiki-muted">切换后立即生效并自动保存，内容和画布共用同一主题。</p>
         </fieldset>
-        <fieldset className="atmosphere-picker" aria-describedby="atmosphere-help">
+        <fieldset className="atmosphere-picker">
           <legend>氛围色</legend>
-          <label className="theme-option" style={{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"8px"}}>
-            <input type="checkbox" checked={atmosphere === "soft"} onChange={(event) => onAtmosphereChange?.(event.target.checked ? "soft" : "full")} />
-            <span><span className="theme-option-name">减弱氛围色</span><span className="theme-option-description" style={{display:"block"}}>窗口渐变变淡，减少和照片抢戏；适合资料很多的时候。</span></span>
+          <label className="theme-option" style={{display:"flex",gap:"10px",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",marginTop:"8px"}}>
+            <span className="theme-option-name" style={{paddingRight:0}}>减弱氛围色</span>
+            <input type="checkbox" style={{position:"static",margin:0}} checked={atmosphere === "soft"} onChange={(event) => onAtmosphereChange?.(event.target.checked ? "soft" : "full")} />
           </label>
-          <label className="theme-option" style={{display:"flex",gap:"10px",alignItems:"flex-start",marginTop:"12px"}}>
-            <input type="checkbox" checked={liquidGlass} disabled={typeof CSS !== "undefined" && !CSS.supports("backdrop-filter", "url(#liquid-glass-probe)")} onChange={(event) => onLiquidGlassChange?.(event.target.checked)} />
-            <span><span className="theme-option-name">液态玻璃</span><span className="theme-option-description" style={{display:"block"}}>侧栏和搜索框用折射玻璃；关掉则回到普通磨砂。滚动时会暂时关掉折射以保持流畅。系统开启「减少透明度」时也会自动退回磨砂。</span></span>
+          <label className="theme-option" style={{display:"flex",gap:"10px",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",marginTop:"12px"}}>
+            <span className="theme-option-name" style={{paddingRight:0}}>液态玻璃</span>
+            <input type="checkbox" style={{position:"static",margin:0}} checked={liquidGlass} disabled={typeof CSS !== "undefined" && !CSS.supports("backdrop-filter", "url(#liquid-glass-probe)")} onChange={(event) => onLiquidGlassChange?.(event.target.checked)} />
           </label>
-          <p id="atmosphere-help" className="wiki-muted">改完立即生效并自动保存。</p>
         </fieldset>
       </section>
       <section className="settings-section" aria-labelledby="browsing-settings-heading">
         <header className="settings-section-header"><Tags size={19} /><h3 id="browsing-settings-heading">浏览偏好</h3></header>
         <div className="wiki-form-fields">
-          <label>标签显示<select aria-label="标签显示" value={cardTagDisplay} onChange={(event) => onCardTagDisplayChange(event.target.value)} aria-describedby="card-tag-display-help">
+          <select aria-label="标签显示" value={cardTagDisplay} onChange={(event) => onCardTagDisplayChange(event.target.value)}>
             <option value="always">始终显示</option>
             <option value="hover">鼠标悬浮时显示</option>
-          </select></label>
-          <p id="card-tag-display-help" className="wiki-muted">控制图片和文字卡片上的标签，修改后自动保存。悬浮模式下，键盘聚焦卡片也会显示标签；触屏设备始终显示。</p>
+          </select>
         </div>
       </section>
       </div>

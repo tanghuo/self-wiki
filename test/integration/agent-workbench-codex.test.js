@@ -12,13 +12,20 @@ test('Codex translates native approval snapshots, output, SDK tools, cancellatio
   const events = [], approvals = []; let tools = 0;
   const callbacks = { cwd: root, neutralCwd: root, signal: AbortSignal.timeout(10000), tools: [{ name: 'wiki_search', description: 'fixture', inputSchema: { type: 'object' } }],
     onEvent: (type, data) => events.push({ type, data }), onExit() {},
-    onRequest(method, operation) { assert.equal(method, 'engine/native_approval'); approvals.push(operation); return operation.kind === 'native.command'; },
+    onRequest(method, operation) {
+      assert.equal(method, 'engine/native_approval'); approvals.push(operation);
+      // Human waiting must not exhaust the 30-minute execution budget.
+      t.mock.timers.tick(31 * 60 * 1000);
+      return operation.kind === 'native.command';
+    },
     onToolCall({ name, input }) { assert.equal(name, 'wiki_search'); assert.equal(input.query, 'fixture'); tools++; return { result: [] }; },
   };
   const config = { codexCli: { executable, codexHome: root, model: 'fixture-model' } };
   const client = await openCodexWorkbench(config, callbacks);
   assert.equal(client.capabilities.fileReads, 'native_full_disk');
-  assert.equal((await client.prompt('fixture')).stopReason, 'end_turn'); await client.close();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try { assert.equal((await client.prompt('fixture')).stopReason, 'end_turn'); }
+  finally { t.mock.timers.reset(); await client.close(); }
   await assert.rejects(readFile(path.join(root, 'result.txt')), { code: 'ENOENT' });
   assert.deepEqual(approvals.map(op => op.kind), ['native.file', 'native.command']); assert.match(approvals[0].changes[0].diff, /fixture/);
   assert.ok(events.some(event => event.type === 'command.completed' && event.data.exitCode === 0 && event.data.output === 'fixture command output')); assert.equal(tools, 1);

@@ -97,36 +97,6 @@ html[data-atmosphere="soft"] {
 .wiki-grid:not(.wiki-masonry) .wiki-card.is-image .wiki-card-image img {
   object-fit: cover;
 }
-.wiki-card-caption {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  z-index: 2;
-  padding: 28px 12px 12px;
-  background: var(--media-title-scrim);
-  color: var(--on-media);
-  pointer-events: none;
-  text-shadow: 0 1px 3px rgb(var(--shadow-color) / 0.45);
-  opacity: 0;
-}
-.wiki-card-open:hover .wiki-card-caption,
-.wiki-card-open:focus-visible .wiki-card-caption {
-  opacity: 1;
-}
-.wiki-card-caption strong {
-  display: block;
-  font-size: var(--fs-body);
-  font-weight: 700;
-  line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.wiki-card-caption span {
-  display: block;
-  margin-top: 2px;
-  font-size: var(--fs-caption);
-  opacity: .85;
-}
 .wiki-card.is-image .wiki-card-tags,
 .wiki-card.is-video .wiki-card-tags {
   left: 10px;
@@ -378,18 +348,10 @@ html[data-atmosphere="soft"] {
   .wiki-type-chips { display: none; }
 }
 
-/* Media wall: image cards are pure image + title scrim; no panel frame */
+/* Media wall: image cards have no panel frame */
 .wiki-card.is-image {
   background: var(--media-dark);
 }
-.wiki-card.is-image .wiki-card-caption {
-  padding: 36px 14px 12px;
-}
-.wiki-card.is-image .wiki-card-caption strong {
-  font-size: var(--fs-body);
-  font-weight: 750;
-}
-
 /* —— Agent: mini icon rail —— */
 @media (min-width: 1101px) {
   .app-layout.agent-home {
@@ -1141,71 +1103,6 @@ html[data-atmosphere="soft"] div.workflow-focus-review {
     box-shadow: var(--e-card-c);
   }
   .workflow-app[data-c-surface="workflow"] .workflow-input-actions {
-    justify-content: flex-end;
-  }
-}
-
-/* —— Agent workbench: glass session rail + stage conversation —— */
-@media (min-width: 1101px) {
-  .wiki-main.workbench-page[data-c-surface="workbench"] {
-    background: transparent;
-    box-shadow: none;
-    padding: 16px 18px 28px;
-  }
-  .workbench-page[data-c-surface="workbench"] .workbench-layout {
-    grid-template-columns: 200px minmax(0, 1fr);
-    gap: 14px;
-    min-height: calc(100dvh - 120px);
-  }
-  .workbench-page[data-c-surface="workbench"] .workbench-sessions {
-    padding: 10px 8px;
-    border-radius: var(--r-float);
-    background: var(--glass-bg-strong);
-    backdrop-filter: blur(16px) saturate(1.15);
-    -webkit-backdrop-filter: blur(16px) saturate(1.15);
-    box-shadow: var(--e-card-c);
-    border: 0;
-    gap: 6px;
-  }
-  .workbench-page[data-c-surface="workbench"] .workbench-sessions > button {
-    border: 0;
-    border-radius: var(--r-pill);
-    text-align: left;
-    padding: 10px 12px;
-    background: transparent;
-  }
-  .workbench-page[data-c-surface="workbench"] .workbench-sessions > button[aria-current="page"] {
-    background: var(--glass-bg);
-    box-shadow: var(--e-card-c);
-  }
-  .workbench-page[data-c-surface="workbench"] .workbench-conversation {
-    border: 0;
-    border-radius: var(--r-stage);
-    background: var(--panel);
-    box-shadow: var(--e-card-c);
-    padding: 16px 18px 18px;
-    min-width: 0;
-  }
-  .workbench-page[data-c-surface="workbench"] .workbench-message.user {
-    border-radius: 18px 18px 6px 18px;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--c-purple) 55%, var(--accent-soft)), color-mix(in srgb, var(--c-magenta) 45%, var(--accent-soft)));
-  }
-  .workbench-page[data-c-surface="workbench"] .workbench-composer {
-    border-radius: 24px;
-    background: var(--glass-bg-strong);
-    backdrop-filter: blur(12px);
-    box-shadow: var(--e-card-c);
-    border: 0;
-    padding: 12px;
-  }
-  .workbench-page[data-c-surface="workbench"] .workbench-create,
-  .workbench-page[data-c-surface="workbench"] .workbench-approval,
-  .workbench-page[data-c-surface="workbench"] .workbench-empty {
-    border: 0;
-    border-radius: var(--r-stage);
-    box-shadow: var(--e-card-c);
-  }
-  .workbench-page[data-c-surface="workbench"] .workbench-actions {
     justify-content: flex-end;
   }
 }

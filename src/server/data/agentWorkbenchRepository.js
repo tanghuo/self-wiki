@@ -17,7 +17,7 @@ export function createAgentWorkbenchRepository(db) {
     if (!row) throw agentError('NOT_FOUND', '工作台记录不存在', 404);
     return row;
   }
-  const workspace = id => { const row = requireRow('agent_workspaces', id); return { id: row.id, kind: ['project', 'scratch'][row.kind], userPath: row.user_path, path: row.canonical_path, identity: row.identity, trustedAt: row.trusted_at }; };
+  const workspace = id => { const row = requireRow('agent_workspaces', id); return { id: row.id, kind: ['project', 'scratch'][row.kind], name: row.name || '', userPath: row.user_path, path: row.canonical_path, identity: row.identity, trustedAt: row.trusted_at }; };
   const session = id => {
     const row = requireRow('agent_sessions', id);
     return { id: row.id, workspaceId: row.workspace_id, engine: row.engine, purpose: ['interactive', 'workflow'][row.purpose], state: sessionStates[row.state], policy: parse(row.policy), capabilities: parse(row.capabilities), engineSessionId: row.engine_session_id, engineVersion: row.engine_version, generation: row.generation, revision: row.revision, seq: row.seq, data: parse(row.data), createdAt: row.created_at };
@@ -47,9 +47,14 @@ export function createAgentWorkbenchRepository(db) {
     workspace, session, turn, approval,
     createWorkspace(value) {
       const now = Date.now();
-      const result = db.prepare('INSERT INTO agent_workspaces(kind,user_path,canonical_path,identity,trusted_at,created_at) VALUES(?,?,?,?,?,?)').run(value.kind === 'scratch' ? 1 : 0, value.userPath, value.path, value.identity, now, now);
+      const result = db.prepare('INSERT INTO agent_workspaces(kind,user_path,canonical_path,identity,name,trusted_at,created_at) VALUES(?,?,?,?,?,?,?)').run(value.kind === 'scratch' ? 1 : 0, value.userPath, value.path, value.identity, value.name || '', now, now);
       return workspace(Number(result.lastInsertRowid));
     },
+    projectByIdentity(identity) { const row = db.prepare('SELECT id FROM agent_workspaces WHERE kind=0 AND identity=? ORDER BY id LIMIT 1').get(identity); return row ? workspace(row.id) : null; },
+    listProjects() {
+      return db.prepare(`SELECT w.id FROM agent_workspaces w LEFT JOIN agent_sessions s ON s.workspace_id=w.id AND s.purpose=0 WHERE w.kind=0 GROUP BY w.id ORDER BY COALESCE(MAX(s.created_at), w.created_at) DESC, w.id DESC`).all().map(row => workspace(row.id));
+    },
+    renameProject(id, name) { const current = workspace(id); if (current.kind !== 'project') throw agentError('INVALID_PROJECT', '只能命名项目'); db.prepare('UPDATE agent_workspaces SET name=? WHERE id=?').run(name, id); return workspace(id); },
     createSession(value) {
       return atomic(() => {
         workspace(value.workspaceId);
@@ -58,6 +63,16 @@ export function createAgentWorkbenchRepository(db) {
       });
     },
     list: () => db.prepare('SELECT id FROM agent_sessions ORDER BY id DESC LIMIT 200').all().map(row => session(row.id)),
+    updateSessionModel(id, model, effort) {
+      return atomic(() => {
+        const s = session(id);
+        if (s.purpose === 'workflow') throw agentError('MODEL_LOCKED', '工作流会话的模型已冻结', 409);
+        const data = { ...s.data, model, effort };
+        db.prepare('UPDATE agent_sessions SET data=? WHERE id=?').run(JSON.stringify(data), id);
+        append(id, null, s.generation, 'session.model_changed', { model, effort });
+        return session(id);
+      });
+    },
     updatePolicy(id, revision, policy) {
       return atomic(() => {
         const s = session(id);
@@ -114,7 +129,8 @@ export function createAgentWorkbenchRepository(db) {
       session(id);
       return db.prepare('SELECT * FROM agent_events WHERE session_id=? AND seq>? ORDER BY seq LIMIT ?').all(id, after, Math.min(1000, Math.max(1, limit))).map(row => ({ sessionId: row.session_id, seq: row.seq, turnId: row.turn_id, generation: row.generation, type: row.type, schemaVersion: row.schema_version, data: parse(row.data) }));
     },
-    requestApproval(id, generation, operation, expiresAt) {
+    // Zero means no deadline; explicit deadlines on older records still apply.
+    requestApproval(id, generation, operation, expiresAt = 0) {
       return atomic(() => {
         const { s } = live(id, generation), hash = agentHash(operation);
         const result = db.prepare('INSERT INTO agent_approvals(session_id,turn_id,generation,operation_hash,policy_revision,operation,expires_at,created_at) VALUES(?,?,?,?,?,?,?,?)').run(s.id, id, generation, hash, s.revision, JSON.stringify(operation), expiresAt, Date.now());
@@ -129,7 +145,7 @@ export function createAgentWorkbenchRepository(db) {
         if (a.state !== 'pending') { if (a.decision === value.decision) return a; throw conflict('审批已处理或失效'); }
         const { s } = live(a.turnId, a.generation);
         if (s.revision !== a.policyRevision) throw conflict('审批策略已变化');
-        const expired = a.expiresAt <= Date.now(), decision = expired ? 'reject' : value.decision;
+        const expired = a.expiresAt > 0 && a.expiresAt <= Date.now(), decision = expired ? 'reject' : value.decision;
         const changed = db.prepare('UPDATE agent_approvals SET state=?,decision=? WHERE id=? AND state=0').run(expired ? 3 : decision === 'allow' ? 1 : 2, decision, id);
         if (changed.changes !== 1) throw conflict('审批已被其他操作处理');
         const pending = db.prepare('SELECT 1 FROM agent_approvals WHERE turn_id=? AND state=0').get(a.turnId);

@@ -4,10 +4,24 @@ import { defaultImageGenerationConfig, imageGenerationConfig } from "./imageGene
 import { isNetworkPath, validExecutable } from "./executablePath.js";
 import { defaultChatEngineConfig, chatEngineConfig } from "./chatEngine.js";
 
+export function defaultGrokExecutorConfig() {
+  return { executable: "grok", model: "grok-4.7" };
+}
+
 export function defaultOrganizationConfig() {
   return { schemaVersion: 1, enabled: false, applyMode: "suggest", executor: {
     type: "codex-cli", timeoutMs: 180000, codexCli: { executable: "codex", codexHome: null, model: null },
+    grokBuild: defaultGrokExecutorConfig(),
   }, embedding: defaultEmbeddingConfig(), imageGeneration: defaultImageGenerationConfig(), chat: defaultChatEngineConfig() };
+}
+
+function grokExecutorConfig(value = defaultGrokExecutorConfig()) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !["executable", "model"].includes(key))
+      || !validExecutable(value.executable) || /\.(?:cmd|bat)$/i.test(value.executable.trim())
+      || typeof value.model !== "string" || !/^[a-zA-Z0-9][\w.-]{0,99}$/.test(value.model)) {
+    throw elementError("请检查 Grok 程序路径和整理模型，例如 grok-4.7");
+  }
+  return { executable: value.executable.trim(), model: value.model };
 }
 
 function object(value, keys) {
@@ -18,18 +32,21 @@ function object(value, keys) {
 
 export function organizationConfig(value) {
   object(value, ["schemaVersion", "enabled", "applyMode", "executor", "embedding", "imageGeneration", "chat"]);
-  object(value.executor, ["type", "timeoutMs", "codexCli"]);
+  object(value.executor, ["type", "timeoutMs", "codexCli", "grokBuild"]);
   object(value.executor.codexCli, ["executable", "codexHome", "model", "allowShell"]);
   const { executor } = value, { executable, codexHome, model, allowShell } = executor.codexCli;
+  const grokBuild = grokExecutorConfig(executor.grokBuild);
   if (value.schemaVersion !== 1 || typeof value.enabled !== "boolean" || !["suggest", "auto"].includes(value.applyMode) ||
-      executor.type !== "codex-cli" || !Number.isInteger(executor.timeoutMs) || executor.timeoutMs < 1000 || executor.timeoutMs > 1800000 ||
+      !["codex-cli", "grok-build"].includes(executor.type) || !Number.isInteger(executor.timeoutMs) || executor.timeoutMs < 1000 || executor.timeoutMs > 1800000 ||
       !validExecutable(executable) ||
       !(codexHome === null || typeof codexHome === "string" && /^(?:[A-Za-z]:[\\/]|\/)/.test(codexHome) && !isNetworkPath(codexHome) && !/[\r\n\0]/.test(codexHome)) ||
       !(model === null || typeof model === "string" && /^[\w./:-]{1,160}$/.test(model)) ||
       !(allowShell === undefined || typeof allowShell === "boolean")) {
     throw elementError("请检查自动整理版本、模式、执行器与 Codex 目录路径（须为本机路径，不支持 \\\\服务器 网络路径）、模型及超时（1000–1800000 毫秒）");
   }
-  return { ...structuredClone(value), embedding: embeddingConfig(value.embedding === undefined ? defaultEmbeddingConfig() : value.embedding), imageGeneration: imageGenerationConfig(value.imageGeneration), chat: chatEngineConfig(value.chat) };
+  const normalized = { ...structuredClone(value), embedding: embeddingConfig(value.embedding === undefined ? defaultEmbeddingConfig() : value.embedding), imageGeneration: imageGenerationConfig(value.imageGeneration), chat: chatEngineConfig(value.chat) };
+  normalized.executor = { ...normalized.executor, grokBuild };
+  return normalized;
 }
 
 const evidenceSchema = { type: "object", additionalProperties: false, required: ["kind", "elementId", "quote", "reason"], properties: {

@@ -17,7 +17,7 @@ export function CommandOutput({ turnId, value }) {
       setPages(previous => ({ ...page, output: (previous?.output || '') + page.output }));
     } catch (error) { setError(error.message); }
   }
-  return <details open><summary>命令输出 · 退出码 {value.exitCode ?? '未知'}</summary><pre>{pages?.output ?? value.output}</pre>{value.truncated && <p>宿主输出达到 1 MiB 上限。</p>}{value.commandId && !pages?.done && <button onClick={more}>{pages ? '加载更多输出' : '从头查看输出'}</button>}{error && <p role="alert">{error}</p>}</details>;
+  return <details><summary>命令输出 · 退出码 {value.exitCode ?? '未知'}</summary><pre>{pages?.output ?? value.output}</pre>{value.truncated && <p>宿主输出达到 1 MiB 上限。</p>}{value.commandId && !pages?.done && <button onClick={more}>{pages ? '加载更多输出' : '从头查看输出'}</button>}{error && <p role="alert">{error}</p>}</details>;
 }
 export default function WorkbenchResults({ detail, busy, act, refresh, attach, onOpen }) {
   const sessionId = detail.session.id;

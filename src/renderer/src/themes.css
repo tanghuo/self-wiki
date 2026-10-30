@@ -327,3 +327,38 @@
   }
 }
 
+
+/* Neutral working surfaces for workflow preparation. */
+:root{--workflow-bg:#f6f7f9;--workflow-panel:#fff;--workflow-ink:#242a35;--workflow-muted:#777e8b;--workflow-line:#e4e7ec}
+[data-theme="night"]{--workflow-bg:#17191e;--workflow-panel:#22252d;--workflow-ink:#e7eaf0;--workflow-muted:#9299a6;--workflow-line:#323741}
+@media(prefers-color-scheme:dark){[data-theme="auto"]{--workflow-bg:#17191e;--workflow-panel:#22252d;--workflow-ink:#e7eaf0;--workflow-muted:#9299a6;--workflow-line:#323741}}
+
+/* Neutral workbench palette, scoped independently of the content library. */
+.wiki-shell.workbench-shell, .workbench-changes-dialog {
+  --bg: #f9f9f9; --panel: #fff; --panel-2: #f5f5f5; --ink: #252525;
+  --muted: #777; --line: #e8e8e8; --accent: #292929; --focus: #858585;
+  --hover: #f2f2f2; --accent-soft: #ededed; --on-accent: #fff;
+  --c-accent: #262626; --c-accent-hover: #454545; --c-on-accent: #fff;
+  --shadow-color: 0 0 0; --e-card-c: none;
+  --h-md: 32px;
+  --workbench-selected: #eaeaea;
+  --workbench-subtle: #999;
+  --workbench-caption: #909090;
+  --workbench-bubble: #f3f3f3;
+  --workbench-link: #376faa;
+  --workbench-border: #dedede;
+  --workbench-shadow-faint: #00000006;
+  --workbench-border-focus: #bdbdbd;
+  --workbench-placeholder: #929292;
+  --workbench-secondary: #666;
+  --workbench-send: #272727;
+  --workbench-on-send: #fff;
+  --workbench-disabled: #e9e9e9;
+  --workbench-disabled-ink: #aaa;
+  --workbench-outline: #9a9a9a;
+  --workbench-shadow-menu: #00000012;
+  --workbench-inspector: #fafafa;
+  --workbench-shadow-rail: #0001;
+  --good: #078238; --bad: #c52b29;
+  --good-soft: #eaf6ed; --bad-soft: #fff0ee;
+}

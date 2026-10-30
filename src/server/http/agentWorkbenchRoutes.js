@@ -7,13 +7,16 @@ export async function handleAgentWorkbenchRoute(service, req, res, url, access, 
   let match, result;
   if (p === '/status' && method === 'GET') result = service.status();
   else if ((match = /^\/engines\/([\w-]+)\/models$/.exec(p)) && method === 'GET') result = await service.models(match[1]);
+  else if (p === '/engines/antigravity-acp/connect' && method === 'POST') result = await service.connectAntigravity();
   else if (p === '/storage-inspection' && method === 'GET') result = await tasks.inspectStorage();
   else if (p === '/settings' && method === 'PUT') result = await service.configure(await body());
+  else if (p === '/workspaces' && method === 'GET') result = service.projects();
   else if (p === '/workspaces' && method === 'POST') result = await service.workspace(await body());
   else if (p === '/sessions' && method === 'GET') result = { sessions: service.list() };
   else if (p === '/sessions' && method === 'POST') result = service.createSession(await body());
   else if (p === '/wiki-template' && method === 'POST') result = await service.wikiTemplate(await body());
   else if ((match = /^\/legacy\/(\d+)\/continue$/.exec(p)) && method === 'POST') result = await service.continueLegacy(Number(match[1]), await body());
+  else if ((match = /^\/sessions\/(\d+)$/.exec(p)) && method === 'PATCH') result = service.configureSession(Number(match[1]), await body());
   else if ((match = /^\/sessions\/(\d+)$/.exec(p)) && method === 'GET') result = service.detail(Number(match[1]));
   else if ((match = /^\/sessions\/(\d+)\/turns$/.exec(p)) && method === 'POST') result = service.submit(Number(match[1]), await body());
   else if ((match = /^\/sessions\/(\d+)\/resume$/.exec(p)) && method === 'POST') result = await service.resume(Number(match[1]));
@@ -44,6 +47,8 @@ export async function handleAgentWorkbenchRoute(service, req, res, url, access, 
   }
   else if ((match = /^\/artifacts\/(\d+)\/wiki$/.exec(p)) && method === 'POST') result = await tasks.saveToWiki(Number(match[1]), Number(url.searchParams.get('sessionId')));
   else if ((match = /^\/turns\/(\d+)\/cancel$/.exec(p)) && method === 'POST') result = await service.cancel(Number(match[1]));
+  else if ((match = /^\/turns\/(\d+)\/changes$/.exec(p)) && method === 'GET') result = await service.changes(Number(match[1]));
+  else if ((match = /^\/turns\/(\d+)\/changes\/undo$/.exec(p)) && method === 'POST') result = await service.undoChanges(Number(match[1]), await body());
   else if ((match = /^\/turns\/(\d+)\/commands\/([a-f0-9-]{36})\/output$/.exec(p)) && method === 'GET') result = await service.commandOutput(Number(match[1]), match[2], Number(url.searchParams.get('offset') || 0));
   else if ((match = /^\/approvals\/(\d+)\/decision$/.exec(p)) && method === 'POST') result = service.decide(Number(match[1]), await body());
   else if ((match = /^\/sessions\/(\d+)\/events$/.exec(p)) && method === 'GET') {

@@ -5,5 +5,6 @@ if (process.isMainFrame) {
     pairLocal: () => ipcRenderer.invoke('wiki:pair-local'),
     ...(process.platform === "win32" ? { setWallpaper: (elementId) => ipcRenderer.invoke("wiki:set-wallpaper", elementId) } : {}),
     pickShareSource: (kind) => ipcRenderer.invoke("wiki:pick-share-source", kind),
+    pickProjectDirectory: () => ipcRenderer.invoke("wiki:pick-project-directory"),
   });
 }

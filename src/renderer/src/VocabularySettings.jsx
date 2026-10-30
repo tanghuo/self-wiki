@@ -40,8 +40,7 @@ export default function VocabularySettings({ onChanged, onBusyChange }) {
   }
   return <section className="vocabulary-settings" aria-labelledby="vocabulary-heading">
     <header className="vocabulary-heading"><h3 id="vocabulary-heading">名称与别名</h3>
-      <p className="wiki-muted">把同义叫法统一为一个主名称，原有别名仍可输入和检索。</p>
-    </header>
+          </header>
     <div className="vocabulary-tabs ui-segmented" role="group" aria-label="词表类别">{[["tag", "标签"], ["relation", "关联名称"]].map(([key, label]) =>
       <button type="button" key={key} aria-pressed={kind === key} disabled={busy} onClick={() => { setKind(key); change(empty); setSearch(""); }}>{label}</button>)}</div>
     {data.error && <p role="alert" className="wiki-error">{data.error}<button onClick={() => setRevision((n) => n + 1)}>重试</button></p>}
@@ -51,7 +50,7 @@ export default function VocabularySettings({ onChanged, onBusyChange }) {
       <h4>添加别名</h4>
       {kind === "relation" && <><label>名称对的类型<select aria-label="名称对的类型" value={form.direction} disabled={busy} onChange={(e) => change({ ...empty, direction: e.target.value })}>
         <option value="symmetric">双向同名</option><option value="forward">有向名称对</option></select></label>
-        <p className="wiki-muted">有向关系需同时填写正反名称。旧关联若方向待确认，请先逐条确认。</p></>}
+        </>}
       <div className="vocabulary-fields">
         <label>别名<input aria-label="别名" required maxLength={60} list={`${listId}-names`} value={form.alias} disabled={busy} placeholder={kind === "tag" ? "例如：Cyberpunk" : "已有的关联叫法"} onChange={(e) => {
           const name = e.target.value, term = choices.find((t) => t.name === name);
@@ -68,7 +67,7 @@ export default function VocabularySettings({ onChanged, onBusyChange }) {
       </div>
       <datalist id={`${listId}-names`}>{choices.map((t, i) => <option key={i} value={t.name}>{termLabel(t.name, t.reverseName)}</option>)}</datalist>
       <datalist id={`${listId}-canonical`}>{[...new Set(choices.map((t) => t.canonicalName))].map((name) => <option key={name} value={name} />)}</datalist>
-      <div className="vocabulary-form-footer"><p className="wiki-muted">仅合并含义相同的名称，应用前可查看影响。</p>
+      <div className="vocabulary-form-footer" style={{justifyContent:"flex-end"}}>
         <button type="submit" disabled={busy || data.loading || !data.data || !form.alias.trim() || !form.canonical.trim()}>预览归一</button>
       </div>
     </form>

@@ -10,6 +10,10 @@
       "executable": "codex",
       "codexHome": null,
       "model": null
+    },
+    "grokBuild": {
+      "executable": "grok",
+      "model": "grok-4.7"
     }
   },
   "imageGeneration": {

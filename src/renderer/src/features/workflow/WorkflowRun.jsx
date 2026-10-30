@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useCallback } from 'react';
 import { apiUrl, request } from '../../api.js';
 import { WorkflowGraphSnapshot } from './WorkflowEditor.jsx';
 import { downstreamClosure, sampleDefinition } from '../../../../shared/domain/workflow/contracts.js';
@@ -65,6 +65,23 @@ function mediaUrl(runId, artifactId) { return apiUrl(`/api/workflow-artifacts/${
 function downloadUrl(runId, artifactId, name = 'result') {
   const a = document.createElement('a'); a.href = mediaUrl(runId, artifactId); a.download = name; a.target = '_blank'; a.rel = 'noreferrer'; a.click();
 }
+function ModelProgress({ instance }) {
+  const [now, setNow] = useState(Date.now());
+  const attempt = instance.attempts?.find((entry) => entry.id === instance.attemptId);
+  const progress = attempt?.data?.progress;
+  useEffect(() => {
+    if (instance.state !== 'running') return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [instance.state]);
+  if (instance.state !== 'running' || !progress) return null;
+  const seconds = Math.max(0, Math.floor((now - progress.startedAt) / 1000));
+  const phases = { preparing: '准备图片和模型会话', queued: '等待 Grok 执行名额', waiting: '等待模型响应', thinking: '模型思考中', generating: '正在生成回答', completed: '正在保存结果' };
+  return <div className="workflow-model-progress" role="status">
+    <p>{phases[progress.phase] || '处理中'} · 已耗时 {Math.floor(seconds / 60)} 分 {seconds % 60} 秒{attempt.data.model && ` · ${attempt.data.model}`}{attempt.data.effort && ` · ${attempt.data.effort}`}</p>
+    {progress.text && <><pre className="workflow-model-preview">{progress.text}</pre>{progress.textLength > progress.text.length && <small>已收到 {progress.textLength} 字符，完整回答将在完成后显示。</small>}</>}
+  </div>;
+}
 function NodeResult({ instance, runId, onAction, expanded = false, definition, run, compact = false, skippedBefore = false, focusMode = false, editor }) {
   const attention = instance.state === 'waiting_review' || instance.state === 'unknown' || instance.state === 'failed';
   const [open, setOpen] = useState(expanded || attention || (definition?.resultSteps || []).includes(instance.nodeId)), [editing, setEditing] = useState(''), [original, setOriginal] = useState(null), [acknowledged, setAcknowledged] = useState(false);
@@ -82,6 +99,7 @@ function NodeResult({ instance, runId, onAction, expanded = false, definition, r
   return <div className="workflow-node-result" data-node-id={instance.nodeId}><div className="workflow-result-header"><button type="button" className="workflow-result-heading" aria-expanded={open} onClick={() => setOpen(!open)}><strong>{label}</strong>{isFinal && <span className="workflow-result-badge">最终结果</span>}{instance.itemId && !compact && <span>第 {instance.context.index + 1} 项</span>}<WorkflowStatusLight state={shown} label={instance.data?.reusedFrom && shown === 'succeeded' ? '已复用' : stateLabels[shown]} /></button>
     </div>
     {editor}
+    <ModelProgress instance={instance} />
     {error && <p className="workflow-error">{error}</p>}
     {open && <div className="workflow-result-body">{(!editor || ['model', 'image.generate'].includes(nodeOf(instance, definition)?.type)) && visibleOutputs(instance).map(([port, id]) => <div key={id}>{!(waiting && port === 'value') && <small>{outputLabel(instance, port)}</small>}<Artifact id={id} runId={runId} hidden={waiting && port === 'value'} onValue={port === 'value' ? (a) => { setOriginal(a); if (!changed) { setEditing(typeof a.value === 'string' ? a.value : ''); setChosen(a.type === 'list<image>' ? a.value.map((v) => v.artifactId) : null); } } : undefined} /></div>)}
       {waiting && <div className="workflow-review">
@@ -262,14 +280,27 @@ function ProgressBar({ total, done, waiting, failed, skipped, running, queued })
   </div>;
 }
 
+// Size grid spans from natural card height so each column can advance independently.
+function WorkflowResultRow({ children, ...props }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const row = ref.current;
+    const measure = () => row.style.setProperty('--workflow-row-span', Math.ceil(row.getBoundingClientRect().height + 12));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(row);
+    return () => observer.disconnect();
+  }, []);
+  return <div {...props} ref={ref} className="workflow-result-row">{children}</div>;
+}
+
 export default function WorkflowRun({ runId, definition, title, focusNodeId, onStateChange, onEditVersion, onDerived, onRun, runCount = 1, onRunCountChange, archived = false }) {
   const [run, setRun] = useState(null), [error, setError] = useState(''), [busy, setBusy] = useState(false), [after, setAfter] = useState(0), [events, setEvents] = useState([]), [selected, setSelected] = useState([]), [showGraph, setShowGraph] = useState(false), [diagnostics, setDiagnostics] = useState(false);
   const [focusedStep, setFocusedStep] = useState(null);
   const rerun = useRerunDraft(run);
   const [filter, setFilter] = useState('all'), [batchStats, setBatchStats] = useState({}), [notice, setNotice] = useState('');
-  const startedAt = useRef(null);
   useEffect(() => { if (run) onStateChange?.(run.id, run.state); onRun?.(run); }, [run, onStateChange, onRun]);
-  useEffect(() => { setAfter(0); setSelected([]); setRun(null); setBatchStats({}); setFilter('all'); startedAt.current = Date.now(); }, [runId]);
+  useEffect(() => { setAfter(0); setSelected([]); setRun(null); setBatchStats({}); setFilter('all'); }, [runId]);
   async function refresh() { const r = await request(`/api/workflow-runs/${runId}?after=${after}&limit=100`); setRun(r); return r; }
   useEffect(() => {
     let alive = true, timer, cursor = 0;
@@ -356,16 +387,12 @@ export default function WorkflowRun({ runId, definition, title, focusNodeId, onS
   }
   const finished = progress.done + progress.skipped + progress.failed;
   const current = Math.min(progress.total, finished + progress.running + (progress.waiting ? 1 : 0));
-  const remaining = Math.max(0, progress.total - finished);
-  const elapsedMin = Math.max(0.1, (Date.now() - (startedAt.current || Date.now())) / 60000);
-  const perItem = finished > 0 ? elapsedMin / finished : 0.5;
-  const etaMin = remaining > 0 && ['queued', 'running'].includes(run.state) ? Math.max(1, Math.ceil(remaining * perItem)) : 0;
   const canControl = !run.cancelled && !['succeeded', 'failed', 'partial_failed', 'cancelled'].includes(run.state);
   const runControl = (action) => perform(async () => { await command(`/api/workflow-runs/${runId}/actions`, { action, controlVersion: run.controlVersion }); });
 
   return <section className="workflow-run" aria-label="工作流运行"><header className="workflow-run-summary"><div className="workflow-run-summary-copy"><h2>{isSample ? '试跑' : '运行'} #{run.id} <WorkflowStatusLight state={runShown.state} label={runShown.label} /></h2>
     {progress.total > 0 && <div className="workflow-progress-block">
-      <p className="workflow-progress-label">{['queued', 'running', 'paused'].includes(run.state) ? `处理中 · 第 ${Math.max(1, current)} / ${progress.total} 项` : `共 ${progress.total} ${loops.length ? '项' : '步'}`}{etaMin ? `，约 ${etaMin} 分钟` : ''}</p>
+      <p className="workflow-progress-label">{['queued', 'running', 'paused'].includes(run.state) ? `处理中 · 第 ${Math.max(1, current)} / ${progress.total} 项` : `共 ${progress.total} ${loops.length ? '项' : '步'}`}</p>
       <ProgressBar {...progress} />
       {!!loops.length && <div className="workflow-progress-filters ui-segmented" role="toolbar" aria-label="按状态筛选">
         {[['all', '全部', progress.total], ['done', '完成', progress.done], ['waiting', '等你确认', progress.waiting], ['error', '有问题', progress.failed], ['skipped', '已跳过', progress.skipped], ['running', '处理中', progress.running]].map(([key, label, count]) => <button type="button" key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}（{count}）</button>)}
@@ -383,7 +410,7 @@ export default function WorkflowRun({ runId, definition, title, focusNodeId, onS
   {['queued', 'running'].includes(run.state) && !progress.waiting && <p className="workflow-waiting">正在处理。每一步的结果和需要你确认的内容会出现在下面。</p>}
   {loops.map((i) => <div key={i.id} id={`workflow-step-${i.id}`}><WorkflowNodeEdit key={rerun.resetKey} run={run} nodeId={i.nodeId} draft={rerun.draft || run} setDefinition={rerun.setDefinition} setInputs={rerun.setInputs} busy={busy || archived} adapters={rerun.adapters} setReuse={rerun.setReuse} reuse={rerun.reuse} /><BatchTable runId={runId} instanceId={i.id} instance={i} controlVersion={run.controlVersion} onAction={nodeAction} selected={selected} setSelected={setSelected} expanded={i.nodeId === focusNodeId || i.id === focusedStep} definition={run.definition} run={run} summary={summaries[i.id]} filter={filter} onStats={onStats} title={title} /></div>)}
   {!!nodeRoots.length && <fieldset disabled={busy} className="workflow-run-results">
-    {nodeRoots.map((i) => <div key={i.id} className="workflow-result-row" id={`workflow-step-${i.id}`} data-result-state={i.state}>{i.state === 'waiting_review' && (progress.waitingIds || []).length > 1 && <label className="workflow-review-select"><input type="checkbox" aria-label={`选中${resultLabel(i, run.definition)}`} checked={selected.includes(i.id)} onChange={(e) => setSelected((ids) => e.target.checked ? [...ids, i.id] : ids.filter((id) => id !== i.id))} /></label>}<NodeResult instance={i} runId={runId} onAction={nodeAction} expanded={i.nodeId === focusNodeId || i.id === focusedStep} definition={run.definition} run={run} skippedBefore={onlySkips} editor={canEditNode(nodeOf(i, run.definition), rerun.adapters) ? <WorkflowNodeEdit key={rerun.resetKey} run={run} nodeId={i.nodeId} draft={rerun.draft || run} setDefinition={rerun.setDefinition} setInputs={rerun.setInputs} busy={busy || archived} adapters={rerun.adapters} setReuse={rerun.setReuse} reuse={rerun.reuse} /> : null} /></div>)}
+    {nodeRoots.map((i) => <WorkflowResultRow key={i.id} id={`workflow-step-${i.id}`} data-result-state={i.state}>{i.state === 'waiting_review' && (progress.waitingIds || []).length > 1 && <label className="workflow-review-select"><input type="checkbox" aria-label={`选中${resultLabel(i, run.definition)}`} checked={selected.includes(i.id)} onChange={(e) => setSelected((ids) => e.target.checked ? [...ids, i.id] : ids.filter((id) => id !== i.id))} /></label>}<NodeResult instance={i} runId={runId} onAction={nodeAction} expanded={i.nodeId === focusNodeId || i.id === focusedStep} definition={run.definition} run={run} skippedBefore={onlySkips} editor={canEditNode(nodeOf(i, run.definition), rerun.adapters) ? <WorkflowNodeEdit key={rerun.resetKey} run={run} nodeId={i.nodeId} draft={rerun.draft || run} setDefinition={rerun.setDefinition} setInputs={rerun.setInputs} busy={busy || archived} adapters={rerun.adapters} setReuse={rerun.setReuse} reuse={rerun.reuse} /> : null} /></WorkflowResultRow>)}
   </fieldset>}
   </div></div>
   </section>;

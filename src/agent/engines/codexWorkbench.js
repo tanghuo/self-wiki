@@ -36,6 +36,11 @@ export async function describeCodexWorkbench(config, { cwd, signal }) {
 }
 export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, signal, onRequest, onEvent, onExit, tools = [], onToolCall }) {
   let client, thread, turn, prompting = false, closed = false, completion, timer;
+  let remaining, timerStarted, approvalWaits = 0;
+  function armTimer() {
+    timerStarted = performance.now();
+    timer = setTimeout(() => completion.reject(new Error('Codex 轮次超时，结果可能未知')), remaining);
+  }
   const items = new Map(), commands = new Map();
   const live = params => !closed && prompting && params.threadId === thread && typeof turn === 'string' && params.turnId === turn;
   try {
@@ -55,7 +60,16 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
         const file = method.includes('fileChange');
         const operation = file ? { kind: 'native.file', itemId: params.itemId, changes: item.changes, reason: params.reason || '' } : { kind: 'native.command', itemId: params.itemId, command: params.command || item.command, cwd: params.cwd || item.cwd, reason: params.reason || '', nativePolicy: 'untrusted / read-only' };
         if (!file && (typeof operation.command !== 'string' || !operation.command.trim() || typeof operation.cwd !== 'string')) return { decision: 'decline' };
-        const allowed = await onRequest('engine/native_approval', operation);
+        const currentCompletion = completion;
+        if (approvalWaits++ === 0) {
+          clearTimeout(timer);
+          remaining = Math.max(0, remaining - (performance.now() - timerStarted));
+        }
+        let allowed;
+        try { allowed = await onRequest('engine/native_approval', operation); }
+        finally {
+          if (--approvalWaits === 0 && prompting && !closed && completion === currentCompletion) armTimer();
+        }
         const canAccept = !params.availableDecisions || params.availableDecisions.includes('accept');
         return { decision: allowed === true && live(params) && canAccept ? 'accept' : 'decline' };
       },
@@ -66,7 +80,7 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
         if (method === 'item/agentMessage/delta') return onEvent('message.delta', { text: params.delta });
         if (method === 'turn/plan/updated') return onEvent('plan.updated', { entries: (params.plan || []).map(entry => ({ content: entry.step, status: entry.status })) });
         if (method === 'thread/tokenUsage/updated') return onEvent('engine.usage', { namespace: 'codex', usage: params.tokenUsage });
-        if (method === 'turn/diff/updated') return onEvent('engine.diff', { namespace: 'codex', diff: String(params.diff || '').slice(0, 2 * 1024 * 1024) });
+        if (method === 'turn/diff/updated') return onEvent('engine.diff', { namespace: 'codex', diff: String(params.diff || '').slice(0, 2 * 1024 * 1024), truncated: String(params.diff || '').length > 2 * 1024 * 1024 });
         if (['item/started', 'item/completed'].includes(method) && params.item) {
           const item = params.item; items.set(item.id, item);
           const completed = method === 'item/completed';
@@ -99,7 +113,7 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
         try {
           signal?.throwIfAborted(); await verifyMcp(client, cwd, thread);
           prompting = true; turn = null; items.clear(); commands.clear(); completion = Promise.withResolvers(); completion.promise.catch(() => {});
-          timer = setTimeout(() => completion.reject(new Error('Codex 轮次超时，结果可能未知')), 30 * 60 * 1000);
+          remaining = 30 * 60 * 1000; armTimer();
           onDelivery('attempted');
           const response = await client.request('turn/start', { threadId: thread, model: config.codexCli.model, ...(config.effort && { effort: config.effort }), approvalPolicy: 'untrusted', approvalsReviewer: 'user', sandboxPolicy: { type: 'readOnly', networkAccess: false }, input: [{ type: 'text', text }, ...images.map(image => ({ type: 'image', url: `data:${image.mimeType};base64,${image.data}` }))] }, 60000);
           turn ||= response.turn.id; return await completion.promise;

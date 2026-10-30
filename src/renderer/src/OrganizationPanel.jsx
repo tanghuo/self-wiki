@@ -85,6 +85,8 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
     finally { setBusy(false); }
   }
   function executorField(key, value) { setConfig((c) => ({ ...c, executor: { ...c.executor, codexCli: { ...c.executor.codexCli, [key]: key === "executable" ? value : value || null } } })); }
+  function grokField(key, value) { setConfig((c) => ({ ...c, executor: { ...c.executor, grokBuild: { ...(c.executor.grokBuild || { executable: "grok", model: "grok-4.7" }), [key]: value } } })); }
+  function setExecutorType(type) { setConfig((c) => ({ ...c, executor: { ...c.executor, type } })); }
   async function probeImages(executor) {
     if (busy || disabled) return;
     setBusy(true); setError(""); setMessage("");
@@ -104,26 +106,29 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
     finally { setBusy(false); }
   }
   const locked = busy || disabled;
+  const grok = config?.executor?.grokBuild || { executable: "grok", model: "grok-4.7" };
+  const grokMode = config?.executor?.type === "grok-build";
+  const executorSelect = config && <label>整理执行器<select aria-label="整理执行器" value={config.executor.type} disabled={locked} onChange={(e) => setExecutorType(e.target.value)}><option value="codex-cli">本机 Codex CLI</option><option value="grok-build">本机 Grok Build</option></select></label>;
   return <section className={settings ? "settings-section" : "organization-panel"} aria-label={settings ? (focus === "connection" ? "Agent 连接" : focus === "organization" ? "自动整理与检索" : "Agent 自动整理") : elementId ? "内容整理" : "全库整理历史"}>
     {settings && focus === "all" && <header className="settings-section-header"><h3>Agent 自动整理</h3></header>}
     {!status && !error && <p role="status">正在读取整理状态…</p>}
     {status && <>
-      {settings && <p className="wiki-muted">{status.executor.diagnostic}{status.executor.version && ` · ${status.executor.version}`}</p>}
-      {status.configError && <p className="wiki-error" role="alert">{settings ? status.configError : "自动整理配置有误，请前往设置检查。"}</p>}
+            {status.configError && <p className="wiki-error" role="alert">{settings ? status.configError : "自动整理配置有误，请前往设置检查。"}</p>}
       {settings && config && <div className="wiki-form-fields">
         {(focus === "all" || focus === "connection") && <>
         {focus === "connection" && <header className="settings-section-header"><h3>Agent 连接</h3></header>}
-        {focus === "connection" && <p className="wiki-muted">聊天引擎可选择 Codex 或 Grok Build。自动整理继续使用本机 Codex。</p>}
-        <ChatEngineSettings value={config.chat} locked={locked} onChange={(chat) => setConfig((current) => ({ ...current, chat }))} />
+                <ChatEngineSettings value={config.chat} locked={locked} onChange={(chat) => setConfig((current) => ({ ...current, chat }))} />
         <button type="button" disabled={locked || dirty} title={dirty ? "先保存改动，再检测连接" : undefined} onClick={probeChat}>检测聊天连接</button>
         <div className="wiki-actions"><button disabled={locked} onClick={() => mutate("probe")}>检测并启动执行器</button></div>
         <fieldset className="settings-group"><legend>连接参数</legend>
-        <label>执行器<select value={config.executor.type} disabled><option value="codex-cli">本机 Codex CLI</option></select></label>
+        {focus === "connection" && executorSelect}
+        {focus === "connection" && grokMode && <>
+        <label>Grok 程序路径<input aria-label="Grok 程序路径" value={grok.executable} disabled={locked} onChange={(e) => grokField("executable", e.target.value)} placeholder="grok" /></label>
+        <label>整理模型<input aria-label="整理模型" value={grok.model} disabled={locked} onChange={(e) => grokField("model", e.target.value)} placeholder="grok-4.7" /></label>
+        </>}
         <label>Codex 程序路径<input value={config.executor.codexCli.executable} disabled={locked} onChange={(e) => executorField("executable", e.target.value)} placeholder="codex" /></label>
-        <p className="wiki-muted">默认 codex 会自动查找 PATH；仅在未找到或需要指定版本时填写绝对路径。</p>
-        <label>Codex 数据目录（可选）<input value={config.executor.codexCli.codexHome || ""} disabled={locked} onChange={(e) => executorField("codexHome", e.target.value)} placeholder={status.defaultCodexHome || "留空则使用独立目录"} /></label>
-        <p className="wiki-muted">留空时与 Codex 桌面端分开保存，并使用本机当前登录。修改后请先保存再检测连接。</p>
-        </fieldset>
+                <label>Codex 数据目录（可选）<input value={config.executor.codexCli.codexHome || ""} disabled={locked} onChange={(e) => executorField("codexHome", e.target.value)} placeholder={status.defaultCodexHome || "留空则使用独立目录"} /></label>
+                </fieldset>
         {focus === "connection" && !registerSave && <div className="wiki-actions organization-save"><button className="primary" disabled={locked} onClick={() => mutate("config", config, "PUT")}>保存连接配置</button></div>}
         </>}
         {(focus === "all" || focus === "organization") && <>
@@ -132,20 +137,26 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         <fieldset className="settings-group"><legend>整理策略</legend>
         <label><input type="checkbox" checked={config.enabled} disabled={locked} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} />导入后自动整理</label>
         <label>处理方式<select value={config.applyMode} disabled={locked} onChange={(e) => setConfig({ ...config, applyMode: e.target.value })}><option value="suggest">先生成建议</option><option value="auto">自动添加</option></select></label>
-        <p className="wiki-muted">自动模式会添加标签、图片识别结果及推断关联，并标记 AI 来源。可从侧栏「整理历史」查看或修正。</p>
-        <button type="button" disabled={locked || dirty || Boolean(status.configError)} title={dirty ? "先保存改动" : status.configError ? "整理配置有误，先修正" : undefined} onClick={() => mutate("enqueue-texts")}>检查已有文字相似关系</button>
+                <button type="button" disabled={locked || dirty || Boolean(status.configError)} title={dirty ? "先保存改动" : status.configError ? "整理配置有误，先修正" : undefined} onClick={() => mutate("enqueue-texts")}>检查已有文字相似关系</button>
         </fieldset>
         <ImageGenerationSettings config={config.imageGeneration} locked={locked} saved={JSON.stringify(config.imageGeneration) === JSON.stringify(savedConfig?.imageGeneration)} onChange={(imageGeneration) => setConfig((c) => ({ ...c, imageGeneration }))} onProbe={probeImages} />
         <details className="settings-advanced" open={focus === "organization" ? undefined : undefined}>
         <summary>模型、超时与语义检索</summary>
         <div className="settings-advanced-content">
         <fieldset className="settings-group"><legend>模型与执行器</legend>
+        {executorSelect}
+        {grokMode ? <>
+        <label>Grok 程序路径<input aria-label="Grok 程序路径" value={grok.executable} disabled={locked} onChange={(e) => grokField("executable", e.target.value)} placeholder="grok" /></label>
+        <p className="wiki-muted">先在本机运行 grok login。这个模型用于自动整理、图片描述和视频画面分析。对话模型在「Agent 连接」里另设。</p>
+        <label>整理模型<input aria-label="整理模型" value={grok.model} disabled={locked} onChange={(e) => grokField("model", e.target.value)} placeholder="grok-4.7" /></label>
+        </> : <>
         {focus === "organization" && <>
         <label>Codex 程序路径<input value={config.executor.codexCli.executable} disabled={locked} onChange={(e) => executorField("executable", e.target.value)} placeholder="codex" /></label>
         <label>Codex 数据目录（可选）<input value={config.executor.codexCli.codexHome || ""} disabled={locked} onChange={(e) => executorField("codexHome", e.target.value)} placeholder={status.defaultCodexHome || ""} /></label>
         </>}
         <label className="lan-sharing-checkbox"><input type="checkbox" checked={config.executor.codexCli.allowShell === true} disabled={locked} onChange={(e) => setConfig((c) => ({ ...c, executor: { ...c.executor, codexCli: { ...c.executor.codexCli, allowShell: e.target.checked } } }))} />允许 Agent 在会话目录运行命令（高级）</label>
         <label>整理模型（可选）<input value={config.executor.codexCli.model || ""} disabled={locked} onChange={(e) => executorField("model", e.target.value)} placeholder="留空使用 CLI 默认模型" /></label>
+        </>}
         <label>整理超时（秒）<input type="number" min="1" max="1800" value={config.executor.timeoutMs / 1000} disabled={locked} onChange={(e) => setConfig({ ...config, executor: { ...config.executor, timeoutMs: Number(e.target.value) * 1000 } })} /></label>
         </fieldset>
         <SemanticSettings config={config.embedding} status={status.semantic} locked={locked} onChange={(embedding) => setConfig({ ...config, embedding })} onAction={mutate} />

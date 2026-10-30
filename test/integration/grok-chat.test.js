@@ -7,6 +7,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultOrganizationConfig, organizationConfig } from "../../src/shared/domain/organization.js";
 import { createGrokTools } from "../../src/agent/executors/grokTools.js";
+import { acquireExternalResource } from '../../src/agent/executors/resourceGate.js';
+import { externalResourceLimits } from '../../src/shared/domain/externalResources.js';
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(os.tmpdir(), "wiki-grok-chat-"));
@@ -48,6 +50,9 @@ test("chat engine defaults preserve old configurations and validate local Grok s
 });
 
 test('Grok queued turns show a notice, can be stopped and release their waiting slot', { timeout: 10000 }, async (t) => {
+  const releases = [];
+  t.after(() => releases.forEach(release => release()));
+  for (let i = 0; i < externalResourceLimits.keys.grok - 1; i++) releases.push(await acquireExternalResource('grok'));
   const f = await fixture(t), first = await f.start('HANG');
   for (let i = 0; i < 100; i++) {
     const data = await f.api(`chat/sessions/${first.session.id}`);

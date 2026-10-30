@@ -17,16 +17,17 @@ const hints = { agent: '仅使用指定应用工具；无 Shell 和项目文件�
 const palette = [{ type: 'element', label: typeLabel('element'), hint: hints.element }, ...catalog.filter((n) => !['input', 'element', 'preview', 'template'].includes(n.type)).map((n) => ({ ...n, label: typeLabel(n.type), hint: hints[n.type] }))];
 const paletteGroups = [{ title: '内容', types: ['element'] }, { title: 'AI 与处理', types: ['model', 'agent', 'image.generate', 'foreach', 'transform'] }, { title: '我来确认', types: ['review'] }, { title: '保存', types: ['library.save'] }];
 const labels = Object.fromEntries(catalog.map((n) => [n.type, typeLabel(n.type)]));
-export function WorkflowPlan({ definition, onLocate, activeNodeId, scope = null }) {
+export function WorkflowPlan({ definition, onLocate, activeNodeId, scope = null, compact = false }) {
   // Numbers always come from the whole flow so a loop's steps keep the numbers shown on the canvas.
   const allSteps = workflowSteps(definition), steps = scope ? allSteps.filter((step) => step.parentId === scope) : allSteps;
   const reviews = steps.filter((step) => step.node.type === 'review');
   const saves = steps.filter((step) => step.node.type === 'library.save');
-  return <div className="workflow-plan-body"><h3>{scope ? '循环里的步骤' : '处理流程'} <small>共 {steps.length} 步</small></h3>{steps.length ? <ol>{steps.map((step) => {
+  return <div className="workflow-plan-body"><h3>{scope ? '循环里的步骤' : compact ? '流程概览' : '处理流程'} <small>共 {steps.length} 步</small></h3>{steps.length ? <ol>{steps.map((step) => {
     const { sources, targets } = stepConnections(step, allSteps);
     const editable = step.depth === 0 && isPreparationInput(step.node);
     const text = step.node.config.parts?.map((part) => part.kind === 'text' ? part.text : '').join('') || (typeof step.node.config.default === 'string' ? step.node.config.default : '');
-    return <li key={step.id} data-node-id={step.id} data-active={activeNodeId === step.id} style={{ marginLeft: step.depth * 16 }}><span className="workflow-plan-number" aria-hidden="true">{step.number}</span><div>{editable && onLocate ? <button className="workflow-plan-locate" aria-label={'定位' + stepLabel(step)} onClick={() => onLocate(step.id)}>{step.name}</button> : <strong>{step.name}</strong>}{['element', 'template'].includes(step.node.type) && !isPreparationInput(step.node) && <small>运行时自动使用前面步骤的结果，不用填写</small>}{sources.length > 0 && <small>来自：{sources.map(stepLabel).join('、')}</small>}{targets.length > 0 && <small>用于：{targets.map(stepLabel).join('、')}</small>}{text.trim() && <small className="workflow-plan-excerpt">{text.trim().slice(0, 90)}</small>}{!sources.length && !targets.length && <small>{hints[step.node.type] || '内容'}</small>}</div></li>;
+    const details = <>{['element', 'template'].includes(step.node.type) && !isPreparationInput(step.node) && <small>运行时自动使用前面步骤的结果，不用填写</small>}{sources.length > 0 && <small>来自：{sources.map(stepLabel).join('、')}</small>}{targets.length > 0 && <small>用于：{targets.map(stepLabel).join('、')}</small>}{text.trim() && <small className="workflow-plan-excerpt">{text.trim().slice(0, 90)}</small>}{!sources.length && !targets.length && <small>{hints[step.node.type] || '内容'}</small>}</>;
+    return <li key={step.id} data-node-id={step.id} data-active={activeNodeId === step.id} style={{ marginLeft: step.depth * 16 }}><span className="workflow-plan-number" aria-hidden="true">{step.number}</span><div>{editable && onLocate ? <button className="workflow-plan-locate" aria-label={'定位' + stepLabel(step)} onClick={() => onLocate(step.id)}>{step.name}</button> : <strong>{step.name}</strong>}{compact ? <details className="workflow-plan-details"><summary>查看详情</summary><div>{details}</div></details> : details}</div></li>;
   })}</ol> : <p>{scope ? '循环里还没有步骤，从左侧添加。' : '还没有步骤，请返回修改流程添加。'}</p>}</div>;
 }
 function LoopOutputSelect({ nodes, value, onChange }) {

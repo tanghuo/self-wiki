@@ -39,6 +39,10 @@ test('adapter-owned compatibility reads legacy configuration and frozen snapshot
   const modern = { id: 'text', type: 'model', version: 1, config: { adapterId: 'grok-text', outputType: 'text', parameters: {} }, inputs: {} };
   const settings = { chat: { grokBuild: { executable: 'configured-cli', model: 'configured-model' } } };
   assert.equal(modelAdapters.snapshotDefinition({ nodes: [modern] }, settings)['root/text'].settings.model, 'configured-model');
+  assert.equal(modelAdapters.snapshotDefinition({ nodes: [modern] }, settings)['root/text'].settings.effort, 'low');
+  const withEffort = effort => ({ ...modern, config: { ...modern.config, parameters: { effort } } });
+  assert.equal(modelAdapters.snapshotDefinition({ nodes: [withEffort('medium')] }, settings)['root/text'].settings.effort, 'medium');
+  assert.throws(() => modelAdapters.snapshotDefinition({ nodes: [withEffort('invalid')] }, settings), /推理强度/);
   assert.throws(() => modelAdapters.normalizeNode({ ...modern, config: { ...modern.config, parameters: { model: 'workflow-model' } } }), /未声明此任务参数/);
   assert.equal(modelAdapters.catalog().find((entry) => entry.id === 'grok-text').parameterFields.some((field) => field.name === 'model'), false);
 });
@@ -50,8 +54,14 @@ test('workflow Grok text adapter verifies an empty tool profile, isolates sessio
   await writeFile(executable, await readFile(new URL('../fixtures/grok-acp.txt', import.meta.url)));
   t.after(async () => { if (previous === undefined) delete process.env.GROK_HOME; else process.env.GROK_HOME = previous; assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-workflow-adapter-')); await rm(root, { recursive: true, force: true, maxRetries: 3 }); });
   const snapshot = { id: 'grok-text', version: 1, settings: { executable, model: 'grok-4.6' } };
-  const call = (prompt) => modelAdapters.model(snapshot, { prompt, images: [], workspace: root, signal: AbortSignal.timeout(5000), onRequest() {} });
+  const progress = [];
+  const call = (prompt) => modelAdapters.model(snapshot, { prompt, images: [], workspace: root, signal: AbortSignal.timeout(5000), onRequest() {}, onProgress: event => progress.push(event.metadata) });
   assert.equal((await call('hello')).text, 'fixture Grok reply');
+  assert.ok(progress.some(entry => entry.model === 'grok-4.6' && entry.effort === 'low'));
+  assert.deepEqual(progress.filter(entry => entry.progress).map(entry => entry.progress.phase), ['preparing', 'queued', 'waiting', 'generating', 'completed']);
+  assert.equal(progress.at(-1).progress.text, 'fixture Grok reply', 'the last chunk is flushed even inside the throttle interval');
+  const configured = (await readFile(path.join(root, 'acp-config.ndjson'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.deepEqual(configured.map(({ configId, value }) => [configId, value]), [['model', 'grok-4.6'], ['reasoning_effort', 'low']]);
   await assert.rejects(call('DENY_SHELL'), /受限模型节点拒绝工具/);
   await assert.rejects(call('GENERATE_CAT'), /受限模型节点拒绝工具/);
   await assert.rejects(call('WIKI'), /受限模型节点拒绝工具/);
@@ -76,6 +86,11 @@ test('workflow Grok text adapter verifies an empty tool profile, isolates sessio
     assert.equal(image.mimeType, `image/${format}`);
     assert.equal((await sharp(Buffer.from(image.data, 'base64')).metadata()).format, format);
   }
+  let dispatched = false;
+  await assert.rejects(modelAdapters.model({ ...snapshot, settings: { ...snapshot.settings, model: 'ignored-model' } }, {
+    prompt: 'must not be sent', images: [], workspace: root, signal: AbortSignal.timeout(5000), onRequest() { dispatched = true; },
+  }), /未按配置生效/);
+  assert.equal(dispatched, false, 'a silently substituted model never receives the prompt');
 });
 
 test('external resource gate keeps one slot per non-Grok key; queued cancellation never acquires a slot', async () => {

@@ -5,7 +5,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { StringDecoder } from "node:string_decoder";
 import { withExternalResource } from './resourceGate.js';
-import { childEnvironment } from '../../shared/runtime/childEnvironment.js';
+import { grokEnvironment } from './grokEnvironment.js';
 import sharp from "sharp";
 import { terminateProcessTree } from './processTree.js';
 import { grokAspectRatios, grokBuildConfig } from "../../shared/domain/imageGeneration.js";
@@ -40,7 +40,7 @@ async function executable(config) {
 function runCli(command, args, { cwd, signal, onEvent, timeout = 1800000 }) {
   signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const child = spawn(command.program, [...command.prefix, ...args], { cwd, shell: false, windowsHide: true, env: childEnvironment(), detached: process.platform !== 'win32', stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command.program, [...command.prefix, ...args], { cwd, shell: false, windowsHide: true, env: grokEnvironment(), detached: process.platform !== 'win32', stdio: ["ignore", "pipe", "pipe"] });
     const decoder = new StringDecoder("utf8");
     let buffer = "", output = "", failure, total = 0, stopping, settled = false;
     function stop(error) {

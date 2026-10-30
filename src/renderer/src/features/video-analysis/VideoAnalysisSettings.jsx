@@ -48,10 +48,8 @@ export default function VideoAnalysisSettings({ onBusyChange, onDirtyChange, onC
         <fieldset className="settings-group"><legend>自动画面标注</legend>
           <label><input type="checkbox" checked={config.enabled} disabled={busy} onChange={(event) => field("enabled", event.target.checked)} />自动分析未处理的视频（含已有视频）</label>
           <label>标注模式<select aria-label="视频标注模式" value={config.applyMode} disabled={busy} onChange={(event) => field("applyMode", event.target.value)}><option value="suggest">先生成建议</option><option value="auto">自动应用，可事后纠正</option></select></label>
-          <p className="wiki-muted">本机抽取视频画面，分析帧会交给“Agent 与检索”中配置的 Codex 模型服务。自动模式会加入时间标签；人工编辑和拒绝的结果会在重跑时保留。</p>
-          <div className="wiki-video-settings-grid"><label>FFmpeg 程序路径<input aria-label="FFmpeg 程序路径" required value={config.ffmpeg} disabled={busy} onChange={(event) => field("ffmpeg", event.target.value)} /></label><label>ffprobe 程序路径<input aria-label="ffprobe 程序路径" required value={config.ffprobe} disabled={busy} onChange={(event) => field("ffprobe", event.target.value)} /></label></div>
-          <p className="wiki-muted">视频首帧相似关联由“Agent 与检索”的自动整理处理，共用此 FFmpeg 路径，无需开启整段视频分析。确认相似后可与图片或其他视频堆叠；首帧相似不代表整段视频相同。</p>
-          <details><summary>采样与任务预算</summary><div className="wiki-video-settings-grid">
+                    <div className="wiki-video-settings-grid"><label>FFmpeg 程序路径<input aria-label="FFmpeg 程序路径" required value={config.ffmpeg} disabled={busy} onChange={(event) => field("ffmpeg", event.target.value)} /></label><label>ffprobe 程序路径<input aria-label="ffprobe 程序路径" required value={config.ffprobe} disabled={busy} onChange={(event) => field("ffprobe", event.target.value)} /></label></div>
+                    <details><summary>采样与任务预算</summary><div className="wiki-video-settings-grid">
             <label>补帧间隔（毫秒）<input type="number" required min="250" max="10000" step="1" value={config.frameIntervalMs} disabled={busy} onChange={(event) => field("frameIntervalMs", Number(event.target.value))} /></label>
             <label>每次最多抽取帧数<input type="number" required min="8" max="1000" step="1" value={config.maxFrames} disabled={busy} onChange={(event) => field("maxFrames", Number(event.target.value))} /></label>
             <label>每次最多分析批次<input type="number" required min="1" max="200" step="1" value={config.maxBatches} disabled={busy} onChange={(event) => field("maxBatches", Number(event.target.value))} /></label>
@@ -60,12 +58,10 @@ export default function VideoAnalysisSettings({ onBusyChange, onDirtyChange, onC
         </fieldset>
         <fieldset className="settings-group"><legend>视觉相似检索</legend>
           <label><input type="checkbox" checked={config.visual.enabled} disabled={busy} onChange={(event) => visualField("enabled", event.target.checked)} />启用图片与视频帧视觉索引</label>
-          <p className="wiki-muted">需要运行独立的视觉编码服务。图片和抽取的帧会发送到下方服务地址，用于寻找相似画面；首次使用需要安装 Python 依赖并下载模型。</p>
-          <label>视觉服务地址<input aria-label="视觉服务地址" type="url" required value={config.visual.baseUrl} disabled={busy} onChange={(event) => visualField("baseUrl", event.target.value)} /></label>
+                    <label>视觉服务地址<input aria-label="视觉服务地址" type="url" required value={config.visual.baseUrl} disabled={busy} onChange={(event) => visualField("baseUrl", event.target.value)} /></label>
           <label>视觉模型<input aria-label="视觉模型" required value={config.visual.model} disabled={busy} onChange={(event) => visualField("model", event.target.value)} /></label>
           <div className="wiki-video-settings-grid"><label>模型修订<input aria-label="视觉模型修订" required value={config.visual.revision} disabled={busy} onChange={(event) => visualField("revision", event.target.value)} /></label><label>视觉请求超时（毫秒）<input type="number" required min="1000" max="1800000" step="1000" value={config.visual.timeoutMs} disabled={busy} onChange={(event) => visualField("timeoutMs", Number(event.target.value))} /></label></div>
-          <p className="wiki-muted">切换模型或修订后会重新建立视觉索引。相似推荐提供画面参考，需要保存关联时可使用内容详情的关联功能。</p>
-        </fieldset>
+                  </fieldset>
         <div className="wiki-actions">{!registerSave && <button className="primary" disabled={busy || !dirty}>保存视频配置</button>}<button type="button" disabled={busy || dirty} title={dirty ? "先保存改动，再检测依赖" : undefined} onClick={() => mutate("/api/video-analysis/probe")}>检测视频依赖</button><button type="button" disabled={busy || dirty || !saved?.visual.enabled} title={dirty ? "先保存改动，再更新索引" : !saved?.visual.enabled ? "先开启画面检索并保存" : undefined} onClick={() => mutate("/api/visual-index/rebuild", { mode: "missing" })}>建立 / 更新视觉索引</button></div>
         {dirty && <p className="wiki-muted">改完后先点底部「保存」，再检测依赖或更新索引。</p>}
       </div>

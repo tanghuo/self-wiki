@@ -13,6 +13,7 @@ import { createWorkflowService } from '../../src/server/application/workflow/ser
 import { workflowNode as n, constant as c, output as o } from '../../src/shared/domain/workflow/examples.js';
 import { lanRestriction } from '../../src/server/http/lanRoutes.js';
 import { createServer, fetch } from "../helpers/authenticatedServer.js";
+import { externalResourceLimits } from '../../src/shared/domain/externalResources.js';
 
 const key = () => randomUUID();
 const definition = (nodes) => ({ schemaVersion: 1, nodes, outputs: {} });
@@ -737,7 +738,7 @@ test('out-of-order human decisions keep loop pairing stable and expansion stays 
   while (count < 20) {
     const detail = await until(() => service.run(r.id), (v) => v.instances.some((i) => i.state === 'waiting_review'));
     const waiting = detail.instances.filter((i) => i.state === 'waiting_review').sort((a, b) => b.context.index - a.context.index);
-    assert.ok(waiting.length <= 8);
+    assert.ok(waiting.length <= externalResourceLimits.loopInFlight);
     for (const i of waiting) {
       const controlVersion = service.run(r.id).controlVersion;
       service.nodeAction(r.id, i.id, { requestKey: key(), action: 'accept', controlVersion, value: `edited-${i.context.index}` }); count++;

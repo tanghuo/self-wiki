@@ -15,13 +15,20 @@ function settings(config, saved, allowed) {
   if (Object.keys(parameters).some((key) => !allowed.includes(key)) || Object.values(parameters).some((v) => typeof v !== 'string' || v.length > 240)) throw workflowError('不支持的适配器参数');
   const result = { executable: saved?.executable || 'grok', model: parameters.model || saved?.model || '', aspectRatio: parameters.aspectRatio || saved?.aspectRatio || 'auto', ...(parameters.effort && { effort: parameters.effort }) };
   if (!result.model) throw workflowError('请先在适配器设置中配置模型');
-  grokBuildConfig(result); return result;
+  const { effort, ...imageSettings } = result;
+  grokBuildConfig(imageSettings);
+  if (allowed.includes('effort')) {
+    result.effort = effort || 'low';
+    if (!['low', 'medium', 'high', 'xhigh'].includes(result.effort)) throw workflowError('不支持的 Grok 推理强度');
+  }
+  return result;
 }
-export const grokTextAdapter = { ...base, id: 'grok-text', label: 'Grok 文字', nodeType: 'model', outputTypes: ['text', 'json'], parameterFields: [],
+const effortFields = [{ name: 'effort', label: '推理强度（默认 low）', type: 'select', options: ['low', 'medium', 'high', 'xhigh'], optional: true }];
+export const grokTextAdapter = { ...base, id: 'grok-text', label: 'Grok 文字', nodeType: 'model', outputTypes: ['text', 'json'], parameterFields: effortFields,
   snapshot: (config, server) => ({ settings: settings(config, server.chat?.grokBuild, ['model', 'effort']) }),
   model: callWorkflowModel,
 };
-export const grokAgentAdapter = { ...base, id: 'grok-agent', label: 'Grok 受限 Agent', nodeType: 'agent', outputTypes: ['text', 'json'], parameterFields: [], defaults: { adapterConfig: { tools: ['wiki_search', 'wiki_read'] } },
+export const grokAgentAdapter = { ...base, id: 'grok-agent', label: 'Grok 受限 Agent', nodeType: 'agent', outputTypes: ['text', 'json'], parameterFields: effortFields, defaults: { adapterConfig: { tools: ['wiki_search', 'wiki_read'] } },
   snapshot(config, server) {
     const tools = config.adapterConfig?.tools;
     if (!Array.isArray(tools) || tools.length > workflowAgentTools.length || tools.some(name => !workflowAgentTools.includes(name))) throw workflowError('请选择受限 Agent 的应用工具');

@@ -33,6 +33,10 @@ test("organization config defaults match example and invalid contracts fail", as
     { ...defaults, executor: { ...defaults.executor, codexCli: { ...defaults.executor.codexCli, codexHome: "relative" } } },
     ...["\\\\server\\share\\codex", "//server/share/codex"].map((codexHome) => ({ ...defaults, executor: { ...defaults.executor, codexCli: { ...defaults.executor.codexCli, codexHome } } }))]) assert.throws(() => organizationConfig(c));
   for (const codexHome of ["C:\\Users\\me\\.codex", "/home/me/.codex"]) assert.equal(organizationConfig({ ...defaults, executor: { ...defaults.executor, codexCli: { ...defaults.executor.codexCli, codexHome } } }).executor.codexCli.codexHome, codexHome);
+  const legacy = structuredClone(defaults); delete legacy.executor.grokBuild;
+  assert.deepEqual(organizationConfig(legacy).executor.grokBuild, { executable: "grok", model: "grok-4.7" });
+  assert.equal(organizationConfig({ ...defaults, executor: { ...defaults.executor, type: "grok-build" } }).executor.type, "grok-build");
+  assert.throws(() => organizationConfig({ ...defaults, executor: { ...defaults.executor, grokBuild: { executable: "grok", model: "not a model" } } }), /整理模型/);
   assert.throws(() => organizationOutput({ ...output(1), tagAdds: [{ name: "x", evidence: { kind: "text" } }] }));
 });
 

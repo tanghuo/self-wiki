@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { terminateProcessTree } from './processTree.js';
-import { childEnvironment } from '../../shared/runtime/childEnvironment.js';
+import { grokEnvironment } from './grokEnvironment.js';
 
 export async function grokCommand(executable = "grok") {
   if (executable === "grok") {
@@ -14,16 +14,17 @@ export async function grokCommand(executable = "grok") {
   return /\.(?:mjs|cjs|js)$/i.test(executable) ? { executable: process.execPath, prefix: [executable] } : { executable, prefix: [] };
 }
 
-export async function startGrokAcp(config, { cwd, signal, onNotification = () => {}, onRequest = async () => { throw new Error("Unsupported client request"); }, onExit = () => {} }) {
+export async function startGrokAcp(config, { cwd, signal, onNotification = () => {}, onRequest = async () => { throw new Error("Unsupported client request"); }, onExit = () => {}, pausePromptTimeoutOnRequest = false }) {
   signal?.throwIfAborted();
   const command = await grokCommand(config.executable);
   // ACP tool filters and permission rules are distinct; only use denial rules
   // whose behavior has been verified for the installed workbench engine.
   const denials = (config.denyRules || []).flatMap(rule => ['--deny', rule]);
-  const child = spawn(command.executable, [...command.prefix, "--no-auto-update", ...denials, "agent", "--no-leader", "-m", config.model, "stdio"],
-    { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', env: { ...childEnvironment(), GROK_MEMORY: "0" }, stdio: ["pipe", "pipe", "pipe"] });
+  const permission = config.permissionMode ? ['--permission-mode', config.permissionMode] : [];
+  const child = spawn(command.executable, [...command.prefix, "--no-auto-update", ...permission, ...denials, "agent", "--no-leader", "-m", config.model, "stdio"],
+    { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', env: { ...grokEnvironment(), GROK_MEMORY: "0" }, stdio: ["pipe", "pipe", "pipe"] });
   const decoder = new StringDecoder("utf8"), pending = new Map();
-  let sequence = 0, buffer = "", ended = false, closing = false, closePromise;
+  let sequence = 0, buffer = "", ended = false, closing = false, closePromise, hostRequests = 0;
   const write = (value) => { if (!ended && !child.stdin.destroyed) child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...value }) + "\n"); };
   function fail(error) {
     if (ended) return; ended = true;
@@ -34,14 +35,31 @@ export async function startGrokAcp(config, { cwd, signal, onNotification = () =>
     if (ended) return Promise.reject(new Error("Grok ACP 连接已关闭"));
     return new Promise((resolve, reject) => {
       const id = ++sequence;
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Grok 请求超时：${method}`)); }, timeout);
-      pending.set(id, { resolve, reject, timer, method }); write({ id, method, params });
+      const entry = { resolve, reject, method, remaining: timeout, timer: null, startedAt: 0 };
+      entry.arm = () => {
+        entry.startedAt = performance.now();
+        entry.timer = setTimeout(() => { pending.delete(id); reject(new Error(`Grok 请求超时：${method}`)); }, entry.remaining);
+      };
+      pending.set(id, entry);
+      if (!(pausePromptTimeoutOnRequest && method === 'session/prompt' && hostRequests)) entry.arm();
+      write({ id, method, params });
     });
   }
   function message(value) {
     if (value.method && value.id !== undefined) {
+      // Human decisions and host work do not consume the model's prompt budget.
+      if (pausePromptTimeoutOnRequest && hostRequests++ === 0) {
+        for (const entry of pending.values()) if (entry.method === 'session/prompt' && entry.timer) {
+          clearTimeout(entry.timer); entry.timer = null;
+          entry.remaining = Math.max(0, entry.remaining - (performance.now() - entry.startedAt));
+        }
+      }
       Promise.resolve().then(() => onRequest(value.method, value.params || {})).then(
-        (result) => write({ id: value.id, result }), (error) => write({ id: value.id, error: { code: -32601, message: error.message } }));
+        (result) => write({ id: value.id, result }), (error) => write({ id: value.id, error: { code: -32601, message: error.message } })).finally(() => {
+          if (pausePromptTimeoutOnRequest && --hostRequests === 0) {
+            for (const entry of pending.values()) if (entry.method === 'session/prompt' && !entry.timer) entry.arm();
+          }
+        });
     } else if (value.id !== undefined) {
       const entry = pending.get(value.id); if (!entry) return;
       pending.delete(value.id); clearTimeout(entry.timer);
