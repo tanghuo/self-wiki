@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { createAionuiExperiment } from '../../src/server/application/aionuiExperiment.js';
 import { handleAionuiExperimentRoute } from '../../src/server/http/aionuiExperimentRoutes.js';
+import { terminateProcessTree } from '../../src/agent/executors/processTree.js';
 
 test('experiment does not start without prepared resources', async () => {
   const service = createAionuiExperiment({ root: path.join(os.tmpdir(), 'self-wiki-missing-aionui'), dataDir: os.tmpdir() });
@@ -50,4 +51,43 @@ test('concurrent opens share one host, exchange separate login cookies, and stop
 
 test('experiment routes reject LAN callers before consulting the service', async () => {
   await assert.rejects(handleAionuiExperimentRoute({}, { method: 'POST' }, {}, new URL('http://localhost/api/aionui/start'), 'lan'), error => error.statusCode === 403);
+});
+
+test('an unprepared experiment answers 409 instead of an internal server error', async () => {
+  const service = createAionuiExperiment({ root: path.join(os.tmpdir(), 'self-wiki-missing-aionui'), dataDir: os.tmpdir() });
+  await assert.rejects(service.launch(), error => error.statusCode === 409 && error.code === 'AIONUI_NOT_PREPARED');
+  await service.close();
+});
+
+test('unconfirmed shutdown reports failure, keeps diagnostics and blocks another process', { timeout: 15000 }, async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-aionui-'));
+  const runtime = path.join(root, '.local/aionui-experiment');
+  await mkdir(path.join(runtime, 'backend'), { recursive: true });
+  await mkdir(path.join(root, '.local/references/AionUi/out/renderer'), { recursive: true });
+  await writeFile(path.join(runtime, 'backend/aioncore.exe'), 'fixture');
+  await writeFile(path.join(root, '.local/references/AionUi/out/renderer/index.html'), 'fixture');
+  await writeFile(path.join(runtime, 'host.mjs'), `
+    import { createServer } from 'node:http';
+    const server = createServer((req,res) => {res.setHeader('content-type','application/json');
+      if(req.url.includes('qr-token'))res.end(JSON.stringify({data:{token:'fixture'}}));
+      else{res.setHeader('set-cookie',['aionui-session=fixture; Path=/']);res.end('{}');}});
+    server.listen(0,'127.0.0.1',()=>console.log('SELF_WIKI_AIONUI_READY '+JSON.stringify({url:'http://127.0.0.1:'+server.address().port,backendPort:server.address().port})));
+    process.stdin.resume();process.stdin.on('end',()=>server.close());
+  `);
+  let terminations = 0;
+  const service = createAionuiExperiment({ root, dataDir: path.join(root, 'data'), terminateTree: async child => {
+    terminations++; await terminateProcessTree(child); return { treeConfirmed: false };
+  } });
+  t.after(async () => {
+    await service.close().catch(error => assert.equal(error.code, 'AIONUI_STOP_UNCONFIRMED'));
+    assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-aionui-'));
+    await rm(root, { recursive: true, force: true, maxRetries: 3 });
+  });
+  await service.launch();
+  await assert.rejects(service.stop(), { code: 'AIONUI_STOP_UNCONFIRMED', statusCode: 409 });
+  const status = await service.status();
+  assert.equal(status.state, 'failed'); assert.match(status.error, /未确认停止/); assert.equal(status.url, '');
+  await assert.rejects(service.launch(), { code: 'AIONUI_STOP_UNCONFIRMED' });
+  assert.equal(terminations, 1);
+  assert.ok((await readdir(path.join(root, 'data/aionui-experiment'))).some(name => name.startsWith('runtime-temp-')));
 });

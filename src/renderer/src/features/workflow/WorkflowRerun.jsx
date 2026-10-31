@@ -7,6 +7,7 @@ import { downstreamClosure, executionNode, isRuntimeElement, outputType, safePat
 import { workflowSteps, stepLabel } from './workflowLabels.js';
 import { rerunChanges } from './workflowRerun.js';
 import { editableTextParts } from './workflowText.js';
+import { Button } from '../../ui/Button.jsx';
 
 const reuseCookie = 'selfWikiWorkflowReuse';
 
@@ -175,7 +176,7 @@ export default function WorkflowRerun({ run, draft, reuse: savedReuse, busy, dis
     <fieldset disabled={busy || disabled}>
       <div className="workflow-rerun-summary" role="status"><strong>{reuse.size ? `复用 ${reuse.size} 个 AI 步骤的已有结果` : changed.length ? `已修改 ${changed.length} 个节点` : '未修改，将完整运行'}</strong><details><summary>查看执行范围（{execute.size} 步）</summary><p>将执行：{steps.filter((step) => execute.has(step.node.id)).map(stepLabel).join('、')}</p><p>{reuse.size ? `沿用运行 #${run.id} 中所选 AI 步骤的结果，不重新调用；上游修改不会更新这些结果。` : changed.length ? '其余已完成步骤会复用可用结果。' : '使用本次配置和输入，重新执行全部步骤。'}确认步骤需要重新通过，之后才执行保存。每次运行另建记录，原结果保留。</p></details></div>
       {error && <p role="alert">{error}</p>}
-      <div className="workflow-actions workflow-run-toolbar-actions"><label className="workflow-run-count">运行次数<input aria-label="运行次数" type="number" min="1" max="20" step="1" value={count} onChange={(event) => onCountChange(event.target.value)} /></label><button type="button" className="primary" onClick={(event) => { const panel = event.currentTarget.closest('.workflow-run'); if (panel.querySelector('.workflow-node-edit [aria-busy="true"],.workflow-node-edit [aria-invalid="true"]') || !Array.from(panel.querySelectorAll('.workflow-node-edit input,.workflow-node-edit textarea,.workflow-node-edit select,.workflow-run-count input')).every((field) => field.reportValidity())) { setError('请等待图片上传完成，并修正输入内容。'); return; } setError(''); onSubmit({ definition, inputs: values, count, ...(!changed.length && { regenerate: definition.nodes.map((node) => node.id).filter((id) => !reuse.has(id)) }), ...(reuse.size && { reuse: [...reuse] }) }); }}>运行</button>{draft && <button type="button" onClick={() => { setError(''); onClose(); }}>取消修改</button>}</div>
+      <div className="workflow-actions workflow-run-toolbar-actions"><label className="workflow-run-count">运行次数<input aria-label="运行次数" type="number" min="1" max="20" step="1" value={count} onChange={(event) => onCountChange(event.target.value)} /></label><Button variant="primary" onClick={(event) => { const panel = event.currentTarget.closest('.workflow-run'); if (panel.querySelector('.workflow-node-edit [aria-busy="true"],.workflow-node-edit [aria-invalid="true"]') || !Array.from(panel.querySelectorAll('.workflow-node-edit input,.workflow-node-edit textarea,.workflow-node-edit select,.workflow-run-count input')).every((field) => field.reportValidity())) { setError('请等待图片上传完成，并修正输入内容。'); return; } setError(''); onSubmit({ definition, inputs: values, count, ...(!changed.length && { regenerate: definition.nodes.map((node) => node.id).filter((id) => !reuse.has(id)) }), ...(reuse.size && { reuse: [...reuse] }) }); }}>运行</Button>{draft && <button type="button" onClick={() => { setError(''); onClose(); }}>取消修改</button>}</div>
     </fieldset>
   </section>;
 }

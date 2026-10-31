@@ -66,21 +66,29 @@ async function createMainWindow() {
     if (new URL(url).origin !== pageOrigin) { event.preventDefault(); openExternal(url); }
   });
   const window = mainWindow;
-  const aionui = createAionuiWindow({ BrowserWindow, shell, backend, parent: window });
-  const aionuiView = createAionuiView({ WebContentsView, window, shell, backend });
-  window.once('closed', () => { aionui.close(); aionuiView.close(); });
+  // The AionUi experiment is created only on first use, so the original
+  // workbench never touches its native view, and cleanup can never throw.
+  let aionui, embedded;
+  const aionuiWindow = () => aionui ||= createAionuiWindow({ BrowserWindow, shell, backend, parent: window });
+  const aionuiView = () => embedded ||= createAionuiView({ WebContentsView, window, shell, backend });
+  window.once('closed', () => {
+    try { aionui?.close(); } catch (error) { console.error('AionUi window cleanup failed', error); }
+    try { embedded?.close(); } catch (error) { console.error('AionUi view cleanup failed', error); }
+  });
   ipcMain.removeHandler('wiki:embed-aionui');
   ipcMain.handle('wiki:embed-aionui', async (event, value) => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || new URL(event.senderFrame.url).origin !== pageOrigin) throw new Error('此页面无法嵌入本机实验版');
-    if (value?.type === 'show') return aionuiView.show(value.bounds);
-    if (value?.type === 'hide') return aionuiView.hide();
-    if (value?.type === 'bounds') return aionuiView.setBounds(value.bounds);
+    if (window.isDestroyed()) throw new Error('窗口已关闭');
+    if (value?.type === 'show') return aionuiView().show(value.bounds);
+    if (value?.type === 'hide') return embedded?.hide();
+    if (value?.type === 'bounds') return embedded?.setBounds(value.bounds);
     throw new Error('实验版页面操作无效');
   });
   ipcMain.removeHandler('wiki:open-aionui');
   ipcMain.handle('wiki:open-aionui', async event => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || new URL(event.senderFrame.url).origin !== pageOrigin) throw new Error('此页面无法打开本机实验版');
-    return aionui.open();
+    if (window.isDestroyed()) throw new Error('窗口已关闭');
+    return aionuiWindow().open();
   });
   async function pairLocal() {
     if (!backend.localCookie) {

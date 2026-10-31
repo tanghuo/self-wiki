@@ -2,15 +2,21 @@ import { Trash2, X } from "lucide-react";
 import Dialog from "../Dialog.jsx";
 
 // Standard dialog frame: title (+ ×) · body · footer with status on the left and [取消] [具体动作] on the right.
-export function DialogFrame({ title, description, onClose, closeLabel, busy, footer, status, children, className = "", tone, icon, label, size }) {
-  return <Dialog open label={label || title} className={`ui-dialog ${tone === "danger" ? "is-danger" : ""} ${size === "wide" ? "is-wide" : ""} ${className}`.trim()} onClose={() => { if (!busy) onClose(); }}>
-    <header className="ui-dialog-header">
+// `onSubmit` wraps header/body/footer in one <form> so Enter and the footer's submit button share it.
+// `bare` renders children without the padded .ui-dialog-body, for dialogs that bring their own body layout
+// (pickers, previews); the header and footer are still the shared ones.
+export function DialogFrame({ title, description, onClose, closeLabel, busy, footer, status, children, className = "", tone, icon, label, size, onSubmit, bare = false, onKeyDown, headerClassName = "", footerClassName = "" }) {
+  const content = <>
+    <header className={`ui-dialog-header ${headerClassName}`.trim()}>
       {icon && <span className={`ui-dialog-tone ${tone === "danger" ? "is-bad" : ""}`} aria-hidden="true">{icon}</span>}
       <div><h2>{title}</h2>{description && <p>{description}</p>}</div>
       {closeLabel && <button type="button" className="icon-only" aria-label={closeLabel} disabled={busy} onClick={onClose}><X size={18} /></button>}
     </header>
-    {children !== undefined && <div className="ui-dialog-body">{children}</div>}
-    {(footer || status) && <footer className="ui-dialog-footer">{status && <span className="ui-dialog-status" role="status">{status}</span>}{footer}</footer>}
+    {children !== undefined && (bare ? children : <div className="ui-dialog-body">{children}</div>)}
+    {(footer || status) && <footer className={`ui-dialog-footer ${footerClassName}`.trim()}>{status && <span className="ui-dialog-status" role="status">{status}</span>}{footer}</footer>}
+  </>;
+  return <Dialog open label={label || (typeof title === "string" ? title : undefined)} onKeyDown={onKeyDown} className={`ui-dialog ${tone === "danger" ? "is-danger" : ""} ${size === "wide" ? "is-wide" : ""} ${className}`.trim()} onClose={() => { if (!busy) onClose(); }}>
+    {onSubmit ? <form className="ui-dialog-form" onSubmit={onSubmit}>{content}</form> : content}
   </Dialog>;
 }
 

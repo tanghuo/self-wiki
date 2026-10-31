@@ -4,6 +4,7 @@ import { imageExecutors, grokAspectRatios } from "../../shared/domain/imageGener
 import { request } from "./api.js";
 import "./chatImagePicker.css";
 import Select from "./Select.jsx";
+import { Button } from "./ui/Button.jsx";
 
 const endpoint = "/api/chat/image-generation";
 const fieldKey = (field) => JSON.stringify([field.nodeId, field.input]);
@@ -122,7 +123,7 @@ export default function ChatImagePicker({ options, chatEngine, disabled, onChang
         <div className="chat-workflow-parameters">{fields.filter((field) => primaryInputs.has(field.input)).map(renderField)}</div>
         <details><summary>更多参数（模型、负面提示词等）</summary><div className="chat-workflow-parameters">{fields.filter((field) => !primaryInputs.has(field.input)).map(renderField)}</div></details>
         <p className="wiki-muted">选项保存在本会话中。种子沿用工作流的随机或固定模式；手动修改种子后使用固定值，恢复工作流参数可恢复原模式。更新工作流后需重新检查映射。每次应输出一张图片。</p>
-        <div className="chat-workflow-actions"><button type="button" disabled={locked} onClick={() => setDraft((current) => ({ ...current, parameters: [] }))}>恢复工作流参数</button><button type="button" className="primary" disabled={locked || !draft.prompt || !draft.outputNodeId} onClick={apply}>应用到本会话</button></div>
+        <div className="chat-workflow-actions"><button type="button" disabled={locked} onClick={() => setDraft((current) => ({ ...current, parameters: [] }))}>恢复工作流参数</button><Button variant="primary" disabled={locked || !draft.prompt || !draft.outputNodeId} onClick={apply}>应用到本会话</Button></div>
       </>}
     </section>}
   </div>;

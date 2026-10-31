@@ -7,6 +7,7 @@ import WorkflowReviewImages from './WorkflowReviewImages.jsx';
 import WorkflowStatusLight from './WorkflowStatusLight.jsx';
 import WorkflowArtifactImages from './WorkflowArtifactImages.jsx';
 import WorkflowRerun, { useRerunDraft, WorkflowNodeEdit, canEditNode } from './WorkflowRerun.jsx';
+import { Button } from '../../ui/Button.jsx';
 
 export const stateLabels = { queued: '排队中', pending: '等待中', running: '处理中', paused: '已暂停', waiting_review: '等你确认', needs_attention: '需要你处理', succeeded: '完成', partial_failed: '部分完成', failed: '出错', unknown: '不确定是否完成', blocked: '没有执行', cancelled: '已取消', skipped: '已跳过', not_run: '没有执行（已跳过）' };
 const command = (path, data) => request(path, { method: 'POST', body: JSON.stringify({ requestKey: crypto.randomUUID(), ...data }) });
@@ -106,7 +107,7 @@ function NodeResult({ instance, runId, onAction, expanded = false, definition, r
         {original?.type === 'text' && <label>可以直接修改后再通过<textarea aria-label={`修改「${label}」的文字`} rows={focusMode ? 10 : 5} value={editing} onChange={(e) => { setEditing(e.target.value); setChanged(true); }} /></label>}
         {original?.type === 'list<image>' && <WorkflowReviewImages images={original.value} runId={runId} chosen={chosen} onAccept={accept} onChange={(ids) => { setChosen(ids); setChanged(true); }} />}
         {!original && <small>读取中…</small>}
-        <div className="workflow-review-actions"><button type="button" className="primary" disabled={!original || (original.type === 'list<image>' && !chosen?.length)} onClick={accept}>{original?.type === 'list<image>' ? `通过选中的 ${chosen?.length || 0} / ${original.value.length} 张` : '通过'}</button><button type="button" className="danger-quiet" onClick={() => onAction(instance, 'reject')}>{original?.type === 'list<image>' ? '整批跳过' : compact ? '跳过这一项' : '跳过'}</button></div>
+        <div className="workflow-review-actions"><button type="button" onClick={() => onAction(instance, 'reject')}>{original?.type === 'list<image>' ? '整批跳过' : compact ? '跳过这一项' : '跳过'}</button><Button variant="primary" disabled={!original || (original.type === 'list<image>' && !chosen?.length)} onClick={accept}>{original?.type === 'list<image>' ? `通过选中的 ${chosen?.length || 0} / ${original.value.length} 张` : '通过'}</Button></div>
       </div>}
       {(instance.state === 'failed' || instance.state === 'unknown') && <section className="workflow-recovery" aria-label="出错后的处理">
         {instance.state === 'failed' && <button type="button" onClick={() => onAction(instance, 'retry')}>重试这一步</button>}
@@ -237,7 +238,7 @@ function FocusReview({ items, runId, onAction, definition, run, onClose, title }
           {original?.type === 'text' && <label className="workflow-focus-edit"><span>AI 的结果</span><textarea aria-label={`修改「${label}」的文字`} rows={12} value={editing} onChange={(e) => { setEditing(e.target.value); setChanged(true); }} /></label>}
           {original?.type === 'list<image>' && <WorkflowReviewImages images={original.value} runId={runId} chosen={chosen} onAccept={accept} onChange={(ids) => { setChosen(ids); setChanged(true); }} />}
           {!original && <small>读取中…</small>}
-          <div className="workflow-review-actions"><button type="button" onClick={skip}>跳过这一项</button><button type="button" className="primary" disabled={!original || (original.type === 'list<image>' && !chosen?.length)} onClick={accept}>{original?.type === 'list<image>' ? `通过选中的 ${chosen?.length || 0} / ${original.value.length} 张` : '通过，下一张'}</button></div>
+          <div className="workflow-review-actions"><button type="button" onClick={skip}>跳过这一项</button><Button variant="primary" disabled={!original || (original.type === 'list<image>' && !chosen?.length)} onClick={accept}>{original?.type === 'list<image>' ? `通过选中的 ${chosen?.length || 0} / ${original.value.length} 张` : '通过，下一张'}</Button></div>
         </div>
       </div>
       {peekCard(peek(1), 'next')}

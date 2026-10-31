@@ -13,8 +13,8 @@ export default function TagRelations({ relations = [], busy, readOnly, onChanged
     finally { setRemoving(null); }
   }
   if (!relations.length) return null;
-  return <div className="wiki-tag-relations" aria-label="作用于 tag 的关联">
-    <p className="wiki-muted">当前内容作用于以下 tag 的所有成员（排除自己）：</p>
+  return <div className="wiki-tag-relations" aria-label="作用于标签的关联">
+    <p className="wiki-muted">当前内容作用于以下标签的所有成员（排除自己）：</p>
     {relations.map((relation) => <div key={relation.id}><span>{relationLabel(relation, relation.sourceId)}</span>
       {!readOnly && <button className="text-button" disabled={busy || removing !== null} onClick={() => remove(relation.id)} aria-label={`解除标签关联：${relation.targetTag}：${relation.name || "普通关联"}`}>解除整个 tag 的关联</button>}
     </div>)}

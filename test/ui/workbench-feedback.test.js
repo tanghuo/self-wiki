@@ -49,7 +49,10 @@ test('workbench keeps recent feedback visible between tool calls and collapses f
   await page.locator('.workbench-activity-spinner').waitFor();
   assert.match(await status.innerText(), /更新模型选择逻辑.*已用时/s);
   assert.equal(await page.locator('.workbench-activity-line').count(), 3);
-  const failed = page.getByText('运行命令', { exact: true });
+  const failed = page.locator('.workbench-operation-title').filter({ hasText: '运行命令 · rg -n' });
+  assert.match(await failed.innerText(), /手动审批.*自动审批/);
+  assert.equal(await page.locator('.workbench-operation[data-latest]').count(), 1);
+  assert.match(await page.locator('.workbench-operation[data-latest]').innerText(), /更新模型选择逻辑.*最新/s);
   assert.equal(await page.getByText('工具详情', { exact: true }).count(), 0);
   assert.equal(await page.locator('.workbench-operation-state').filter({ hasText: '完成' }).count(), 0);
   assert.equal(await page.locator('.workbench-operation-detail').count(), 0);
@@ -71,6 +74,7 @@ test('workbench keeps recent feedback visible between tool calls and collapses f
   await page.screenshot({ path: '.local/workbench-ui/compact-feedback-desktop.png' });
   toolDone.resolve();
   await page.getByText('正在继续处理', { exact: true }).waitFor();
+  assert.match(await page.locator('.workbench-last-operation').innerText(), /最近操作：更新模型选择逻辑/);
   assert.equal(await page.locator('.workbench-execution').getAttribute('open'), '');
   assert.equal(await page.locator('.workbench-activity-line').count(), 3);
   assert.equal(await page.locator('.workbench-activity-spinner').count(), 0);

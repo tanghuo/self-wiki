@@ -61,7 +61,7 @@ test("organization UI saves config, displays evidence, accepts and undoes additi
   assert.equal(await page.getByLabel("替换为", { exact: true }).count(), 0);
   assert.equal(await page.getByLabel("整理超时（秒）").isVisible(), false);
   assert.equal(await page.getByLabel("向量服务地址").isVisible(), false);
-  assert.equal(await page.getByRole("button", { name: "检测并启动执行器" }).isVisible(), true);
+  assert.equal(await page.getByRole("button", { name: "检测并启动整理程序" }).isVisible(), true);
   await page.locator("#settings-agent-org summary").filter({ hasText: "模型、超时与语义检索" }).click();
   await page.getByLabel("整理超时（秒）").fill("240");
   await page.locator("#settings-agent-org summary").filter({ hasText: "模型、超时与语义检索" }).click();
@@ -73,17 +73,17 @@ test("organization UI saves config, displays evidence, accepts and undoes additi
   await page.getByRole("navigation", { name: "设置分类" }).getByRole("button", { name: "自动整理与检索" }).click();
   assert.equal(await page.getByLabel("整理超时（秒）").inputValue(), "240");
   const org = page.locator("#settings-agent-org");
-  await org.getByLabel("整理执行器").selectOption("grok-build");
+  await org.getByLabel("整理程序").selectOption("grok-build");
   await org.getByLabel("整理模型", { exact: true }).fill("grok-4.7");
   assert.equal(await org.getByLabel("Codex 程序路径").count(), 0);
-  await org.getByLabel("整理执行器").selectOption("codex-cli");
+  await org.getByLabel("整理程序").selectOption("codex-cli");
   assert.equal(await org.getByLabel("整理模型（可选）").isVisible(), true);
   assert.equal(await page.getByLabel("整理超时（秒）").inputValue(), "240");
   await page.getByLabel("建立语义索引，帮助 Agent 查找相关内容").check();
   await page.getByLabel("向量服务地址").fill(`http://127.0.0.1:${embeddingServer.address().port}/v1`);
   await page.getByLabel("向量维数").fill("2");
   await page.getByLabel("向量模型版本").fill("ui-test");
-  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "关闭设置", exact: true }).click();
   const unsaved = page.getByRole("dialog", { name: "未保存的设置", exact: true });
   await unsaved.waitFor();
   assert.equal((await api("organization/status", null, "GET")).config.executor.timeoutMs, config.executor.timeoutMs);
@@ -104,7 +104,7 @@ test("organization UI saves config, displays evidence, accepts and undoes additi
   await page.getByLabel("语义检索结果").getByText(`#${source.id}`, { exact: true }).waitFor();
   await page.getByRole("button", { name: "重建全部向量", exact: true }).click();
   await page.getByText("已索引 1 · 待索引 0 · 处理中 0 · 失败 0", { exact: true }).waitFor();
-  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "关闭设置", exact: true }).click();
   await page.getByText("仪玄雨夜资料", { exact: true }).first().click();
   assert.equal(await page.getByRole("region", { name: "内容整理", exact: true }).count(), 0);
   await page.getByRole("button", { name: "整理记录", exact: true }).click();

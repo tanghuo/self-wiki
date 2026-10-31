@@ -4,7 +4,7 @@
 .wiki-shell, .app-layout.agent-home { grid-template-columns: var(--sidebar-w) minmax(0, 1fr); }
 .wiki-sidebar { position: sticky; top: 0; display: flex; flex-direction: column; gap: 2px; height: 100dvh; padding: 20px var(--sp-3) var(--sp-4); overflow-y: auto; border-right: 1px solid var(--sidebar-line); background: var(--sidebar); }
 .workspace-brand { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) var(--sp-2) var(--sp-4); color: var(--ink); }
-.workspace-brand strong { font-size: var(--fs-section); font-weight: 650; letter-spacing: -.01em; }
+.workspace-brand strong { font-size: var(--fs-section); font-weight: 600; letter-spacing: -.01em; }
 .workspace-brand-mark { display: block; flex: 0 0 auto; width: 28px; height: 28px; object-fit: contain; }
 .wiki-sidebar > .wiki-utilities-toggle { display: none; }
 .wiki-sidebar-nav { display: flex; flex: 1; flex-direction: column; gap: 2px; min-height: 0; }

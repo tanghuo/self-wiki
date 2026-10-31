@@ -5,6 +5,7 @@ import WorkbenchProjectPicker from './WorkbenchProjectPicker.jsx';
 import WorkbenchApprovalPicker from './WorkbenchApprovalPicker.jsx';
 import useWorkbenchTextarea from './useWorkbenchTextarea.js';
 import { maxWorkbenchImages, workbenchImageFiles } from './workbenchImages.js';
+import { Button } from '../../ui/Button.jsx';
 
 export default function WorkbenchStart({ settings, change, projects, engines, models, modelState, retryModels, text, setText, busy, create, createProject, selectEngine, loadModels, connectAntigravity, images, addImages, removeImage }) {
   const { kind, projectId, projectName, engine, model, effort, nativeReadAccepted } = settings;
@@ -27,7 +28,7 @@ export default function WorkbenchStart({ settings, change, projects, engines, mo
         <WorkbenchProjectPicker projects={projects} kind={kind} projectId={projectId} projectName={projectName} busy={busy} engine={engine} nativeReadAccepted={nativeReadAccepted} onAcceptNative={value => change({ nativeReadAccepted: value })} onSelect={project => change({ kind: 'project', projectId: project.id, projectPath: project.path, projectName: project.name })} onClear={() => change({ kind: 'scratch', projectId: null, projectPath: '', projectName: '' })} onCreate={createProject} />
         <WorkbenchModelPicker engine={engine} model={model} effort={effort} engines={engines} models={models} modelState={modelState} retryModels={retryModels} busy={busy} change={change} selectEngine={selectEngine} loadModels={loadModels} connectAntigravity={connectAntigravity} />
         <WorkbenchApprovalPicker mode={settings.approvalMode} engine={engine} disabled={busy} onChange={approvalMode => change({ approvalMode })} />
-        <button className="primary icon-only workbench-launch-send" aria-label="发送" title="发送" disabled={!ready}><ArrowUp size={19} /></button>
+        <Button variant="primary" type="submit" aria-label="发送" title="发送" disabled={!ready} className="icon-only workbench-launch-send"><ArrowUp size={19} /></Button>
       </div>
     </form>
     {engine === 'codex-cli' && <p className="workbench-muted">发送即确认使用 Codex 原生文件访问：可读取工作目录以外的文件，写入和危险命令按原生审批处理。</p>}

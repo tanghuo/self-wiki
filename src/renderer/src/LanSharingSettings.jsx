@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Copy, Wifi } from "lucide-react";
 import { request } from "./api.js";
 import QrCode from "./QrCode.jsx";
+import { Button } from "./ui/Button.jsx";
 
 export default function LanSharingSettings({ onBusyChange, onDirtyChange, registerSave }) {
   const [status, setStatus] = useState(null);
@@ -23,19 +24,26 @@ export default function LanSharingSettings({ onBusyChange, onDirtyChange, regist
   useEffect(() => { onBusyChange(busy); }, [busy, onBusyChange]);
   const dirty = Boolean(status && (Number(port) !== status.port || autoStart !== status.autoStart || allowWrite !== status.allowWrite || requireToken !== status.requireToken));
   useEffect(() => { onDirtyChange?.(dirty); return () => onDirtyChange?.(false); }, [dirty, onDirtyChange]);
-  useEffect(() => { registerSave?.(dirty ? { save: () => update(false), discard: () => apply(status) } : null); });
+  useEffect(() => { registerSave?.(dirty ? { save: () => update(), discard: () => apply(status) } : null); });
   useEffect(() => () => registerSave?.(null), [registerSave]);
-  async function update(toggle) {
+  // The switch only turns sharing on or off with the saved configuration; it never submits the form below.
+  // Unsaved edits stay in the form (and in the settings save bar) until the user saves them.
+  async function toggle() {
     if (busy) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      // Turning sharing off must work even when the unsaved form is invalid.
-      if (toggle && status.enabled) apply(await request("/api/lan-sharing", { method: "POST", body: JSON.stringify({ enabled: false }) }));
-      else {
-        apply(await request("/api/lan-sharing", { method: "PUT", body: JSON.stringify({ port: Number(port), autoStart, allowWrite, requireToken }) }));
-        if (toggle) apply(await request("/api/lan-sharing", { method: "POST", body: JSON.stringify({ enabled: true }) }));
-        else setMessage("配置已保存");
-      }
+      const next = await request("/api/lan-sharing", { method: "POST", body: JSON.stringify({ enabled: !status.enabled }) });
+      if (dirty) { setStatus(next); if (next.enabled) setMessage("已按已保存的配置开启共享；下方改动保存后生效"); }
+      else apply(next);
+    } catch (failure) { setError(failure.message); }
+    finally { setBusy(false); }
+  }
+  async function update() {
+    if (busy) return;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      apply(await request("/api/lan-sharing", { method: "PUT", body: JSON.stringify({ port: Number(port), autoStart, allowWrite, requireToken }) }));
+      setMessage("配置已保存");
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
@@ -63,7 +71,7 @@ export default function LanSharingSettings({ onBusyChange, onDirtyChange, regist
     <div className="wiki-form-fields lan-sharing-fields">
       {!status && !error && <p role="status">正在读取设置…</p>}
       {status && <>
-        <div className="lan-sharing-state"><strong>{status.enabled ? "共享已开启" : "共享已关闭"}</strong><button role="switch" aria-label="局域网共享开关" aria-checked={status.enabled} onClick={() => update(true)} disabled={busy}>{status.enabled ? "关闭共享" : "开启共享"}</button></div>
+        <div className="lan-sharing-state"><strong>{status.enabled ? "共享已开启" : "共享已关闭"}</strong><button role="switch" aria-label="局域网共享开关" aria-checked={status.enabled} onClick={toggle} disabled={busy}>{status.enabled ? "关闭共享" : "开启共享"}</button></div>
         <section className="lan-sharing-addresses" aria-label="局域网访问地址">
           <strong>局域网访问地址（IP + 端口）</strong>
           {status.urls.map((url) => <div className="lan-sharing-address" key={url}>
@@ -86,7 +94,7 @@ export default function LanSharingSettings({ onBusyChange, onDirtyChange, regist
         <label className="lan-sharing-checkbox"><input type="checkbox" checked={!requireToken} onChange={(event) => setRequireToken(!event.target.checked)} disabled={busy} />不要求配对码（同一网络的任何设备都能访问，不推荐）</label>
         <label className="lan-sharing-checkbox"><input type="checkbox" checked={autoStart} onChange={(event) => setAutoStart(event.target.checked)} disabled={busy} />启动 App 时自动开启共享</label>
         <p className="wiki-muted">上方开关立即生效，只控制本次运行；这里的选项改完后点底部「保存」生效。修改端口前请先关闭共享。</p>
-        {!registerSave && <button className="primary" disabled={busy} onClick={() => update(false)}>{busy ? "正在处理…" : "保存共享配置"}</button>}
+        {!registerSave && <Button variant="primary" type="submit" disabled={busy} onClick={() => update()}>{busy ? "正在处理…" : "保存共享配置"}</Button>}
         </div>
         </details>
         {status.error && !error && <p className="wiki-error" role="alert">{status.error}</p>}

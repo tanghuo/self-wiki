@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, Upload, Save, X } from "lucide-react";
-import Dialog from "./Dialog.jsx";
+import { FileText, Upload, Save } from "lucide-react";
+import ConfirmDialog, { DialogFrame } from "./ui/ConfirmDialog.jsx";
 import TagInput, { readTagInput } from "./TagInput.jsx";
 import ContentDraft from "./ContentDraft.jsx";
 import { textDraft } from "./contentDrafts.js";
 import { request } from "./api.js";
 import { elementTags, maxImageBytes, maxVideoBytes } from "../../shared/domain/elements.js";
+import { Button } from "./ui/Button.jsx";
 
 export default function AddContentDialog({ value, onChange, onChooseFiles, onClose, onSaved, onComplete, onBusyChange }) {
   const [busy, setBusy] = useState(false);
@@ -75,12 +76,16 @@ export default function AddContentDialog({ value, onChange, onChooseFiles, onClo
       else onComplete(completed);
     } finally { locked.current = false; setSaving(null); setBusy(false); }
   }
-  return <><Dialog open label="添加内容" className="wiki-dialog wiki-composer" onClose={requestClose}>
-    <form onSubmit={submit}>
-      <header className="wiki-dialog-header"><div><h2>添加内容</h2><p>图片、视频和文字可以放在一起，每一项独立保存。</p></div>
-        <button type="button" className="icon-only" aria-label="关闭添加内容" disabled={busy} onClick={requestClose}><X size={18} /></button></header>
+  return <><DialogFrame bare title="添加内容" description="图片、视频和文字可以放在一起，每一项独立保存。" className="wiki-dialog wiki-composer" closeLabel="关闭添加内容" busy={busy} onClose={requestClose} onSubmit={submit}
+    footerClassName="wiki-composer-footer"
+    footer={<>
+        <div className="wiki-composer-tools"><button type="button" disabled={busy} onClick={addText}><FileText size={16} />添加文字</button><button type="button" disabled={busy} onClick={onChooseFiles}><Upload size={16} />导入图片或视频</button></div>
+        <span className="wiki-muted">待保存 {pending.length} 项{saved.length > 0 && ` · 已保存 ${saved.length} 项`}</span>
+        <button type="button" disabled={busy} onClick={requestClose}>{saved.length ? "关闭" : "取消"}</button>
+        <Button variant="primary" type="submit" disabled={busy || !pending.length}><Save size={16} />{busy ? "正在保存…" : saved.length || value.entries.some((entry) => entry.error) ? "重试未保存项" : "保存全部"}</Button>
+      </>}>
       <div className="wiki-form-fields">
-        <label className="wiki-material-filter"><input type="checkbox" checked={material} disabled={busy || saved.length > 0} onChange={(event) => setMaterial(event.target.checked)} />本次内容用作资料</label>
+        <label className="wiki-material-filter"><input type="checkbox" checked={material} disabled={busy || saved.length > 0} onChange={(event) => setMaterial(event.target.checked)} />本次内容标记为资料</label>
         <div className="wiki-composer-tags"><TagInput label="本次标签" value={value.tags} disabled={busy || saved.length > 0}
           onChange={(tags) => { onChange((current) => ({ ...current, tags })); setError(""); }} />
           <p className="wiki-muted">这些标签会加到本次所有内容上，每项也可以单独补充。</p></div>
@@ -89,21 +94,9 @@ export default function AddContentDialog({ value, onChange, onChooseFiles, onClo
         <p className="wiki-muted">可粘贴、拖入或导入文件。图片支持 PNG、JPEG、WebP、GIF，每张最多 25 MiB；视频支持 MP4、M4V、WebM、MOV，每个最多 1 GiB。播放取决于浏览器支持的编码，可随时下载原文件。</p>
         {error && <p className="wiki-error" role="alert">{error}</p>}
       </div>
-      <footer className="wiki-dialog-footer wiki-composer-footer">
-        <div className="wiki-composer-tools"><button type="button" disabled={busy} onClick={addText}><FileText size={16} />添加文字</button><button type="button" disabled={busy} onClick={onChooseFiles}><Upload size={16} />导入图片或视频</button></div>
-        <span className="wiki-muted">待保存 {pending.length} 项{saved.length > 0 && ` · 已保存 ${saved.length} 项`}</span>
-        <button type="button" disabled={busy} onClick={requestClose}>{saved.length ? "关闭" : "取消"}</button>
-        <button className="primary" disabled={busy || !pending.length}><Save size={16} />{busy ? "正在保存…" : saved.length || value.entries.some((entry) => entry.error) ? "重试未保存项" : "保存全部"}</button>
-      </footer>
-    </form>
-  </Dialog>
-    {confirmDiscard && <Dialog open label="放弃未保存内容？" className="wiki-dialog" onClose={() => setConfirmDiscard(false)}>
-      <header className="wiki-dialog-header"><h2>放弃未保存内容？</h2></header>
-      <div className="wiki-form-fields"><p>未保存的文字、图片、视频和标签会被丢弃。已经保存成功的内容会保留。</p></div>
-      <footer className="wiki-dialog-footer">
-        <button autoFocus onClick={() => setConfirmDiscard(false)}>继续编辑</button>
-        <button className="danger-quiet" onClick={onClose}>放弃未保存内容</button>
-      </footer>
-    </Dialog>}
+  </DialogFrame>
+    {confirmDiscard && <ConfirmDialog title="放弃未保存内容？" cancelLabel="继续编辑" confirmLabel="放弃未保存内容" onCancel={() => setConfirmDiscard(false)} onConfirm={onClose}>
+      <p>未保存的文字、图片、视频和标签会被丢弃。已经保存成功的内容会保留。</p>
+    </ConfirmDialog>}
   </>;
 }

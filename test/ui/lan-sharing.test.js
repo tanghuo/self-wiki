@@ -374,8 +374,19 @@ test("App sharing controls pair a mobile page that can edit content but not use 
   await dialog.getByLabel("访问端口", { exact: true }).fill(String(port));
   await dialog.getByLabel("启动 App 时自动开启共享").check();
   await dialog.getByLabel("允许局域网设备编辑内容（添加、修改、删除、回收站）").check();
+  // The configuration is saved through the settings save bar; the switch never submits the form.
+  await dialog.getByRole("region", { name: "保存设置" }).getByRole("button", { name: "保存", exact: true }).click();
+  await dialog.getByText("所有改动已保存", { exact: true }).waitFor();
+  assert.equal((await (await request("/api/lan-sharing")).json()).autoStart, true);
+  await dialog.getByLabel("启动 App 时自动开启共享").uncheck();
+  const sharingWrites = [];
+  page.on("request", (sent) => { if (new URL(sent.url()).pathname === "/api/lan-sharing" && sent.method() !== "GET") sharingWrites.push(`${sent.method()} ${sent.postData()}`); });
   await dialog.getByRole("switch").click();
   await dialog.getByText("共享已开启", { exact: true }).waitFor();
+  assert.deepEqual(sharingWrites, ['POST {"enabled":true}'], "the switch only posts enabled");
+  assert.equal((await (await request("/api/lan-sharing")).json()).autoStart, true, "unsaved form edits are not submitted by the switch");
+  assert.equal(await dialog.getByLabel("启动 App 时自动开启共享").isChecked(), false, "unsaved edits stay in the form");
+  await dialog.getByLabel("启动 App 时自动开启共享").check();
   assert.equal(await dialog.getByRole("switch").getAttribute("aria-checked"), "true");
   assert.equal(await dialog.getByLabel("访问端口", { exact: true }).isDisabled(), true);
   const guest = await browser.newPage({ viewport: { width: 390, height: 844 } });

@@ -35,3 +35,9 @@ export async function openRelationAdvanced(scope) {
   const more = scope.getByRole("button", { name: "更多选项", exact: true });
   if (await more.getAttribute("aria-pressed") !== "true") await more.click();
 }
+
+// On the full Agent page sessions switch only in the left list; the current one is aria-current.
+export async function currentSessionId(page) {
+  const current = page.getByRole("navigation", { name: "会话列表" }).locator('.chat-history-item > button[aria-current="true"]');
+  return await current.count() ? current.getAttribute("data-session-id") : "";
+}

@@ -5,6 +5,7 @@ import OrganizationHistory from "./OrganizationHistory.jsx";
 import SemanticSettings from "./SemanticSettings.jsx";
 import ImageGenerationSettings from "./ImageGenerationSettings.jsx";
 import ChatEngineSettings from "./ChatEngineSettings.jsx";
+import { Button } from "./ui/Button.jsx";
 
 const labels = { queued: "待整理", running: "整理中", succeeded: "整理完成", failed: "整理失败", cancelled: "已取消" };
 
@@ -108,7 +109,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
   const locked = busy || disabled;
   const grok = config?.executor?.grokBuild || { executable: "grok", model: "grok-4.7" };
   const grokMode = config?.executor?.type === "grok-build";
-  const executorSelect = config && <label>整理执行器<select aria-label="整理执行器" value={config.executor.type} disabled={locked} onChange={(e) => setExecutorType(e.target.value)}><option value="codex-cli">本机 Codex CLI</option><option value="grok-build">本机 Grok Build</option></select></label>;
+  const executorSelect = config && <label>整理程序<select aria-label="整理程序" value={config.executor.type} disabled={locked} onChange={(e) => setExecutorType(e.target.value)}><option value="codex-cli">本机 Codex CLI</option><option value="grok-build">本机 Grok Build</option></select></label>;
   return <section className={settings ? "settings-section" : "organization-panel"} aria-label={settings ? (focus === "connection" ? "Agent 连接" : focus === "organization" ? "自动整理与检索" : "Agent 自动整理") : elementId ? "内容整理" : "全库整理历史"}>
     {settings && focus === "all" && <header className="settings-section-header"><h3>Agent 自动整理</h3></header>}
     {!status && !error && <p role="status">正在读取整理状态…</p>}
@@ -119,7 +120,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         {focus === "connection" && <header className="settings-section-header"><h3>Agent 连接</h3></header>}
                 <ChatEngineSettings value={config.chat} locked={locked} onChange={(chat) => setConfig((current) => ({ ...current, chat }))} />
         <button type="button" disabled={locked || dirty} title={dirty ? "先保存改动，再检测连接" : undefined} onClick={probeChat}>检测聊天连接</button>
-        <div className="wiki-actions"><button disabled={locked} onClick={() => mutate("probe")}>检测并启动执行器</button></div>
+        <div className="wiki-actions"><button disabled={locked} onClick={() => mutate("probe")}>检测并启动整理程序</button></div>
         <fieldset className="settings-group"><legend>连接参数</legend>
         {focus === "connection" && executorSelect}
         {focus === "connection" && grokMode && <>
@@ -129,11 +130,11 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         <label>Codex 程序路径<input value={config.executor.codexCli.executable} disabled={locked} onChange={(e) => executorField("executable", e.target.value)} placeholder="codex" /></label>
                 <label>Codex 数据目录（可选）<input value={config.executor.codexCli.codexHome || ""} disabled={locked} onChange={(e) => executorField("codexHome", e.target.value)} placeholder={status.defaultCodexHome || "留空则使用独立目录"} /></label>
                 </fieldset>
-        {focus === "connection" && !registerSave && <div className="wiki-actions organization-save"><button className="primary" disabled={locked} onClick={() => mutate("config", config, "PUT")}>保存连接配置</button></div>}
+        {focus === "connection" && !registerSave && <div className="wiki-actions organization-save"><Button variant="primary" type="submit" disabled={locked} onClick={() => mutate("config", config, "PUT")}>保存连接配置</Button></div>}
         </>}
         {(focus === "all" || focus === "organization") && <>
         {focus === "organization" && <header className="settings-section-header"><h3>自动整理与检索</h3></header>}
-        {focus === "organization" && <div className="wiki-actions"><button disabled={locked} onClick={() => mutate("probe")}>检测并启动执行器</button></div>}
+        {focus === "organization" && <div className="wiki-actions"><button disabled={locked} onClick={() => mutate("probe")}>检测并启动整理程序</button></div>}
         <fieldset className="settings-group"><legend>整理策略</legend>
         <label><input type="checkbox" checked={config.enabled} disabled={locked} onChange={(e) => setConfig({ ...config, enabled: e.target.checked })} />导入后自动整理</label>
         <label>处理方式<select value={config.applyMode} disabled={locked} onChange={(e) => setConfig({ ...config, applyMode: e.target.value })}><option value="suggest">先生成建议</option><option value="auto">自动添加</option></select></label>
@@ -143,7 +144,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         <details className="settings-advanced" open={focus === "organization" ? undefined : undefined}>
         <summary>模型、超时与语义检索</summary>
         <div className="settings-advanced-content">
-        <fieldset className="settings-group"><legend>模型与执行器</legend>
+        <fieldset className="settings-group"><legend>模型与程序</legend>
         {executorSelect}
         {grokMode ? <>
         <label>Grok 程序路径<input aria-label="Grok 程序路径" value={grok.executable} disabled={locked} onChange={(e) => grokField("executable", e.target.value)} placeholder="grok" /></label>
@@ -163,7 +164,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         <p className="wiki-muted organization-config-path">配置文件：{status.configPath}</p>
         </div>
         </details>
-        {!registerSave && <div className="wiki-actions organization-save"><button className="primary" disabled={locked} onClick={() => mutate("config", config, "PUT")}>保存整理配置</button></div>}
+        {!registerSave && <div className="wiki-actions organization-save"><Button variant="primary" type="submit" disabled={locked} onClick={() => mutate("config", config, "PUT")}>保存整理配置</Button></div>}
         <p className="wiki-muted">待整理 {status.counts.queued || 0} · 处理中 {status.counts.running || 0} · 失败 {status.counts.failed || 0}</p>
         </>}
       </div>}
@@ -173,7 +174,7 @@ export default function OrganizationPanel({ elementId, mode = elementId ? "conte
         {status.jobs[0]?.state === "queued" && <>
           <p className="wiki-muted" role="status">全库待整理 {status.counts.queued || 0} 项 · 处理中 {status.counts.running || 0} 项。后台会依次处理，重复点击不会提前。</p>
           {!status.executor.available && <p className={status.workerRunning || status.executor.code === "NOT_CHECKED" ? "wiki-muted" : "wiki-error"} role="status">
-            {status.executor.diagnostic}{!status.workerRunning && status.executor.code !== "NOT_CHECKED" && "；请前往设置 → Agent 连接，检查后重新检测执行器。"}
+            {status.executor.diagnostic}{!status.workerRunning && status.executor.code !== "NOT_CHECKED" && "；请前往设置 → Agent 连接，检查后重新检测整理程序。"}
           </p>}
         </>}
       </>}

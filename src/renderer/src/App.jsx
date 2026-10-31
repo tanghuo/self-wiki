@@ -1,5 +1,5 @@
 import { Activity, lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Settings, History, X } from "lucide-react";
+import { Settings, History } from "lucide-react";
 import KeyboardShortcuts from "./KeyboardShortcuts.jsx";
 import { isEditableTarget, overlayOpen } from "./shortcuts.js";
 import WikiApp from "./WikiApp.jsx";
@@ -10,7 +10,7 @@ import AgentSourcePreview from "./AgentSourcePreview.jsx";
 import TokenUsagePanel from "./TokenUsagePanel.jsx";
 import ReferenceTray from "./ReferenceTray.jsx";
 import useReferenceTray from "./useReferenceTray.js";
-import Dialog from "./Dialog.jsx";
+import { DialogFrame } from "./ui/ConfirmDialog.jsx";
 import OrganizationPanel from "./OrganizationPanel.jsx";
 import TemporaryShares from "./TemporaryShares.jsx";
 import { request } from "./api.js";
@@ -255,9 +255,8 @@ export default function App() {
     {settingsOpen && !lanGuest && <SettingsDialog key={settingsSection} initialSection={settingsSection} theme={theme} onThemeChange={setTheme} atmosphere={atmosphere} onAtmosphereChange={setAtmosphere} liquidGlass={liquidGlass} onLiquidGlassChange={setLiquidGlass} cardTagDisplay={cardTagDisplay} onCardTagDisplayChange={setCardTagDisplay} onChanged={refreshWiki} onClose={() => setSettingsOpen(false)} />}
     {shortcutsOpen && <KeyboardShortcuts onClose={() => setShortcutsOpen(false)} />}
     {usageOpen && !lanGuest && <TokenUsagePanel onClose={() => setUsageOpen(false)} />}
-    {organizationOpen && !lanGuest && <Dialog open label="整理历史" className="wiki-dialog organization-dialog organization-library-dialog" onClose={() => !organizationBusy && setOrganizationOpen(false)}>
-      <header className="wiki-dialog-header"><div><h2>整理历史</h2><p className="wiki-muted">查看 AI 为哪些内容补充了标签和关联。</p></div><button className="icon-only" aria-label="关闭整理历史" disabled={organizationBusy} onClick={() => setOrganizationOpen(false)}><X size={18} /></button></header>
+    {organizationOpen && !lanGuest && <DialogFrame bare label="整理历史" className="wiki-dialog organization-dialog organization-library-dialog" onClose={() => !organizationBusy && setOrganizationOpen(false)} title="整理历史" description="查看 AI 为哪些内容补充了标签和关联。" closeLabel="关闭整理历史" busy={organizationBusy}>
       <OrganizationPanel mode="history" onBusyChange={setOrganizationBusy} onChanged={refreshWiki} onOpen={(id) => { setOrganizationOpen(false); browseSource(id); }} />
-    </Dialog>}
+    </DialogFrame>}
   </>;
 }

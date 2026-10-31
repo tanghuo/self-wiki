@@ -57,7 +57,7 @@ test("direct image switch preserves raw composer text, retries and returns to or
   await tools.getByText("输入提示词（ChatGPT 网页版）", { exact: true }).waitFor();
   const prepared = tools.locator(".chat-trace-field").filter({ has: page.getByText("准备提交的完整提示词", { exact: true }) });
   assert.equal(await prepared.locator("pre").textContent(), text);
-  await tools.getByText("执行器已确认收到请求。", { exact: true }).waitFor();
+  await tools.getByText("生成程序已确认收到请求。", { exact: true }).waitFor();
   await toggle.uncheck();
   await chooseOption(page, "生图方式", "codex-cli");
   await input.fill("GENERATE_IMAGE");
@@ -551,7 +551,7 @@ test("generated images stay between their preceding and following replies during
   await page.reload();
   await page.locator('.chat-process[data-state="completed"]').waitFor({ state: "attached" });
   assert.deepEqual(await parts(), expected);
-  await page.getByRole("button", { name: "保存为 Wiki 内容", exact: true }).click();
+  await page.getByRole("button", { name: "回答存入内容库", exact: true }).click();
   assert.equal(await page.getByLabel("保存内容", { exact: true }).inputValue(), "开始生成第一张图片。\n\n第一张已完成，继续生成第二张。\n\n两张图片都已生成。");
   assert.deepEqual(errors, []);
 });
@@ -986,7 +986,7 @@ test("image generation shows activity, an overlay Wiki save action and a persist
   assert.equal(await page.locator(".chat-image-actions").count(), 0);
   const edit = page.getByRole("button", { name: "编辑图片", exact: true });
   const cardBox = await image.boundingBox(), editBox = await edit.boundingBox();
-  const saveBox = await page.getByRole("button", { name: "保存至 Wiki", exact: true }).boundingBox();
+  const saveBox = await page.getByRole("button", { name: "图片存入内容库", exact: true }).boundingBox();
   assert.ok(editBox.x > cardBox.x && editBox.y > cardBox.y + cardBox.height / 2 && editBox.y + editBox.height < cardBox.y + cardBox.height, "Edit stays inside the lower left of the image");
   assert.ok(saveBox.x > cardBox.x + cardBox.width / 2 && saveBox.y > cardBox.y + cardBox.height / 2 && saveBox.y + saveBox.height < cardBox.y + cardBox.height, "Wiki save stays inside the lower right of the image");
   const originalUrl = page.url();
@@ -1197,7 +1197,7 @@ test("Agent source preview groups related images by tag and opens members", opti
   await original.evaluate((node) => node.decode());
   await original.click({ button: "right" });
   const menu = preview.getByRole("menu", { name: "内容菜单", exact: true });
-  await menu.getByRole("menuitem", { name: "加入资料", exact: true }).waitFor();
+  await menu.getByRole("menuitem", { name: "放进资料篮", exact: true }).waitFor();
   await page.keyboard.press("Escape");
   await menu.waitFor({ state: "hidden" });
   assert.equal(await preview.isVisible(), true, "Escape dismisses the menu without closing the preview");
@@ -1207,14 +1207,14 @@ test("Agent source preview groups related images by tag and opens members", opti
   assert.ok((await page.evaluate(() => navigator.clipboard.read().then((items) => items.map((item) => item.types)))).flat().includes("image/png"));
   await original.click({ button: "right" });
   await page.screenshot({ path: ".local/source-preview-reference-menu.png" });
-  await menu.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+  await menu.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   await preview.waitFor({ state: "hidden" });
   const tray = page.getByRole("complementary", { name: "资料篮", exact: true });
   await tray.getByText("分组图片-0.png", { exact: true }).waitFor();
   assert.equal(await tray.locator("li").count(), 1, "The currently previewed related image goes into the reference tray");
   await tray.getByRole("button", { name: "预览资料：分组图片-0.png", exact: true }).click();
   await original.click({ button: "right" });
-  await menu.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+  await menu.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   await preview.waitFor({ state: "hidden" });
   assert.equal(await tray.locator("li").count(), 1, "Preview additions use the existing deduplication");
   await tray.getByRole("button", { name: "清空", exact: true }).click();
@@ -1276,14 +1276,14 @@ test("saved images expose an independent prompt and an ordinary conversation rel
   await page.getByLabel("会话消息").fill("GENERATE_IMAGE_PROMPT");
   await page.getByLabel("会话消息").press("Enter");
   await page.locator('.chat-process[data-state="completed"]').waitFor({ state: "attached" });
-  await page.locator(".chat-image-overlay").getByRole("button", { name: "保存至 Wiki", exact: true }).click();
-  await page.getByRole("button", { name: "已保存 · 查看 Wiki", exact: true }).waitFor();
+  await page.locator(".chat-image-overlay").getByRole("button", { name: "图片存入内容库", exact: true }).click();
+  await page.getByRole("button", { name: "已保存 · 在内容库查看", exact: true }).waitFor();
   await page.getByRole("button", { name: "查看提示词", exact: true }).waitFor();
   await page.screenshot({ path: ".local/lifecycle-image-save.png" });
   const session = (await api("chat/sessions")).sessions[0];
   const turn = (await api(`chat/sessions/${session.id}`)).turns[0];
   assert.equal(turn.saved.filter((s) => s.key.startsWith("image:")).length, 1);
-  await page.getByRole("button", { name: "已保存 · 查看 Wiki", exact: true }).click();
+  await page.getByRole("button", { name: "已保存 · 在内容库查看", exact: true }).click();
   await page.getByRole("button", { name: "在内容库打开", exact: true }).click();
   await page.getByRole("dialog", { name: "资料预览", exact: true }).waitFor({ state: "hidden" });
   await page.waitForURL("**/#wiki");
@@ -1311,7 +1311,7 @@ test("saved images expose an independent prompt and an ordinary conversation rel
   assert.equal(await page.locator("[data-turn-id]").count(), 43);
   await page.locator(`[data-turn-id="${turn.id}"]`).getByLabel("回答更多操作", { exact: true }).click();
   await page.locator(`[data-turn-id="${turn.id}"]`).getByRole("button", { name: "提取内容建议", exact: true }).click();
-  const proposal = page.getByRole("region", { name: "Wiki 修改建议", exact: true });
+  const proposal = page.getByRole("region", { name: "内容修改建议", exact: true });
   await proposal.getByRole("button", { name: "采纳并保存", exact: true }).waitFor();
   await proposal.getByText("查看提取依据 · 1 段原文", { exact: true }).click();
   await proposal.locator("blockquote").getByText(turn.events[0].parameters.prompt, { exact: true }).waitFor();
@@ -1321,7 +1321,7 @@ test("saved images expose an independent prompt and an ordinary conversation rel
   await proposal.getByText("已采纳", { exact: true }).waitFor();
   assert.equal((await api("elements?kind=text")).pagination.total, 2);
   await page.reload();
-  await page.getByRole("button", { name: "已保存 · 查看 Wiki", exact: true }).waitFor();
+  await page.getByRole("button", { name: "已保存 · 在内容库查看", exact: true }).waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   assert.deepEqual(errors, []);
@@ -1349,12 +1349,12 @@ test("chat UI selects sources, renders citations, edits and saves proposals, res
   await panel.getByLabel("本轮资料").getByText(source.body.slice(0, 22), { exact: true }).waitFor();
   await panel.getByLabel("会话消息").fill("根据资料写一份笔记");
   await panel.getByLabel("会话消息").press("Enter");
-  await panel.getByRole("button", { name: "保存为 Wiki 内容", exact: true }).waitFor();
+  await panel.getByRole("button", { name: "回答存入内容库", exact: true }).waitFor();
   await panel.locator(".chat-session-title").filter({ hasText: "根据资料写一份笔记" }).waitFor({ state: "attached" });
   assert.equal((await api("elements")).pagination.total, 1);
   await panel.getByRole("button", { name: "资料甲", exact: true }).click();
   await page.getByRole("region", { name: "内容详情", exact: true }).getByRole("heading", { name: source.body, exact: true }).waitFor();
-  const proposal = panel.getByRole("region", { name: "Wiki 修改建议" }).filter({ hasText: "结合已读取的资料甲" });
+  const proposal = panel.getByRole("region", { name: "内容修改建议" }).filter({ hasText: "结合已读取的资料甲" });
   await proposal.getByLabel("内容草稿").fill("界面中编辑后的笔记");
   await proposal.getByRole("button", { name: "采纳并保存", exact: true }).click();
   await proposal.getByText("已采纳", { exact: true }).waitFor();
@@ -1362,11 +1362,11 @@ test("chat UI selects sources, renders citations, edits and saves proposals, res
   await proposal.getByRole("button", { name: "撤销这次修改", exact: true }).click();
   await panel.getByText("已撤销", { exact: true }).waitFor();
   assert.equal((await api("elements")).elements.filter((e) => !e.localOnly).length, 1);
-  await panel.getByRole("button", { name: "保存为 Wiki 内容", exact: true }).click();
+  await panel.getByRole("button", { name: "回答存入内容库", exact: true }).click();
   await panel.getByLabel("保存内容").fill("手动选择保存的回答");
   await panel.getByRole("button", { name: "生成保存建议", exact: true }).click();
   await panel.getByLabel("内容草稿").waitFor();
-  const manual = panel.getByRole("region", { name: "Wiki 修改建议" }).filter({ hasText: "从会话中保存为 Wiki 内容" });
+  const manual = panel.getByRole("region", { name: "内容修改建议" }).filter({ hasText: "从会话中保存为 Wiki 内容" });
   await manual.getByRole("button", { name: "采纳并保存", exact: true }).click();
   await manual.getByText("已采纳", { exact: true }).waitFor();
   assert.equal((await api("elements?q=手动选择保存的回答")).pagination.total, 1);
@@ -1434,7 +1434,7 @@ test("Wiki Agent is the primary page and retains the same draft and session when
   assert.equal(await agent.getByLabel("会话消息").inputValue(), "未发送的草稿");
   await agent.getByLabel("会话消息").fill("根据资料写一份笔记");
   await agent.getByRole("button", { name: "发送消息", exact: true }).click();
-  await agent.getByRole("button", { name: "保存为 Wiki 内容", exact: true }).waitFor();
+  await agent.getByRole("button", { name: "回答存入内容库", exact: true }).waitFor();
   sessions = (await api("chat/sessions")).sessions;
   assert.equal(sessions.length, 1);
   await agent.getByLabel("会话消息").fill("接着聊的草稿");
@@ -1486,7 +1486,7 @@ for (const existing of [false, true]) test(`reference tray drops add images and 
   await page.goto(`${app.url}#wiki`);
   for (const id of [picture.id, note.id]) {
     await page.locator(`[data-element-id="${id}"]`).click({ button: "right" });
-    await page.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+    await page.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   }
   await page.goto(`${app.url}#agent${session ? `?session=${session.id}` : "?new=1"}`);
   await page.waitForFunction(() => document.querySelector('[aria-label="从库中选择"]')?.disabled === false);
@@ -1535,19 +1535,19 @@ test("home references collect text and images while browsing and enter a fresh c
   await page.getByRole("menuitem", { name: "复制", exact: true }).click();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), source.body);
   await card(source.id).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+  await page.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   const tray = page.getByRole("complementary", { name: "资料篮", exact: true });
   await tray.getByText(source.body, { exact: true }).waitFor();
   assert.equal(await page.getByRole("complementary", { name: "对话" }).isVisible(), false);
   assert.equal((await api("chat/sessions")).sessions.length, 0, "Collecting references does not create a conversation");
   await card(source.id).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+  await page.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   assert.equal(await tray.locator("li").count(), 1);
   await card(picture.id).click({ button: "right" });
   await page.getByRole("menuitem", { name: "复制", exact: true }).click();
   await page.waitForFunction(async () => (await navigator.clipboard.read()).some((item) => item.types.includes("image/png")));
   await card(picture.id).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+  await page.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   await tray.locator("img").waitFor();
   assert.equal(await tray.locator("li").count(), 2);
   await tray.getByRole("button", { name: /资料篮/ }).click();
@@ -1561,7 +1561,7 @@ test("home references collect text and images while browsing and enter a fresh c
   await detail.getByRole("heading", { name: source.body, exact: true }).waitFor();
   await tray.getByRole("button", { name: `移除资料 ${source.id}`, exact: true }).click();
   assert.equal(await tray.locator("li").count(), 1);
-  await detail.getByRole("button", { name: "加入资料", exact: true }).click();
+  await detail.getByRole("button", { name: "放进资料篮", exact: true }).click();
   assert.equal(await tray.locator("li").count(), 2);
   await page.setViewportSize({ width: 390, height: 700 });
   const bounds = await tray.boundingBox();
@@ -1603,7 +1603,7 @@ test("reference tray enforces the limit, keeps selections after first-send failu
     await card.scrollIntoViewIfNeeded();
     await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     await card.click({ button: "right", position: { x: 12, y: 12 } });
-    await page.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+    await page.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   };
   const tray = page.getByRole("complementary", { name: "资料篮", exact: true });
   for (const element of elements.slice(1)) await add(element);
@@ -1667,7 +1667,7 @@ test("reference handoff preserves overflow when a local draft already has twelve
   await page.getByLabel("会话消息").fill("保留文字和已有资料");
   await page.getByRole("button", { name: "全部内容", exact: true }).click();
   await page.locator(`[data-element-id="${elements[12].id}"]`).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+  await page.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   const tray = page.getByRole("complementary", { name: "资料篮", exact: true });
   await tray.getByRole("button", { name: "带着资料问 Agent", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "最多加入 12 份资料" }).waitFor();
@@ -1700,7 +1700,7 @@ test("reference handoff stays in the new session when an older session list arri
   });
   await page.goto(`${app.url}#wiki`);
   await page.locator(`[data-element-id="${element.id}"]`).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+  await page.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   await page.getByRole("button", { name: "问 Agent", exact: true }).click();
   await ready;
   const tray = page.getByRole("complementary", { name: "资料篮", exact: true });
@@ -1712,7 +1712,8 @@ test("reference handoff stays in the new session when an older session list arri
   const sessions = (await api("chat/sessions")).sessions;
   assert.equal(sessions.length, 1);
   assert.equal(sessions[0].id, oldSession.id);
-  await page.waitForFunction(() => document.querySelector('[role="combobox"][aria-label="历史会话"]').dataset.value === "");
+  // A new conversation: no session is current in the left list.
+  await page.waitForFunction(() => !document.querySelector('.chat-page .chat-history-item > button[aria-current="true"]'));
   const sent = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/sessions/start"));
   await agent.getByLabel("会话消息").fill("MODEL_CHECK");
   await agent.getByRole("button", { name: "发送消息", exact: true }).click();
@@ -1762,7 +1763,7 @@ test("model picker persists per session, survives docking, applies to requests a
   assert.equal(await picker.inputValue(), "fixture-fast");
   assert.equal(await page.getByRole("textbox", { name: "会话消息" }).inputValue(), "MODEL_CHECK");
   await page.getByRole("button", { name: "发送消息", exact: true }).click();
-  await page.getByRole("button", { name: "保存为 Wiki 内容", exact: true }).waitFor();
+  await page.getByRole("button", { name: "回答存入内容库", exact: true }).waitFor();
   const session = (await api("chat/sessions")).sessions[0];
   assert.equal(session.model, "fixture-fast");
   assert.equal(JSON.parse((await api(`chat/sessions/${session.id}`)).turns[0].answer).model, "fixture-fast");

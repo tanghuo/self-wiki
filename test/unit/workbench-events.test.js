@@ -81,3 +81,12 @@ test('Grok and Gemini ACP share message segmentation and status normalization wi
   assert.equal(events[2].data.status, 'running');
   assert.equal(events[4].data.phase, undefined);
 });
+
+test('ACP calls without a status begin queued and partial updates preserve the known status', async () => {
+  const events = [], emit = createAcpWorkbenchEvents((type, data) => events.push(event(type, data, events.length)));
+  await emit({ sessionUpdate: 'tool_call', toolCallId: 'one', title: 'Execute git status' });
+  await emit({ sessionUpdate: 'tool_call_update', toolCallId: 'one' });
+  assert.equal(workbenchTimeline(events, { ...turn, state: 'running' })[0].items[0].data.status, 'queued');
+  await emit({ sessionUpdate: 'tool_call_update', toolCallId: 'one', status: 'completed' });
+  assert.equal(workbenchTimeline(events, turn)[0].items[0].data.status, 'completed');
+});

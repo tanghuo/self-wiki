@@ -14,7 +14,10 @@ import { workflowSteps, stepLabel, isPreparationInput, workflowIssues, missingFi
 import { workflowTemplates } from '../../../../shared/domain/workflow/examples.js';
 import { planFromPrompt } from './workflowPlanner.js';
 import PageHeader from '../../ui/PageHeader.jsx';
+import { DialogFrame } from '../../ui/ConfirmDialog.jsx';
+import { Plus } from 'lucide-react';
 import './workflow.css';
+import { Button } from '../../ui/Button.jsx';
 
 const post = (path, payload) => request(path, { method: 'POST', body: JSON.stringify({ requestKey: crypto.randomUUID(), ...payload }) });
 function defaultInputs(definition) {
@@ -117,6 +120,7 @@ export default function WorkflowApp() {
   const [locate, setLocate] = useState(null), [prep, setPrep] = useState(null);
   const [buildPrompt, setBuildPrompt] = useState('');
   const [promptPlan, setPromptPlan] = useState(null);
+  const [creating, setCreating] = useState(false);
   const [generationParameters, setGenerationParameters] = useState({});
   async function refresh() { setList((await request('/api/workflows')).workflows); }
   useEffect(() => { refresh().catch((reason) => setError(reason.message)); }, []);
@@ -280,44 +284,17 @@ export default function WorkflowApp() {
   return <main ref={appRef} id="main-content" className="workflow-app" data-c-surface="workflow" data-preparing={inputForm || undefined}><PageHeader title={workflow ? name : '工作流'}
       subtitle={undefined}
       back={workflow ? { label: '工作流列表', ariaLabel: '返回工作流列表', disabled: busy, onClick: backToList } : undefined}
-      actions={undefined}
+      /* 运行 is the page action, not a tab: rightmost in the header. It steps down to a normal button while the run form (开始运行) or a run's rerun bar (运行) owns the primary. */
+      actions={workflow ? <Button variant={inputForm || (mode === 'run' && runId) ? 'secondary' : 'primary'} className="workflow-run-action" disabled={busy || !!workflow.archivedAt || (!!issues.length && mode === 'edit')} title={issues.length && mode === 'edit' ? '先处理下方列出的问题' : undefined} onClick={() => perform(() => beginRun(false, sourceNow(), snapshot))}>{!inputForm && mode === 'run' && runId ? '准备新运行' : '运行'}</Button>
+        : <Button variant="primary" disabled={busy} onClick={() => setCreating(true)}><Plus size={16} />新建工作流</Button>}
       tabs={workflow ? <div className="workflow-view-tabs ui-tabs" role="group" aria-label="工作流页面">
-        <button type="button" aria-selected={!!inputForm} aria-pressed={!!inputForm} disabled={busy || !!workflow.archivedAt || (!!issues.length && mode === 'edit')} title={issues.length && mode === 'edit' ? '先处理下方列出的问题' : undefined} onClick={() => perform(() => beginRun(false, sourceNow(), snapshot))}>{!inputForm && mode === 'run' && runId ? '准备新运行' : '运行'}</button>
         <button type="button" aria-selected={mode === 'run' && !inputForm} aria-pressed={mode === 'run' && !inputForm} onClick={() => { leavePreparation(); setMode('run'); setRunId(null); request(`/api/workflows/${workflow.id}`).then((loaded) => setHistory(loaded.runs)).catch((reason) => setError(reason.message)); }}>运行记录{history.length ? `（${history.length}）` : ''}</button>
         <button type="button" aria-selected={mode === 'edit'} aria-pressed={mode === 'edit'} onClick={() => { leavePreparation(); setMode('edit'); }}>修改流程</button>
       </div> : undefined} />
     {error && <p className="workflow-error" role="alert">{error}</p>}{notice && <p className="workflow-notice" role="status">{notice}</p>}
     {!workflow ? <section className="workflow-home" aria-label="工作流首页">
-      <section className="workflow-home-build" aria-label="一句话搭建">
-        <h2><span className="workflow-home-num">1</span>用一句话说出你想做的事</h2>
-        <div className="workflow-home-prompt">
-          <input aria-label="一句话描述要搭的流程" placeholder="例如：把选中的图片逐张写一段描述，我确认后存进资料库" value={buildPrompt} onChange={(e) => { setBuildPrompt(e.target.value); setPromptPlan(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setPromptPlan(planFromPrompt(buildPrompt, { textAdapter: adapters.find((a) => a.nodeType === 'model')?.id, imageAdapter: adapters.find((a) => a.nodeType === 'image.generate')?.id })); } }} />
-          <button type="button" className={promptPlan ? '' : 'primary'} disabled={busy || !buildPrompt.trim()} title={!buildPrompt.trim() ? '先用一句话描述要做的事' : undefined} onClick={() => setPromptPlan(planFromPrompt(buildPrompt, { textAdapter: adapters.find((a) => a.nodeType === 'model')?.id || 'grok-text', imageAdapter: adapters.find((a) => a.nodeType === 'image.generate')?.id || 'grok-build' }))}>帮我搭好</button>
-        </div>
-        {promptPlan && <div className="workflow-home-plan" role="region" aria-label="搭建计划">
-          <h3>计划：{promptPlan.name}</h3>
-          <p>根据「{promptPlan.summary}」会生成下面这个流程。确认后才会保存。</p>
-          <ol>{promptPlan.steps.map((step) => <li key={step.number}>第 {step.number} 步 · {step.name}</li>)}</ol>
-          <p>{promptPlan.valid ? `检查通过 · 最多调用 AI ${promptPlan.maxCalls} 次` : `还有问题：${promptPlan.errors[0]?.message || '请换个说法'}`}</p>
-          <div className="workflow-actions">
-            <button type="button" onClick={() => setPromptPlan(null)}>取消</button>
-            <button type="button" className="primary" disabled={busy || !promptPlan.valid} title={!promptPlan.valid ? '计划还有问题，换个说法再试' : undefined} onClick={() => perform(async () => { const created = await post('/api/workflows', { name: promptPlan.name, definition: promptPlan.definition }); setPromptPlan(null); setBuildPrompt(''); open(created); await refresh(); })}>确认并生成</button>
-          </div>
-        </div>}
-      </section>
-      <section className="workflow-home-templates" aria-label="从模板开始">
-        <h2><span className="workflow-home-num">2</span>从模板开始 <small>选一个，改两处就能用</small></h2>
-        <div className="workflow-template-grid">{workflowTemplates({ textAdapter: adapters.find((a) => a.nodeType === 'model')?.id || 'grok-text', imageAdapter: adapters.find((a) => a.nodeType === 'image.generate')?.id || 'grok-build' }).map((tpl) => (
-          <article key={tpl.id} className="workflow-template-card">
-            <h3>{tpl.name}</h3>
-            {/* blurb is the same chain as flow; show it once */}
-            <p className="workflow-template-flow">{tpl.flow.join(' → ')}</p>
-            <button type="button" disabled={busy} onClick={() => perform(async () => { const created = await post('/api/workflows', { name: tpl.name, definition: tpl.definition }); open(created); await refresh(); })}>使用模板</button>
-          </article>
-        ))}</div>
-      </section>
       <section className="workflow-list" aria-label="我的工作流">
-        <header className="workflow-list-head"><h2><span className="workflow-home-num">3</span>我的工作流</h2></header>
+        <header className="workflow-list-head"><h2>我的工作流</h2></header>
         <div className="workflow-card-grid">{list.filter((item) => showArchived || !item.archivedAt).map((item) => (
           <article key={item.id} className="workflow-home-card">
             <button type="button" className="workflow-list-title" disabled={busy} onClick={() => perform(async () => { const loaded = await request(`/api/workflows/${item.id}`); const source = open(loaded); let previous = null; if (loaded.runs?.[0]) { try { const run = await request(`/api/workflow-runs/${loaded.runs[0].id}`); previous = { id: run.id, inputs: run.inputs, definition: run.definition, inputArtifacts: run.inputArtifacts }; } catch {} } beginRun(false, source, previous); })}>
@@ -331,12 +308,42 @@ export default function WorkflowApp() {
             </div>
           </article>
         ))}
-        <article className="workflow-home-card workflow-home-blank">
-          <button type="button" disabled={busy} onClick={() => perform(async () => open(await post('/api/workflows', { name: '未命名工作流' })))}>＋ 从空白开始搭建</button>
-        </article>
         </div>
-        {!list.length && <p className="workflow-empty">还没有自己的工作流。可以从上面的模板开始，或者点「＋ 从空白开始搭建」。</p>}
+        {!list.length && <p className="workflow-empty">还没有自己的工作流。点右上角「新建工作流」，用一句话搭建、套用模板或从空白开始。</p>}
       </section>
+      {creating && <DialogFrame title="新建工作流" description="用一句话搭建、套用模板，或从空白开始。" closeLabel="关闭新建工作流" busy={busy} size="wide" className="workflow-new-dialog" onClose={() => { setCreating(false); setPromptPlan(null); }}>
+      <section className="workflow-home-build" aria-label="一句话搭建">
+        <h3>用一句话说出你想做的事</h3>
+        <div className="workflow-home-prompt">
+          <input aria-label="一句话描述要搭的流程" placeholder="例如：把选中的图片逐张写一段描述，我确认后存进资料库" value={buildPrompt} onChange={(e) => { setBuildPrompt(e.target.value); setPromptPlan(null); }} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); setPromptPlan(planFromPrompt(buildPrompt, { textAdapter: adapters.find((a) => a.nodeType === 'model')?.id, imageAdapter: adapters.find((a) => a.nodeType === 'image.generate')?.id })); } }} />
+          <Button variant={promptPlan ? 'secondary' : 'primary'} disabled={busy || !buildPrompt.trim()} title={!buildPrompt.trim() ? '先用一句话描述要做的事' : undefined} onClick={() => setPromptPlan(planFromPrompt(buildPrompt, { textAdapter: adapters.find((a) => a.nodeType === 'model')?.id || 'grok-text', imageAdapter: adapters.find((a) => a.nodeType === 'image.generate')?.id || 'grok-build' }))}>帮我搭好</Button>
+        </div>
+        {promptPlan && <div className="workflow-home-plan" role="region" aria-label="搭建计划">
+          <h3>计划：{promptPlan.name}</h3>
+          <p>根据「{promptPlan.summary}」会生成下面这个流程。确认后才会保存。</p>
+          <ol>{promptPlan.steps.map((step) => <li key={step.number}>第 {step.number} 步 · {step.name}</li>)}</ol>
+          <p>{promptPlan.valid ? `检查通过 · 最多调用 AI ${promptPlan.maxCalls} 次` : `还有问题：${promptPlan.errors[0]?.message || '请换个说法'}`}</p>
+          <div className="workflow-actions">
+            <button type="button" onClick={() => setPromptPlan(null)}>取消</button>
+            <Button variant="primary" disabled={busy || !promptPlan.valid} title={!promptPlan.valid ? '计划还有问题，换个说法再试' : undefined} onClick={() => perform(async () => { const created = await post('/api/workflows', { name: promptPlan.name, definition: promptPlan.definition }); setPromptPlan(null); setBuildPrompt(''); setCreating(false); open(created); await refresh(); })}>确认并生成</Button>
+          </div>
+        </div>}
+      </section>
+      <section className="workflow-home-templates" aria-label="从模板开始">
+        <h3>从模板开始 <small>选一个，改两处就能用</small></h3>
+        <div className="workflow-template-grid">{workflowTemplates({ textAdapter: adapters.find((a) => a.nodeType === 'model')?.id || 'grok-text', imageAdapter: adapters.find((a) => a.nodeType === 'image.generate')?.id || 'grok-build' }).map((tpl) => (
+          <article key={tpl.id} className="workflow-template-card">
+            <h3>{tpl.name}</h3>
+            {/* blurb is the same chain as flow; show it once */}
+            <p className="workflow-template-flow">{tpl.flow.join(' → ')}</p>
+            <button type="button" disabled={busy} onClick={() => perform(async () => { const created = await post('/api/workflows', { name: tpl.name, definition: tpl.definition }); setCreating(false); open(created); await refresh(); })}>使用模板</button>
+          </article>
+        ))}</div>
+      </section>
+      <section className="workflow-home-blank" aria-label="从空白开始">
+        <button type="button" disabled={busy} onClick={() => perform(async () => { const created = await post('/api/workflows', { name: '未命名工作流' }); setCreating(false); open(created); })}>从空白开始搭建</button>
+      </section>
+      </DialogFrame>}
     </section> : <>
       {!inputForm && mode === 'edit' && <div className="workflow-toolbar ui-toolbar"><input aria-label="工作流名称" value={name} onChange={(e) => { setName(e.target.value); setDirty(true); }} /><span className="workflow-save-state">{dirty ? '未保存' : '已保存'}</span><button disabled={busy} onClick={() => perform(save)}>保存</button><button disabled={busy} onClick={() => perform(async () => { const report = await post(`/api/workflows/${workflow.id}/validate`, { definition }); setErrors(report.errors); setNotice(report.valid ? `检查通过 · 最多调用 AI ${report.maxCalls} 次` : `还有 ${workflowIssues(definition, report.errors).length} 个问题，见下方列表`); })}>检查</button><button disabled={busy || !!workflow.archivedAt || !!issues.length || !definition.nodes.some((node) => node.type === 'foreach')} title="每个列表只处理第 1 项，用来先确认效果" onClick={() => perform(() => beginRun(true, sourceNow()))}>先试 1 项</button><details className="workflow-menu"><summary>管理</summary><div><button onClick={exportDefinition}>导出定义</button><button disabled={busy} onClick={() => perform(async () => { const saved = await request(`/api/workflows/${workflow.id}`, { method: 'PUT', body: JSON.stringify({ name, definition, revision: workflow.revision, archived: !workflow.archivedAt }) }); setWorkflow(saved); setDirty(false); await refresh(); })}>{workflow.archivedAt ? '恢复归档' : '归档'}</button></div></details></div>}
       {!inputForm && mode === 'edit' && !!issues.length && <section className="workflow-issues" aria-label="需要处理的问题"><strong>还有 {issues.length} 个问题，处理后才能运行</strong><ul>{issues.map((issue) => <li key={issue.key}><span className="workflow-issue-step">{issue.label}</span><span>{issue.message}</span>{issue.nodeId && <button onClick={() => goFix(issue)}>去修改</button>}</li>)}</ul></section>}
@@ -348,7 +355,7 @@ export default function WorkflowApp() {
       {!!presetInputSteps.length && <details className="workflow-preset-materials"><summary><span>流程预设素材</span><small>{presetInputSteps.length} 项 · 点击调整</small></summary><div>{presetInputSteps.map(renderPreparation)}</div></details>}</div>
       {steps.some((step) => generationParameterConfig(step.node)) && <section className="workflow-runtime-parameters" aria-label="本次生图参数"><h3>本次生图参数</h3><p>可按本次图片的比例调整分辨率、尺寸来源和 seed。只作用于这次运行，不修改流程默认值。</p>{steps.filter((step) => generationParameterConfig(step.node)).map((step) => <section key={step.id} aria-label={stepLabel(step) + '的生图参数'}><strong>{stepLabel(step)}</strong><RuntimeGenerationParameters node={step.node} value={generationParameters[step.id]} referenceImages={workflowReferenceImages(definition, inputs)} onChange={(config) => setGenerationParameters((current) => ({ ...current, [step.id]: config }))} />{generationParameters[step.id] && <><small>已调整，仅用于本次运行</small><button type="button" onClick={() => setGenerationParameters((current) => { const next = { ...current }; delete next[step.id]; return next; })}>恢复流程默认参数</button></>}</section>)}</section>}
 {!!changedFixed.length && <label className="workflow-save-defaults"><input type="checkbox" checked={saveRunDefaults} onChange={(event) => setSaveRunDefaults(event.target.checked)} /><span>将 {changedFixed.length} 项素材修改保存为流程默认值<small>勾选后，以后运行也会使用这些素材。</small></span></label>}
-{!!blockers.length && <div className="workflow-start-blockers" role="status"><strong>暂时不能开始：</strong><ul>{blockers.map((blocker) => <li key={blocker.key}><span className="workflow-issue-step">{blocker.label}</span><span>{blocker.message}</span><button onClick={blocker.run}>{blocker.action}</button></li>)}</ul></div>}<div className="workflow-actions workflow-input-actions"><div className="workflow-start-status" role="status"><strong>{blockers.length ? `还有 ${blockers.length} 项需要处理` : '素材已就绪'}</strong></div><label className="workflow-run-count">运行次数<input aria-label="运行次数" title="下次点「开始运行」时，整个流程按这个次数各开一次" type="number" min="1" max="20" step="1" value={runCount} disabled={busy} onChange={(event) => setRunCount(event.target.value)} /></label><button disabled={busy} onClick={() => { leavePreparation(); setMode('edit'); }}>返回编辑</button><button className="primary" disabled={busy || !!blockers.length} title={blockers.length ? '先处理上方「暂时不能开始」里的问题' : undefined} onClick={() => perform(() => launch(sample, inputs, sourceNow()))}>{changedFixed.length && saveRunDefaults ? '保存修改并' : ''}开始{sample ? '试 1 项' : '运行'}{runCount > 1 ? ` ${runCount} 次` : ''}</button></div></section><aside className="workflow-plan" aria-label="执行前状态"><WorkflowPlan definition={definition} activeNodeId={activeInputId} onLocate={locateInput} compact /></aside></section></div>}
+{!!blockers.length && <div className="workflow-start-blockers" role="status"><strong>暂时不能开始：</strong><ul>{blockers.map((blocker) => <li key={blocker.key}><span className="workflow-issue-step">{blocker.label}</span><span>{blocker.message}</span><button onClick={blocker.run}>{blocker.action}</button></li>)}</ul></div>}<div className="workflow-actions workflow-input-actions"><div className="workflow-start-status" role="status"><strong>{blockers.length ? `还有 ${blockers.length} 项需要处理` : '素材已就绪'}</strong></div><label className="workflow-run-count">运行次数<input aria-label="运行次数" title="下次点「开始运行」时，整个流程按这个次数各开一次" type="number" min="1" max="20" step="1" value={runCount} disabled={busy} onChange={(event) => setRunCount(event.target.value)} /></label><button disabled={busy} onClick={() => { leavePreparation(); setMode('edit'); }}>返回编辑</button><Button variant="primary" type="submit" disabled={busy || !!blockers.length} title={blockers.length ? '先处理上方「暂时不能开始」里的问题' : undefined} onClick={() => perform(() => launch(sample, inputs, sourceNow()))}>{changedFixed.length && saveRunDefaults ? '保存修改并' : ''}开始{sample ? '试 1 项' : '运行'}{runCount > 1 ? ` ${runCount} 次` : ''}</Button></div></section><aside className="workflow-plan" aria-label="执行前状态"><WorkflowPlan definition={definition} activeNodeId={activeInputId} onLocate={locateInput} compact /></aside></section></div>}
       {/* Stay mounted while hidden so a run does not drop the canvas selection or undo stack. */}
       <div hidden={inputForm || mode !== 'edit'}><WorkflowEditor key={workflow.id} active={!inputForm && mode === 'edit'} definition={definition} adapters={adapters} issues={issues} locate={locate} onPreview={history.length ? (nodeId, scope) => { setFocusNodeId(scope || nodeId); setRunId(history[0].id); setInputForm(false); setMode('run'); setNotice('这里显示最近一次运行的结果；还没运行过的修改不会出现在这里。'); } : undefined} onChange={(next) => { setDefinition(next); setDirty(true); setErrors([]); }} /></div>
       {!inputForm && mode === 'run' && runId && <div className="workflow-run-workspace"><WorkflowRun key={runId} runId={runId} title={name} runCount={runCount} onRunCountChange={setRunCount} archived={!!workflow.archivedAt} focusNodeId={focusNodeId} onStateChange={updateRunState} onRun={rememberRun} definition={definition} onEditVersion={(loaded) => { open(loaded); refresh(); }} onDerived={(id) => { setSnapshot(null); setRunId(id); setInputForm(false); setMode('run'); }} /></div>}

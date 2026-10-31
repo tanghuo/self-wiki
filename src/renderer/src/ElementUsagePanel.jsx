@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { X, RefreshCw } from "lucide-react";
-import Dialog from "./Dialog.jsx";
+import { RefreshCw } from "lucide-react";
+import { DialogFrame } from "./ui/ConfirmDialog.jsx";
 import useWikiResource from "./useWikiResource.js";
 import { apiUrl } from "./api.js";
 import "./elementUsage.css";
@@ -21,8 +21,8 @@ export default function ElementUsagePanel({ onClose }) {
   const valid = Number.isFinite(start) && Number.isFinite(end) && start >= 0 && start < end;
   const result = useWikiResource(valid ? `/api/element-usage?${new URLSearchParams({ from: start, to: end, sort })}` : null, now);
   const data = result.data;
-  return <Dialog open label="内容使用统计" className="wiki-dialog element-usage-dialog" onClose={onClose}>
-    <header className="wiki-dialog-header"><div><h2>内容使用统计</h2><p className="wiki-muted">了解一段时间里常用的内容</p></div><button className="icon-only" aria-label="关闭使用统计" onClick={onClose}><X size={18} /></button></header>
+  return <DialogFrame bare title="内容使用统计" description="了解一段时间里常用的内容" className="wiki-dialog element-usage-dialog" closeLabel="关闭使用统计" onClose={onClose}
+    footer={<><p className="wiki-muted">使用次数 = 引用次数 + 复制次数。展示前 50 条。复制成功、加入资料篮时记录；重复加入和恢复资料篮不计。时间按本地时区显示，自定义时段不含结束时刻。历史未记录的操作不补算；永久删除内容会清除其记录。</p></>}>
     <div className="element-usage-body">
       <div className="element-usage-filters">
         <label>时间范围<select aria-label="时间范围" value={period} onChange={(event) => { setPeriod(event.target.value); setNow(Date.now()); }}><option value="today">今天</option><option value="7">近 7 天</option><option value="30">近 30 天</option><option value="all">全部</option><option value="custom">自定义</option></select></label>
@@ -37,6 +37,5 @@ export default function ElementUsagePanel({ onClose }) {
         </tr>)}</tbody></table></div>}
       </>}
     </div>
-    <footer className="wiki-dialog-footer"><p className="wiki-muted">使用次数 = 引用次数 + 复制次数。展示前 50 条。复制成功、加入资料篮时记录；重复加入和恢复资料篮不计。时间按本地时区显示，自定义时段不含结束时刻。历史未记录的操作不补算；永久删除内容会清除其记录。</p></footer>
-  </Dialog>;
+  </DialogFrame>;
 }

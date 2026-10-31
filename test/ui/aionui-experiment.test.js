@@ -27,6 +27,8 @@ test('desktop entry embeds automatically and hides the native view when switchin
   const { app, page } = await fixture(t);
   await page.addInitScript(() => { window.embeds = []; window.wikiDesktop = { async embedAionui(value) { window.embeds.push(value); return { state: 'running' }; }, openAionui() { throw new Error('Must not open another window'); } }; });
   await page.goto(app.url + '#wiki');
+  // The secondary Agent surfaces sit under 「更多」 in the sidebar.
+  await page.getByRole('complementary', { name: '内容导航' }).getByRole('button', { name: '更多', exact: true }).click();
   await page.getByRole('link', { name: 'AionUi 实验版', exact: true }).click();
   await page.waitForFunction(() => window.embeds.some(value => value.type === 'show'));
   assert.equal(await page.getByRole('button', { name: '打开 AionUi 实验版' }).count(), 0);

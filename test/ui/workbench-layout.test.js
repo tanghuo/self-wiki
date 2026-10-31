@@ -91,13 +91,21 @@ test('workbench keeps menus, long titles, activity and details usable across win
   assert.notEqual(await spinner.evaluate(n => getComputedStyle(n).transform), before);
   for (const viewport of [{ width: 1440, height: 960 }, { width: 390, height: 844 }, { width: 640, height: 360 }]) {
     await page.setViewportSize(viewport);
-    await inside(page.getByRole('button', { name: '会话设置' }));
     await inside(page.getByRole('button', { name: '停止', exact: true }));
     await inside(page.locator('.workbench-composer'));
-    await page.getByRole('button', { name: '会话设置' }).click();
-    await inside(page.getByRole('complementary', { name: '会话详情' }));
+    // Wide windows always show the 会话详情 column; phones fold it away behind the 会话设置 toggle.
+    const toggle = page.getByRole('button', { name: '会话设置' });
+    if (viewport.width > 900) {
+      assert.equal(await toggle.isVisible(), false);
+      await inside(page.getByRole('complementary', { name: '会话详情' }));
+    } else {
+      assert.equal(await page.getByRole('complementary', { name: '会话详情' }).isVisible(), false);
+      await inside(toggle);
+      await toggle.click();
+      await inside(page.getByRole('complementary', { name: '会话详情' }));
+    }
     await page.screenshot({ path: `.local/workbench-ui/audit-conversation-${viewport.width}.png` });
-    await page.getByRole('button', { name: '会话设置' }).click();
+    if (viewport.width <= 900) await toggle.click();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
   }
   await page.emulateMedia({ reducedMotion: 'reduce' });

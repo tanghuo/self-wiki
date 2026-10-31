@@ -44,7 +44,7 @@ button[aria-busy="true"] { cursor: progress; }
 .page-back { justify-self: start; margin: 0 0 var(--sp-2) calc(-1 * var(--sp-2)); }
 .page-header-row { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4) var(--sp-6); flex-wrap: wrap; min-width: 0; }
 .page-header-text { display: grid; gap: var(--sp-1); min-width: 0; }
-.page-header h1, .page-title { margin: 0; color: var(--ink); font-size: var(--fs-page); font-weight: 650; line-height: 1.3; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.page-header h1, .page-title { margin: 0; color: var(--ink); font-size: var(--fs-page); font-weight: 600; line-height: 1.3; letter-spacing: -.01em; overflow-wrap: anywhere; }
 .page-header-sub { color: var(--muted); font-size: var(--fs-small); line-height: var(--leading-normal); }
 .page-header-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-2); }
 .page-header > .ui-tabs { margin-top: var(--sp-4); }
@@ -134,16 +134,16 @@ button[aria-busy="true"] { cursor: progress; }
 @keyframes dialog-in { from { opacity: 0; } }
 .dialog:not([open]) { display: none; }
 .dialog::backdrop { background: var(--overlay); backdrop-filter: blur(3px); }
-.wiki-dialog-header, .ui-dialog-header { display: flex; flex-shrink: 0; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); padding: 20px var(--sp-6) var(--sp-4); border-bottom: 1px solid var(--line); }
-.wiki-dialog-header > div, .ui-dialog-header > div { display: grid; gap: var(--sp-1); min-width: 0; }
-.wiki-dialog-header h2, .ui-dialog-header h2 { margin: 0; color: var(--ink); font-size: var(--fs-dialog); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
-.wiki-dialog-header p, .ui-dialog-header p { margin: 0; color: var(--muted); font-size: var(--fs-small); }
-.wiki-dialog-header > .icon-only, .ui-dialog-header > .icon-only { margin: -4px calc(-1 * var(--sp-2)) 0 0; }
+.ui-dialog-header { display: flex; flex-shrink: 0; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); padding: 20px var(--sp-6) var(--sp-4); border-bottom: 1px solid var(--line); }
+.ui-dialog-header > div { display: grid; gap: var(--sp-1); min-width: 0; }
+.ui-dialog-header h2 { margin: 0; color: var(--ink); font-size: var(--fs-dialog); font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.ui-dialog-header p { margin: 0; color: var(--muted); font-size: var(--fs-small); }
+.ui-dialog-header > .icon-only { margin: -4px calc(-1 * var(--sp-2)) 0 0; }
 .ui-dialog-body { display: grid; gap: var(--sp-4); min-height: 0; padding: 20px var(--sp-6); overflow-y: auto; color: var(--ink); line-height: var(--leading-relaxed); }
 .ui-dialog-body > p { margin: 0; }
 .ui-dialog-body > .ui-dialog-consequence { color: var(--muted); font-size: var(--fs-small); }
-.wiki-dialog-footer, .ui-dialog-footer { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-4) var(--sp-6); border-top: 1px solid var(--line); }
-.wiki-dialog-footer > span, .ui-dialog-footer > .ui-dialog-status { margin-right: auto; color: var(--muted); font-size: var(--fs-small); }
+.ui-dialog-footer { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-2); padding: var(--sp-4) var(--sp-6); border-top: 1px solid var(--line); }
+.ui-dialog-footer > span, .ui-dialog-footer > .ui-dialog-status { margin-right: auto; color: var(--muted); font-size: var(--fs-small); }
 .ui-dialog.is-danger .ui-dialog-header { border-bottom: 0; padding-bottom: 0; }
 .ui-dialog.is-danger .ui-dialog-footer { border-top: 0; padding-top: var(--sp-2); padding-bottom: var(--sp-6); }
 .ui-dialog-tone { display: grid; flex-shrink: 0; place-items: center; width: 36px; height: 36px; border-radius: var(--r-lg); background: var(--bad-soft); color: var(--bad); }
@@ -165,7 +165,67 @@ button[aria-busy="true"] { cursor: progress; }
 .ui-pill.is-good { background: var(--good-soft); color: var(--good); } .ui-pill.is-warn { background: var(--warn-soft); color: var(--warn); } .ui-pill.is-bad { background: var(--bad-soft); color: var(--bad); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .ui-dialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.ui-dialog-form { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; }
+/* Dialogs that used to scroll as a whole (bare bodies without their own scroll region) keep doing so inside the shared frame. */
+.dialog.ui-dialog:is(.wiki-dialog, .comfyui-dialog, .token-usage-dialog)[open] { overflow-y: auto; }
 .ui-dialog { width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); }
 .ui-dialog.is-wide { width: min(760px, calc(100vw - 32px)); }
 .spin { animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- FloatingLayer: title + search on top, actions top-right, filters in a bottom capsule ----------
+   Lives inside the page column (sticky or absolute against its own box), never against the viewport,
+   so the layout is identical with the Agent dock open and on narrow windows. */
+.ui-float-layer { position: relative; min-width: 0; }
+.ui-float-top {
+  position: sticky; top: var(--sp-2); z-index: 14;
+  display: grid; grid-template-columns: minmax(max-content, 1fr) minmax(160px, 470px) minmax(max-content, 1fr); align-items: center; gap: var(--sp-3);
+  margin: 0 0 var(--sp-4); padding: 0; pointer-events: none;
+}
+.ui-float-top > * { pointer-events: auto; min-width: 0; }
+.ui-float-title { justify-self: start; min-width: 0; display: flex; align-items: baseline; gap: var(--sp-3); max-width: 100%; }
+.ui-float-title:empty { display: none; }
+.ui-float-title h1 { margin: 0; font-size: var(--fs-title, 20px); font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ui-float-title .page-header-sub { margin: 0; color: var(--muted); font-size: var(--fs-small); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ui-float-search { justify-self: stretch; }
+.ui-float-search:empty { visibility: hidden; }
+.ui-float-search > .wiki-search { width: 100%; border-radius: var(--r-pill, 999px); background: var(--glass-bg-strong, color-mix(in srgb, var(--panel) 88%, transparent)); backdrop-filter: blur(18px) saturate(1.3); box-shadow: var(--e-2, var(--e-1)); }
+.ui-float-actions { justify-self: end; display: flex; flex-wrap: nowrap; align-items: center; gap: var(--sp-2); }
+.ui-float-content { min-width: 0; }
+.ui-float-bottom { position: sticky; bottom: var(--sp-4); z-index: 14; display: flex; justify-content: center; margin-top: var(--sp-4); pointer-events: none; }
+.ui-float-capsule {
+  pointer-events: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--sp-2);
+  max-width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 22px;
+  background: var(--glass-bg-strong, color-mix(in srgb, var(--panel) 90%, transparent)); backdrop-filter: blur(18px) saturate(1.3); box-shadow: var(--e-2, var(--e-1));
+}
+.ui-float-capsule.wiki-toolbar { padding-bottom: 6px; }
+.ui-float-capsule.wiki-toolbar > span { margin-left: 0; }
+/* Overlay: the content is a fixed-height stage (canvas); the bars float over its edges. */
+.ui-float-layer.is-overlay > .ui-float-top { position: absolute; top: var(--sp-3); left: var(--sp-3); right: var(--sp-3); margin: 0; }
+.ui-float-layer.is-overlay > .ui-float-bottom { position: absolute; bottom: var(--sp-3); left: var(--sp-3); right: var(--sp-3); margin: 0; }
+@media (max-width: 760px) {
+  .ui-float-top { grid-template-columns: minmax(0, 1fr) auto; }
+  .ui-float-search { grid-column: 1 / -1; grid-row: 2; }
+}
+/* Popovers open upward from the bottom capsule; its triggers are pills like the capsule. */
+.ui-float-bottom :is(.wiki-view-menu-panel, .wiki-tag-filter-menu, .menu-panel) { top: auto; bottom: calc(100% + 12px); }
+.ui-float-capsule :is(.wiki-tag-filter > button, .wiki-view-menu-trigger, .wiki-list-menu > summary, .ui-select > button) { border-radius: var(--r-pill, 999px); }
+
+/* ---------- AgentShell: sessions | timeline | resources, the same three columns on every Agent surface ---------- */
+.agent-shell { display: grid; grid-template-columns: var(--agent-sessions-w, 232px) minmax(0, 1fr) var(--agent-resources-w, 300px); grid-template-rows: minmax(0, 1fr); flex: 1; min-width: 0; min-height: 0; }
+.agent-shell-sessions { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; }
+.agent-shell-timeline { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.agent-shell-resources { grid-column: 3; grid-row: 1; display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; min-height: 0; overflow-y: auto; padding: var(--sp-4); border-left: 1px solid var(--line); }
+.agent-shell-empty { margin: 0; color: var(--muted); font-size: var(--fs-small); line-height: var(--leading-normal, 1.6); }
+.agent-shell-resources > h2, .agent-shell-resources > h3 { margin: 0; font-size: var(--fs-body); font-weight: 600; }
+@media (max-width: 1100px) { .agent-shell { --agent-sessions-w: 200px; --agent-resources-w: 260px; } }
+@media (max-width: 900px) {
+  .agent-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr) auto; }
+  .agent-shell-sessions { grid-row: 1; flex-direction: row; max-height: 96px; overflow-x: auto; overflow-y: hidden; }
+  .agent-shell-timeline { grid-column: 1; grid-row: 2; }
+  /* Phones: the timeline and composer need the full height; the resource column folds away. */
+  .agent-shell-resources { display: none; }
+  .agent-shell.is-resources-open > .agent-shell-resources { display: flex; position: fixed; z-index: 30; inset: auto 12px 12px; max-height: min(70dvh, 560px); border: 1px solid var(--line); border-radius: var(--r-xl); background: var(--panel); box-shadow: var(--e-float); }
+}
+.agent-shell button.agent-shell-resources-toggle.icon-only { display: none; }
+@media (max-width: 900px) { .agent-shell button.agent-shell-resources-toggle.icon-only { display: inline-flex; } }

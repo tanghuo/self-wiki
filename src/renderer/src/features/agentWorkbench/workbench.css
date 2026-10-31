@@ -49,7 +49,7 @@
 
 .wiki-main.workbench-page[data-c-surface="workbench"] { display: flex; flex-direction: column; height: 100%; min-height: 0; padding-bottom: var(--sp-4); overflow: hidden; }
 .workbench-page > .page-header { flex-shrink: 0; }
-.workbench-page[data-c-surface="workbench"] .workbench-layout { flex: 1; min-height: 0; overflow: hidden; grid-template-columns: 200px minmax(0, 1fr); }
+.workbench-page[data-c-surface="workbench"] .workbench-layout { flex: 1; min-height: 0; overflow: hidden; }
 .workbench-page[data-c-surface="workbench"] .workbench-sessions { overflow-y: auto; align-content: start; }
 .workbench-sessions strong { overflow-wrap: anywhere; }
 .workbench-rail-title { margin: var(--sp-2) var(--sp-3); font-size: var(--fs-caption); color: var(--muted); }
@@ -59,7 +59,6 @@
 .workbench-session-header > button { flex: 0 0 auto; }
 .workbench-session-header p { margin: var(--sp-1) 0; }
 .workbench-session-grid { position: relative; flex: 1; display: grid; grid-template-columns: minmax(0, 1fr); min-height: 0; }
-.workbench-session-grid.inspecting { grid-template-columns: minmax(0, 1fr) minmax(240px, 300px); }
 .workbench-chat-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .workbench-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--sp-4); scrollbar-gutter: stable; }
 .workbench-scroll > * { max-width: 840px; margin-inline: auto; }
@@ -97,13 +96,8 @@
 .workbench-settings-fields input, .workbench-settings-fields select { width: 100%; min-width: 0; }
 .workbench-settings-fields .workbench-path-input > button { flex-shrink: 0; }
 .workbench-settings-dialog .workbench-trust { display: flex; gap: var(--sp-2); align-items: flex-start; }
-@media (max-width: 1200px) {
-  .workbench-session-grid.inspecting { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 35%); }
-  .workbench-inspector { border-left: 0; border-top: 1px solid var(--line); }
-  .workbench-key-hint { display: none; }
-}
+@media (max-width: 1200px) { .workbench-key-hint { display: none; } }
 @media (max-width: 900px) {
-  .workbench-page[data-c-surface="workbench"] .workbench-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: var(--sp-2); }
   .workbench-page[data-c-surface="workbench"] .workbench-sessions { max-height: 90px; overflow-y: hidden; }
   .workbench-rail-title { display: none; }
   .workbench-session-header { align-items: flex-start; flex-wrap: wrap; }

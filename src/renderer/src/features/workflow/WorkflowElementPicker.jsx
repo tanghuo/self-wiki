@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import Dialog from '../../Dialog.jsx';
+import { DialogFrame } from '../../ui/ConfirmDialog.jsx';
 import { apiUrl, request } from '../../api.js';
+import { Button } from '../../ui/Button.jsx';
 
 export default function WorkflowElementPicker({ kind, multiple, onChoose, onClose }) {
   const [q, setQ] = useState(''), [page, setPage] = useState(1), [data, setData] = useState(null), [selected, setSelected] = useState([]), [error, setError] = useState('');
@@ -23,8 +24,8 @@ export default function WorkflowElementPicker({ kind, multiple, onChoose, onClos
     if (multiple) toggle(element);
     else setSelected([element]);
   }
-  return <Dialog open label="选择工作流素材" className="wiki-dialog workflow-picker" onClose={onClose}>
-    <header className="wiki-dialog-header"><h2>选择{kind === 'image' ? '图片' : '文字'}素材</h2><button onClick={onClose} aria-label="关闭素材选择">关闭</button></header>
+  return <DialogFrame bare label="选择工作流素材" title={`选择${kind === 'image' ? '图片' : '文字'}素材`} className="wiki-dialog workflow-picker" closeLabel="关闭素材选择" onClose={onClose}
+    footer={<><span className="ui-dialog-status">{selected.length ? multiple ? `已选 ${selected.length} 项` : `已选 #${selected[0].id}` : '尚未选择素材'}</span><button type="button" onClick={onClose}>取消</button><Button variant="primary" disabled={!selected.length} onClick={() => onChoose(selected)}>使用选中素材</Button></>}>
     <div className="workflow-picker-body">
       <label className="workflow-picker-search">搜索素材<input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} /></label>
       <p className="workflow-picker-hint">{kind === 'text' ? '点击素材查看全文，确认内容后再使用。' : '点击图片查看大图并选择，可跨页多选。'}</p>
@@ -46,6 +47,5 @@ export default function WorkflowElementPicker({ kind, multiple, onChoose, onClos
       </div>
       {multiple && selected.length > 0 && <details className="workflow-picker-selection"><summary>已选顺序（{selected.length}）</summary><ol>{selected.map((element, index) => <li key={element.id}><button className="workflow-picker-selected-name" onClick={() => setPreview(element)}>#{element.id} {element.image?.originalName || element.body?.slice(0, 60)}</button><button disabled={!index} onClick={() => setSelected((items) => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })}>上移</button><button onClick={() => toggle(element)}>移除</button></li>)}</ol></details>}
     </div>
-    <footer className="wiki-dialog-footer"><span>{selected.length ? multiple ? `已选 ${selected.length} 项` : `已选 #${selected[0].id}` : '尚未选择素材'}</span><button disabled={!selected.length} onClick={() => onChoose(selected)}>使用选中素材</button></footer>
-  </Dialog>;
+  </DialogFrame>;
 }

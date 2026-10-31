@@ -4,6 +4,7 @@ import { apiUrl } from "./api.js";
 import { elementLabel } from "../../shared/domain/elements.js";
 import { REFERENCE_DRAG_TYPE } from "./referenceDrag.js";
 import "./referenceTray.css";
+import { Button } from "./ui/Button.jsx";
 
 const positionCookie = "selfWikiTrayPosition";
 
@@ -129,6 +130,6 @@ export default function ReferenceTray({ elements, collapsed, onCollapse, onRemov
       })}</ul>
     </div>
     {error && <p className="wiki-error reference-tray-error" role="alert">{error}{onRetry && <button className="text-button" disabled={busy} onClick={onRetry}>重试</button>}</p>}
-    <footer><button className="text-button" disabled={busy} onClick={onClear}>清空</button><button className="primary" disabled={busy || startDisabled} onClick={onStart} aria-label="带着资料问 Agent"><MessageCircle size={16} />{loading ? "正在恢复…" : busy ? "正在打开…" : "问 Agent"}</button></footer>
+    <footer><button className="text-button" disabled={busy} onClick={onClear}>清空</button><Button variant="primary" type="submit" disabled={busy || startDisabled} onClick={onStart} aria-label="带着资料问 Agent"><MessageCircle size={16} />{loading ? "正在恢复…" : busy ? "正在打开…" : "问 Agent"}</Button></footer>
   </aside>;
 }

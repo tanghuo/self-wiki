@@ -29,6 +29,7 @@ select { cursor: pointer; }
 /* Shared UI primitives */
 .skip-link { position: fixed; top: 8px; left: 8px; z-index: 100; padding: var(--sp-2) var(--sp-4); border-radius: var(--r-md); background: var(--accent); color: var(--on-accent); font-size: var(--fs-small); transform: translateY(-160%); transition: transform var(--duration) var(--ease-out); }
 .skip-link:focus { transform: none; }
+:where(strong, b, th, dt, legend, h1, h2, h3, h4, h5, h6) { font-weight: 600; }
 kbd, .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 var(--sp-1); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--r-sm); background: var(--panel); color: var(--muted); font-family: var(--font-sans); font-size: var(--fs-caption); font-weight: 600; line-height: 1; white-space: nowrap; }
 .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -3px; }
 .skeleton { position: relative; overflow: hidden; border-radius: var(--r-lg); background: var(--panel-2); }

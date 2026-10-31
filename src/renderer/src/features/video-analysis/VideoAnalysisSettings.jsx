@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ScanEye } from "lucide-react";
 import { request } from "../../api.js";
+import { Button } from "../../ui/Button.jsx";
 
 export default function VideoAnalysisSettings({ onBusyChange, onDirtyChange, onChanged, registerSave }) {
   const [status, setStatus] = useState(null), [config, setConfig] = useState(null), [saved, setSaved] = useState(null);
@@ -62,7 +63,7 @@ export default function VideoAnalysisSettings({ onBusyChange, onDirtyChange, onC
           <label>视觉模型<input aria-label="视觉模型" required value={config.visual.model} disabled={busy} onChange={(event) => visualField("model", event.target.value)} /></label>
           <div className="wiki-video-settings-grid"><label>模型修订<input aria-label="视觉模型修订" required value={config.visual.revision} disabled={busy} onChange={(event) => visualField("revision", event.target.value)} /></label><label>视觉请求超时（毫秒）<input type="number" required min="1000" max="1800000" step="1000" value={config.visual.timeoutMs} disabled={busy} onChange={(event) => visualField("timeoutMs", Number(event.target.value))} /></label></div>
                   </fieldset>
-        <div className="wiki-actions">{!registerSave && <button className="primary" disabled={busy || !dirty}>保存视频配置</button>}<button type="button" disabled={busy || dirty} title={dirty ? "先保存改动，再检测依赖" : undefined} onClick={() => mutate("/api/video-analysis/probe")}>检测视频依赖</button><button type="button" disabled={busy || dirty || !saved?.visual.enabled} title={dirty ? "先保存改动，再更新索引" : !saved?.visual.enabled ? "先开启画面检索并保存" : undefined} onClick={() => mutate("/api/visual-index/rebuild", { mode: "missing" })}>建立 / 更新视觉索引</button></div>
+        <div className="wiki-actions">{!registerSave && <Button variant="primary" type="submit" disabled={busy || !dirty}>保存视频配置</Button>}<button type="button" disabled={busy || dirty} title={dirty ? "先保存改动，再检测依赖" : undefined} onClick={() => mutate("/api/video-analysis/probe")}>检测视频依赖</button><button type="button" disabled={busy || dirty || !saved?.visual.enabled} title={dirty ? "先保存改动，再更新索引" : !saved?.visual.enabled ? "先开启画面检索并保存" : undefined} onClick={() => mutate("/api/visual-index/rebuild", { mode: "missing" })}>建立 / 更新视觉索引</button></div>
         {dirty && <p className="wiki-muted">改完后先点底部「保存」，再检测依赖或更新索引。</p>}
       </div>
     </form>}

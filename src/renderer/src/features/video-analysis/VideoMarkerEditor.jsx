@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Clock, Search, X } from "lucide-react";
-import Dialog from "../../Dialog.jsx";
+import ConfirmDialog, { DialogFrame } from "../../ui/ConfirmDialog.jsx";
 import TagInput, { readTagInput } from "../../TagInput.jsx";
 import WikiPaging from "../../WikiPaging.jsx";
 import useWikiResource from "../../useWikiResource.js";
@@ -8,6 +8,7 @@ import { request } from "../../api.js";
 import { randomUUID } from "../../browserCrypto.js";
 import { elementLabel } from "../../../../shared/domain/elements.js";
 import { formatMarkerTime, maxMarkerBody, parseMarkerTime, videoMarkerInput } from "../../../../shared/domain/videoMarkers.js";
+import { Button } from "../../ui/Button.jsx";
 
 export default function VideoMarkerEditor({ videoId, marker, playerRef, onClose, onSaved, onBusyChange }) {
   const [start, setStart] = useState(formatMarkerTime(marker.startMs));
@@ -53,9 +54,8 @@ export default function VideoMarkerEditor({ videoId, marker, playerRef, onClose,
     } catch (failure) { setError(failure.message); }
     finally { locked.current = false; setBusy(false); }
   }
-  return <><Dialog open label={marker.id ? "编辑视频标注" : "添加视频标注"} className="wiki-dialog wiki-marker-editor" onClose={close}>
-    <form onSubmit={save}>
-      <header className="wiki-dialog-header"><h2>{marker.id ? "编辑视频标注" : "添加视频标注"}</h2><button type="button" className="icon-only" aria-label="关闭视频标注" onClick={close} disabled={busy}><X size={18} /></button></header>
+  return <><DialogFrame bare title={marker.id ? "编辑视频标注" : "添加视频标注"} className="wiki-dialog wiki-marker-editor" closeLabel="关闭视频标注" busy={busy} onClose={close} onSubmit={save}
+    footer={<><button type="button" disabled={busy} onClick={close}>取消</button><Button variant="primary" type="submit" disabled={busy}>{busy ? "正在保存…" : "保存标注"}</Button></>}>
       <div className="wiki-form-fields">
         <div className="wiki-marker-times">
           <label>开始时间<input aria-label="标注开始时间" value={start} disabled={busy} onChange={(event) => setStart(event.target.value)} placeholder="02:15.5" /><button type="button" className="text-button" disabled={busy} onClick={() => capture(setStart)}><Clock size={14} />使用当前播放时间</button></label>
@@ -78,10 +78,7 @@ export default function VideoMarkerEditor({ videoId, marker, playerRef, onClose,
         </section>}
         {error && <p className="wiki-error" role="alert">{error}</p>}
       </div>
-      <footer className="wiki-dialog-footer"><button type="button" disabled={busy} onClick={close}>取消</button><button className="primary" disabled={busy}>{busy ? "正在保存…" : "保存标注"}</button></footer>
-    </form>
-  </Dialog>{discard && <Dialog open label="放弃标注修改？" className="wiki-dialog" onClose={() => setDiscard(false)}>
-    <header className="wiki-dialog-header"><h2>放弃标注修改？</h2></header><p>未保存的时间、说明、标签和关联会被丢弃。</p>
-    <footer className="wiki-dialog-footer"><button autoFocus onClick={() => setDiscard(false)}>继续编辑</button><button className="danger-quiet" onClick={onClose}>放弃修改</button></footer>
-  </Dialog>}</>;
+  </DialogFrame>{discard && <ConfirmDialog title="放弃标注修改？" cancelLabel="继续编辑" confirmLabel="放弃修改" onCancel={() => setDiscard(false)} onConfirm={onClose}>
+    <p>未保存的时间、说明、标签和关联会被丢弃。</p>
+  </ConfirmDialog>}</>;
 }

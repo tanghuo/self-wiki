@@ -50,7 +50,7 @@ test("settings preview and apply tag aliases, refresh existing cards, search ali
   await preview.getByRole("button", { name: "应用归一" }).click();
   await page.getByRole("status").filter({ hasText: "已统一名称" }).waitFor();
   assert.deepEqual((await api(`elements/${a.id}`)).tags, ["赛博朋克"]);
-  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "关闭设置", exact: true }).click();
   await page.getByRole("button", { name: "取消筛选标签：赛博朋克", exact: true }).waitFor();
   await page.getByRole("button", { name: "按标签筛选" }).click();
   await page.getByLabel("搜索标签", { exact: true }).fill("cyber");

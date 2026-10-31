@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { request } from "./api.js";
 import useWikiResource from "./useWikiResource.js";
 import { vocabularyAlias } from "../../shared/domain/vocabulary.js";
+import { Button } from "./ui/Button.jsx";
 
 const empty = { alias: "", canonical: "", aliasReverse: "", canonicalReverse: "", direction: "symmetric" };
 const termLabel = (name, reverse) => reverse ? `${name} / ${reverse}` : name;
@@ -77,7 +78,7 @@ export default function VocabularySettings({ onChanged, onBusyChange }) {
       {preview.alias.direction === "forward" && <p>A — {preview.alias.name} → B，将显示为 A — {preview.canonical.name} → B。<br />B — {preview.alias.reverseName} → A，将显示为 B — {preview.canonical.reverseName} → A。</p>}
       {source?.examples?.length > 0 && <ul>{source.examples.map((e) => <li key={e.id}>{e.label || `图片或内容 #${e.id}`}</li>)}</ul>}
       <p className="wiki-muted">原始记录会保留。解除规则后，未另行编辑或删除的记录可恢复原始叫法。</p>
-      <button className="primary" disabled={busy} onClick={() => mutate("/api/vocabulary/aliases", "POST", preview)}>应用归一</button>
+      <Button variant="primary" type="submit" disabled={busy} onClick={() => mutate("/api/vocabulary/aliases", "POST", preview)}>应用归一</Button>
     </div>}
     </div>
     {error && <p className="wiki-error" role="alert">{error}</p>}

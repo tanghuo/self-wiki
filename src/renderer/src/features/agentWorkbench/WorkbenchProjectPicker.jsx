@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, FolderOpen, FolderPlus, Monitor, Plus, Search, X } from 'lucide-react';
 import { DialogFrame } from '../../ui/ConfirmDialog.jsx';
+import { Button } from '../../ui/Button.jsx';
 
 function folderBaseName(value) {
   return String(value || '').trim().replace(/[\\/]+$/, '').split(/[\\/]/).pop()?.slice(0, 80) || '';
@@ -60,7 +61,7 @@ export default function WorkbenchProjectPicker({ projects, kind, projectId, proj
         <button type="button" className="workbench-project-option" aria-pressed={kind === 'scratch'} disabled={busy} onClick={() => { onClear(); close(); }}><X size={16} /><span>不在项目中工作</span>{kind === 'scratch' && <Check size={16} />}</button>
       </div>
     </div>}
-    {creating && <DialogFrame title="创建项目" onClose={resetCreate} closeLabel="关闭创建项目" className="workbench-settings-dialog" busy={busy} footer={<><button type="button" disabled={busy} onClick={resetCreate}>取消</button><button type="button" className="primary" disabled={busy || !folder.trim() || ['codex-cli', 'antigravity-acp'].includes(engine) && !nativeReadAccepted} onClick={submit}>创建项目</button></>}>
+    {creating && <DialogFrame title="创建项目" onClose={resetCreate} closeLabel="关闭创建项目" className="workbench-settings-dialog" busy={busy} footer={<><button type="button" disabled={busy} onClick={resetCreate}>取消</button><Button variant="primary" disabled={busy || !folder.trim() || ['codex-cli', 'antigravity-acp'].includes(engine) && !nativeReadAccepted} onClick={submit}>创建项目</Button></>}>
       <label className="workbench-project-name"><FolderOpen size={16} /><input aria-label="项目名称" placeholder={folderBaseName(folder) || '项目名称（可选）'} value={name} disabled={busy} autoFocus onChange={event => { const value = event.target.value; setName(value); setNameEdited(Boolean(value.trim()) && value.trim() !== folderBaseName(folder)); }} /></label>
       <p className="workbench-source-label">源文件夹</p>
       <div className="workbench-source-folder">

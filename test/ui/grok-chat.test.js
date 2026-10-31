@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { chromium } from "../helpers/authenticatedServer.js";
 import { resolveBrowserPath } from "../resolveBrowserPath.js";
-import { selectedValue } from "../ui-select.js";
+import { selectedValue, currentSessionId } from "../ui-select.js";
 import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { defaultOrganizationConfig } from "../../src/shared/domain/organization.js";
 
@@ -42,7 +42,7 @@ test("settings select Grok as chat engine and ordinary chat edits the preceding 
   await input.fill("GENERATE_CAT"); await send.click();
   await page.waitForFunction(() => document.querySelectorAll('.chat-process[data-state="completed"]').length === 1);
   await page.locator(".chat-generated-image").first().waitFor();
-  const sessionId = Number(await selectedValue(page, "历史会话"));
+  const sessionId = Number(await currentSessionId(page));
   await page.reload(); await input.waitFor();
   await page.locator(".chat-connection > summary").filter({ hasText: "Grok Build 已连接" }).waitFor();
   await input.fill("EDIT_CAT"); await send.click();

@@ -211,9 +211,43 @@ for (const file of await collectStyleFiles(rendererRoot)) {
     }
   }
 }
+for (const file of await collectStyleFiles(rendererRoot)) {
+  const css = (await readFile(file, "utf8")).replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const match of css.matchAll(/font-weight\s*:\s*(\d+|bold|bolder)/g)) {
+    if (!/^\d+$/.test(match[1]) || Number(match[1]) > 600) designViolations.push(`${toRepoPath(file)} sets font-weight ${match[1]}; the scale is 400 / 500 / 600`);
+  }
+}
+
+// Scan JSX opening tags with brace/quote awareness ("=>" inside attributes must not end the tag).
+function jsxOpeningTags(source, name) {
+  const tags = [];
+  for (const start of source.matchAll(new RegExp(`<${name}\\b`, "g"))) {
+    let depth = 0, quote = "", index = start.index + 1;
+    for (; index < source.length; index++) {
+      const char = source[index];
+      if (quote) { if (char === quote) quote = ""; else if (char === "\\") index++; continue; }
+      if (char === "{") depth++;
+      else if (char === "}") depth--;
+      else if ((char === '"' || char === "'" || char === "`") && (depth > 0 || char === '"')) quote = char;
+      else if (char === ">" && depth === 0) break;
+    }
+    tags.push(source.slice(start.index, index + 1));
+  }
+  return tags;
+}
+// Lightboxes are full-screen media viewers, not header/body/footer dialogs; everything else uses DialogFrame/ConfirmDialog.
+const rawDialogAllowed = new Set(["src/renderer/src/ui/ConfirmDialog.jsx", "src/renderer/src/ChatImageViewer.jsx", "src/renderer/src/features/workflow/WorkflowImagePreview.jsx"]);
 for (const file of files) {
-  if (!toRepoPath(file).startsWith("src/renderer/")) continue;
-  if ((await readFile(file, "utf8")).includes("workflow-primary")) designViolations.push(`${toRepoPath(file)} uses workflow-primary; use the shared "primary" class`);
+  const repoPath = toRepoPath(file);
+  if (!repoPath.startsWith("src/renderer/")) continue;
+  const source = await readFile(file, "utf8");
+  if (source.includes("workflow-primary")) designViolations.push(`${repoPath} uses workflow-primary; use the shared "primary" class`);
+  if (!file.endsWith(".jsx") || repoPath.startsWith("src/renderer/src/ui/")) continue;
+  // Pages and features use <Button variant="primary">; a raw <button className="primary"> skips the shared states (busy, disabled reason).
+  for (const tag of jsxOpeningTags(source, "button")) {
+    if (/className=(?:"[^"]*\bprimary\b|\{[^]*?["'`][^"'`]*\bprimary\b)/.test(tag)) designViolations.push(`${repoPath} has a raw primary <button>; use <Button variant="primary"> from ui/: ${tag.slice(0, 80)}`);
+  }
+  if (!rawDialogAllowed.has(repoPath) && /<Dialog[\s>]/.test(source)) designViolations.push(`${repoPath} renders <Dialog> directly; use DialogFrame or ConfirmDialog from ui/`);
 }
 if (designViolations.length) {
   console.error("Design-system violations:");

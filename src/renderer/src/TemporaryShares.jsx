@@ -5,6 +5,7 @@ import QrCode from "./QrCode.jsx";
 import { openSettings } from "./openSettings.js";
 import "./temporaryShares.css";
 import { EmptyState, PageHeader } from "./ui/index.js";
+import { Button } from "./ui/Button.jsx";
 
 const bytes = (size) => size < 1024 ? `${size} B` : size < 1024 ** 2 ? `${(size / 1024).toFixed(1)} KB` : size < 1024 ** 3 ? `${(size / 1024 ** 2).toFixed(1)} MB` : `${(size / 1024 ** 3).toFixed(1)} GB`;
 
@@ -61,7 +62,7 @@ export default function TemporaryShares({ local }) {
       <h2>分享文件或目录</h2>
       {window.wikiDesktop?.pickShareSource && <div className="share-actions"><button type="button" disabled={busy} onClick={() => pick("file")}><File size={16} />选择文件</button><button type="button" disabled={busy} onClick={() => pick("directory")}><Folder size={16} />选择目录</button></div>}
       <label>本机文件或目录路径<input required value={sourcePath} disabled={busy} onChange={(event) => setSourcePath(event.target.value)} placeholder="输入本机绝对路径，或使用上方选择按钮" /></label>
-      <div className="share-actions"><label>有效期<select value={hours} disabled={busy} onChange={(event) => setHours(Number(event.target.value))}><option value={1}>1 小时</option><option value={24}>24 小时</option><option value={168}>7 天</option></select></label><button className="primary" disabled={busy || !sourcePath.trim()}>{busy ? "正在处理，请稍候…" : "创建临时分享"}</button></div>
+      <div className="share-actions"><label>有效期<select value={hours} disabled={busy} onChange={(event) => setHours(Number(event.target.value))}><option value={1}>1 小时</option><option value={24}>24 小时</option><option value={168}>7 天</option></select></label><Button variant="primary" type="submit" disabled={busy || !sourcePath.trim()}>{busy ? "正在处理，请稍候…" : "创建临时分享"}</Button></div>
       <p className="wiki-muted">文件会复制到临时空间；单个文件和目录内容均须小于 4 GB，目录打包为 ZIP（不压缩）。准备完成后可下载，源文件会保留。退出应用即失效。</p>
     </form>}
     {local && !lan?.enabled && <p className="share-lan-hint">局域网共享尚未开启，其他设备暂时打不开分享链接。<button className="text-button button-sm" onClick={() => openSettings("sharing")}>去设置开启</button></p>}

@@ -4,6 +4,7 @@ import { ArrowUp, ChevronLeft, ChevronRight, Download, Maximize2, Pencil, Scan, 
 import Dialog from "./Dialog.jsx";
 import { apiUrl } from "./api.js";
 import "./chatImageViewer.css";
+import { Button } from "./ui/Button.jsx";
 
 export const chatImageUrl = (image) => apiUrl(`/api/chat/turns/${image.turnId}/artifacts/${image.artifact}`);
 
@@ -151,7 +152,7 @@ export default function ChatImageViewer({ initial, images, turns, progressNotice
             <textarea ref={prompt} aria-label="图片修改要求" placeholder={draft.region ? "想怎样修改选中的区域？" : "描述你想对这张图片做的修改…"} value={draft.text || ""} maxLength={12000} rows={2} disabled={disabled} onChange={(event) => changeDraft({ text: event.target.value })} onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form.requestSubmit(); }
             }} />
-            <button className="primary" type="submit" aria-label="提交图片编辑" disabled={disabled || !loaded || failed || !draft.text?.trim()}><ArrowUp size={20} /></button>
+            <Button variant="primary" type="submit" aria-label="提交图片编辑" disabled={disabled || !loaded || failed || !draft.text?.trim()}><ArrowUp size={20} /></Button>
           </form>
           <p className="chat-image-edit-hint">{disabled ? "等待当前会话结束后即可编辑" : draft.region ? "选区用于指示修改位置 · Enter 发送" : "生成新版本，原图会保留 · Enter 发送"}</p>
         </> : <button className="chat-image-start-edit" disabled={disabled || !loaded || failed} onClick={() => changeDraft({ editing: true })}><Pencil size={17} />编辑这张图片</button>}

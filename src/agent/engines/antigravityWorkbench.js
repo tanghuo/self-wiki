@@ -105,7 +105,7 @@ export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sess
       capabilities: { verified: true, approvalMode: 'ask', approval: 'native', fileReads: 'native', osSandbox: false, applicationTools: false, resume: true, images: init.agentCapabilities?.promptCapabilities?.image === true, model: settings.model, effort: effort || 'model_default' },
       async prompt(text, onDelivery = () => {}, images = []) {
         if (closed || prompting) throw new Error('Antigravity 会话不可发送');
-        if (images.length && init.agentCapabilities?.promptCapabilities?.image !== true) throw new Error('此 Antigravity 不支持图片输入');
+        if (images.length && init.agentCapabilities?.promptCapabilities?.image !== true) throw new Error('Antigravity 未声明支持图片输入，任务未发送；请移除参考图后重试，或改用 Grok Build');
         await onEvent('resource.queued', {});
         const release = await acquireExternalResource('antigravity', signal);
         try {

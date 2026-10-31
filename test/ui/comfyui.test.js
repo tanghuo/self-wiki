@@ -18,7 +18,7 @@ import { createChatImageExecutor } from "../../src/server/application/chatImageE
 import { generateComfyui, probeComfyui, recoverComfyuiImage } from "../../src/agent/executors/comfyui.js";
 import { createServer, fetch } from "../helpers/authenticatedServer.js";
 import { convertComfyuiWorkflow, describeComfyuiWorkflow, loadComfyuiWorkflow } from "../../src/agent/executors/comfyuiWorkflows.js";
-import { chooseOption, selectedValue } from "../ui-select.js";
+import { chooseOption, selectedValue, currentSessionId } from "../ui-select.js";
 import { workflowNode as n, constant as c, output as o } from '../../src/shared/domain/workflow/examples.js';
 
 const template = JSON.parse(await readFile(new URL("../fixtures/comfyui-workflow.json", import.meta.url), "utf8"));
@@ -679,7 +679,8 @@ test('workflow image nodes select saved ComfyUI workflows and explicitly map pro
   const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } }); page.setDefaultTimeout(10000);
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${w.app.url}#workflow`);
-  await page.getByRole('button', { name: '＋ 从空白开始搭建', exact: true }).click();
+  await page.getByRole('button', { name: '新建工作流', exact: true }).click();
+  await page.getByRole('button', { name: '从空白开始搭建', exact: true }).click();
   await page.locator('.workflow-canvas').waitFor();
   await page.locator('.workflow-palette').getByRole('button', { name: /^AI 生成图片/ }).click();
   await page.locator('.workflow-inspector select').first().waitFor();
@@ -1086,7 +1087,7 @@ test("settings only connect; the conversation discovers workflows, adjusts param
   const input = page.getByRole("textbox", { name: "会话消息", exact: true });
   await input.fill("  一只纸鹤\n保留原文  "); await page.getByRole("button", { name: "发送消息", exact: true }).click();
   await page.locator(".chat-generated-image").first().waitFor();
-  const firstId = Number(await selectedValue(page, "历史会话"));
+  const firstId = Number(await currentSessionId(page));
   assert.equal(f.state.submissions[0].prompt["6"].inputs.text, "  一只纸鹤\n保留原文  ");
   assert.equal(f.state.submissions[0].prompt["3"].inputs.seed, 777);
   assert.equal(f.state.submissions[0].prompt["5"].inputs.width, 64);
@@ -1106,7 +1107,7 @@ test("settings only connect; the conversation discovers workflows, adjusts param
   assert.equal(await page.getByRole("button", { name: "发送消息", exact: true }).isDisabled(), true);
   releaseSelection();
   await page.getByRole("button", { name: "发送消息", exact: true }).click();
-  await page.waitForFunction((firstId) => { const select = document.querySelector('[role="combobox"][aria-label="历史会话"]'); return Number(select?.dataset.value) > firstId; }, firstId);
+  await page.waitForFunction((firstId) => Number(document.querySelector('.chat-history-item > button[aria-current="true"]')?.dataset.sessionId) > firstId, firstId);
   await page.locator(".chat-history-item > button").filter({ hasText: "一只纸鹤" }).click();
   await page.getByRole("button", { name: "工作流与参数", exact: true }).waitFor();
   assert.equal(await page.getByLabel("原文直发生图", { exact: true }).isChecked(), true);

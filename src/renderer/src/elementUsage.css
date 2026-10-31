@@ -11,7 +11,7 @@
 .element-usage-content img { width: 48px; height: 48px; object-fit: cover; border-radius: var(--r-sm); }
 .element-usage-content span { overflow-wrap: anywhere; }
 .element-usage-content small { display: block; opacity: .65; margin-top: var(--sp-1); }
-.element-usage-dialog .wiki-dialog-footer p { margin: 0; font-size: var(--fs-small); line-height: 1.6; }
+.element-usage-dialog .ui-dialog-footer p { margin: 0; font-size: var(--fs-small); line-height: 1.6; }
 .element-usage-entry { margin-top: var(--sp-6); font-size: var(--fs-small); }
 .element-usage-entry summary { cursor: pointer; }
 .element-usage-entry button { margin-top: var(--sp-3); }

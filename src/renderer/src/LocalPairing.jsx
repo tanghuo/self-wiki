@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import PageHeader from './ui/PageHeader.jsx';
+import { Button } from './ui/Button.jsx';
 
 const access = document.querySelector('meta[name="wiki-access"]')?.content;
 const lanGuest = ['read-only', 'lan-edit'].includes(access);
@@ -47,6 +48,6 @@ export default function LocalPairing({ children }) {
     <PageHeader title="连接本机 self-wiki" subtitle={checked ? '使用本机启动器打开，或在本机运行 self-wiki pair 获取一次性配对链接。' : '正在连接…'} />
     <label>一次性配对码或链接<input value={code} onChange={event => setCode(event.target.value)} autoComplete="off" spellCheck={false} required /></label>
     {error && <p role="alert">{error}</p>}
-    <button className="primary" disabled={busy || !checked || !code.trim()} title={busy ? '正在连接' : !checked ? '正在检测本机连接' : !code.trim() ? '请先填写一次性配对码或链接' : undefined}>连接</button>
+    <Button variant="primary" type="submit" disabled={busy || !checked || !code.trim()} title={busy ? '正在连接' : !checked ? '正在检测本机连接' : !code.trim() ? '请先填写一次性配对码或链接' : undefined}>连接</Button>
   </form></main>;
 }

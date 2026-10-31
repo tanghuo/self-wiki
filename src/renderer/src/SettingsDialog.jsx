@@ -1,12 +1,14 @@
 import { useCallback, useRef, useState } from "react";
-import { Bot, Palette, ScanEye, Tags, Wifi, X, Sparkles } from "lucide-react";
-import Dialog from "./Dialog.jsx";
+import { Bot, Palette, ScanEye, Tags, Wifi, Sparkles } from "lucide-react";
 import LanSharingSettings from "./LanSharingSettings.jsx";
 import OrganizationPanel from "./OrganizationPanel.jsx";
 import VocabularySettings from "./VocabularySettings.jsx";
 import VideoAnalysisSettings from "./VideoAnalysisSettings.jsx";
 import ElementUsagePanel from "./ElementUsagePanel.jsx";
-import { ConfirmDialog, SaveBar } from "./ui/index.js";
+import { ConfirmDialog, DialogFrame, SaveBar } from "./ui/index.js";
+
+// Sections whose changes wait for an explicit save. 外观 / 浏览偏好 and 词表 apply immediately, so they get no save bar.
+const savedSections = new Set(["sharing", "agent-connect", "agent-org", "video"]);
 
 const themes = [
   { id: "auto", name: "跟随系统", description: "浅色暖纸，深色夜幕" },
@@ -77,8 +79,9 @@ export default function SettingsDialog({ theme, onThemeChange, atmosphere = "ful
     if (id === "video") setVideoOpened(true);
     contentRef.current?.scrollTo(0, 0);
   }
-  return <><Dialog open label="设置" className="wiki-dialog settings-dialog" onClose={close}>
-    <header className="wiki-dialog-header"><h2>设置</h2><button className="icon-only" aria-label="关闭设置" onClick={close} disabled={busy}><X size={18} /></button></header>
+  // The save bar shows on sections that need a save, and anywhere while some section still has unsaved changes.
+  const showSaveBar = savedSections.has(activeSection) || dirty.length > 0;
+  return <><DialogFrame bare title="设置" className="wiki-dialog settings-dialog" closeLabel="关闭设置" busy={busy} onClose={close}>
     <div className="settings-layout">
       <nav className="settings-nav" aria-label="设置分类">
         {navGroups.map((group) => <div key={group.label} className="settings-nav-group">
@@ -132,10 +135,8 @@ export default function SettingsDialog({ theme, onThemeChange, atmosphere = "ful
       {activeSection === "vocabulary" && <div id="settings-vocabulary"><VocabularySettings onChanged={onChanged} onBusyChange={setVocabularyBusy} /></div>}
       </div>
     </div>
-    <SaveBar dirtyCount={dirty.length} dirtyLabels={dirtyLabel} busy={busy} onSave={saveAll} onDiscard={discardAll}>
-      <button type="button" onClick={close} disabled={busy}>关闭</button>
-    </SaveBar>
-  </Dialog>
+    {showSaveBar && <SaveBar dirtyCount={dirty.length} dirtyLabels={dirtyLabel} busy={busy} onSave={saveAll} onDiscard={discardAll} />}
+  </DialogFrame>
   {elementUsageOpen && <ElementUsagePanel onClose={() => setElementUsageOpen(false)} />}
   {confirmClose && <ConfirmDialog label="未保存的设置" title="还有改动没保存" tone="neutral" cancelLabel="继续编辑"
     confirmLabel="保存改动" busy={busy} busyLabel="正在保存…"

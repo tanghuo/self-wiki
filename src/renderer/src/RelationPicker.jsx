@@ -1,7 +1,7 @@
 import RelationFields from "./RelationFields.jsx";
 import { useEffect, useRef, useState } from "react";
 import { Search, X, Link2, FileText, Video, Check, Tag, ZoomIn } from "lucide-react";
-import Dialog from "./Dialog.jsx";
+import { DialogFrame } from "./ui/ConfirmDialog.jsx";
 import { apiUrl, request } from "./api.js";
 import useWikiResource from "./useWikiResource.js";
 import WikiPaging from "./WikiPaging.jsx";
@@ -9,6 +9,7 @@ import TagInput, { readTagInput } from "./TagInput.jsx";
 import { maxElementBody, elementLabel } from "../../shared/domain/elements.js";
 import VideoPlayer from "./VideoPlayer.jsx";
 import Select from "./Select.jsx";
+import { Button } from "./ui/Button.jsx";
 
 export default function RelationPicker({ sourceId, targetId, onClose, onChanged }) {
   const [q, setQ] = useState("");
@@ -87,8 +88,7 @@ export default function RelationPicker({ sourceId, targetId, onClose, onChanged 
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
-  return <><Dialog open label="添加关联" className={`wiki-dialog wiki-relation-dialog ${choosing ? "is-choosing" : ""}`} onClose={() => !busy && onClose()}>
-    <header className="wiki-dialog-header"><div><h2>添加关联</h2>{choosing && <p className="wiki-muted">勾选需要关联的内容，选好后一次保存。</p>}</div><button className="icon-only" aria-label="关闭关联选择" disabled={busy} onClick={onClose}><X size={18} /></button></header>
+  return <><DialogFrame bare label="添加关联" className={`wiki-dialog wiki-relation-dialog ${choosing ? "is-choosing" : ""}`} onClose={() => !busy && onClose()} title="添加关联" description={choosing ? "勾选需要关联的内容，选好后一次保存。" : undefined} closeLabel="关闭关联选择" busy={busy} footer={<><span className="wiki-muted" role="status">{choosing ? `已选 ${selected.length} ${allImages ? "张图片" : "项内容"}` : mode === "tags" ? `已选 ${selectedTags.length} 个标签` : "文字独立保存，关系连接双方"}</span>{targetId ? <Button variant="primary" type="submit" disabled={busy} onClick={() => connect(targetId)}>{busy ? "正在关联…" : "保存关联"}</Button> : mode === "tags" || choosing ? <Button variant="primary" type="submit" disabled={busy || !(mode === "tags" ? selectedTags.length : selected.length)} onClick={connectSelected}>{busy ? "正在关联…" : mode === "tags" ? "保存关联" : `关联这 ${selected.length} ${allImages ? "张图片" : "项内容"}`}</Button> : mode === "new" && <Button variant="primary" type="submit" form="wiki-new-related" disabled={busy || (!saved && !body.trim())}><Link2 size={16} />{busy ? "正在关联…" : saved ? "重试关联" : "保存并关联"}</Button>}</>}>
     <div className="wiki-relation-controls">
       {!targetId && <div className="wiki-segment ui-segmented" role="group" aria-label="关联方式"><button aria-pressed={mode === "existing"} disabled={busy} onClick={() => setMode("existing")}>选择已有内容</button><button aria-pressed={mode === "tags"} disabled={busy} onClick={() => setMode("tags")}>按标签关联</button><button aria-pressed={mode === "new"} disabled={busy} onClick={() => setMode("new")}>新建文字</button></div>}
       <RelationFields value={semantics} onChange={setSemantics} disabled={busy} targetLabel={mode === "tags" ? "所选标签下的内容" : "所选内容"} />
@@ -142,17 +142,14 @@ export default function RelationPicker({ sourceId, targetId, onClose, onChanged 
       </button>)}</div>
     </section>}
     {error && <p className="wiki-error wiki-relation-error" role="alert">{error}</p>}
-    <footer className="wiki-dialog-footer"><span className="wiki-muted" role="status">{choosing ? `已选 ${selected.length} ${allImages ? "张图片" : "项内容"}` : mode === "tags" ? `已选 ${selectedTags.length} 个 tag` : "文字独立保存，关系连接双方"}</span>{targetId ? <button className="primary" disabled={busy} onClick={() => connect(targetId)}>{busy ? "正在关联…" : "保存关联"}</button> : mode === "tags" || choosing ? <button className="primary" disabled={busy || !(mode === "tags" ? selectedTags.length : selected.length)} onClick={connectSelected}>{busy ? "正在关联…" : mode === "tags" ? "保存关联" : `关联这 ${selected.length} ${allImages ? "张图片" : "项内容"}`}</button> : mode === "new" && <button form="wiki-new-related" className="primary" disabled={busy || (!saved && !body.trim())}><Link2 size={16} />{busy ? "正在关联…" : saved ? "重试关联" : "保存并关联"}</button>}</footer>
-  </Dialog>{preview && <RelationMediaPreview key={preview.id} element={preview} selected={selectedIds.includes(preview.id)} disabled={busy || (selected.length >= 100 && !selectedIds.includes(preview.id))} onToggle={() => toggleElement(preview)} onClose={() => setPreview(null)} />}</>;
+  </DialogFrame>{preview && <RelationMediaPreview key={preview.id} element={preview} selected={selectedIds.includes(preview.id)} disabled={busy || (selected.length >= 100 && !selectedIds.includes(preview.id))} onToggle={() => toggleElement(preview)} onClose={() => setPreview(null)} />}</>;
 }
 
 function RelationMediaPreview({ element, selected, disabled, onToggle, onClose }) {
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const label = element.kind === "video" ? "视频预览" : "图片预览";
-  return <Dialog open label={label} className="wiki-dialog wiki-relation-preview" onClose={onClose}>
-    <header className="wiki-dialog-header"><h2>{label}</h2><button className="icon-only" aria-label={`关闭${label}`} onClick={onClose}><X size={18} /></button></header>
+  return <DialogFrame bare label={label} className="wiki-dialog wiki-relation-preview" onClose={onClose} title={<>{label}</>} closeLabel={`关闭${label}`} footer={<><span>{elementLabel(element)}</span><button disabled={disabled} aria-pressed={selected} onClick={onToggle}>{selected ? <Check size={16} /> : <Link2 size={16} />}{selected ? "取消选择" : element.kind === "video" ? "选择这个视频" : "选择这张图片"}</button></>}>
     <div className="wiki-relation-preview-image">{element.kind === "video" ? <VideoPlayer element={element} /> : <img src={apiUrl(`${element.image.url}?attempt=${attempt}`)} alt={elementLabel(element)} onError={() => setFailed(true)} />}{failed && <p className="wiki-error" role="alert">图片无法加载<button onClick={() => { setFailed(false); setAttempt((n) => n + 1); }}>重新加载图片</button></p>}</div>
-    <footer className="wiki-dialog-footer"><span>{elementLabel(element)}</span><button disabled={disabled} aria-pressed={selected} onClick={onToggle}>{selected ? <Check size={16} /> : <Link2 size={16} />}{selected ? "取消选择" : element.kind === "video" ? "选择这个视频" : "选择这张图片"}</button></footer>
-  </Dialog>;
+  </DialogFrame>;
 }

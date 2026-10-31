@@ -71,7 +71,7 @@ export function TraceContent({ turnId, eventId, version, running }) {
     </> : <>
       <p>记录来源：{value.observedVia}。未返回的参数和输出无法还原。</p>
       {value.type === "imageGeneration" && <>
-        {prompt === undefined ? <p>原始提示词：{isImageTool ? "执行器" : "CLI"} 未返回。</p> : <TraceField title={isImageTool ? `输入提示词（${imageExecutor.label}）` : "输入提示词（CLI 记录）"} value={prompt} />}
+        {prompt === undefined ? <p>原始提示词：{isImageTool ? "生成程序" : "CLI"} 未返回。</p> : <TraceField title={isImageTool ? `输入提示词（${imageExecutor.label}）` : "输入提示词（CLI 记录）"} value={prompt} />}
         {isImageTool ? <TraceField title="准备提交的完整提示词" value={value.preparedPrompt} />
           : revisedPrompt === undefined ? <p>改写提示词：CLI 未返回。</p> : <TraceField title="工具返回的改写提示词" value={revisedPrompt} />}
         {!isImageTool && (omissions?.some((note) => note.path === "$.input.prompt" || note.path === "$.output.revisedPrompt")
@@ -83,8 +83,8 @@ export function TraceContent({ turnId, eventId, version, running }) {
       <TraceField title="ComfyUI 任务" value={value.comfyui} />
       <TraceField title="Grok 图片工具实际调用" value={value.grokBuild} />
       <TraceField title="Grok 会话与用量" value={value.grokBuildResult} />
-      {value.submission?.confirmed && <p>执行器已确认收到请求。</p>}
-      {value.output === undefined || !Object.keys(output).length ? <p>工具输出：{running ? "尚未返回。" : isImageTool ? "执行器未返回。" : "CLI 未返回。"}</p> : <TraceField title="工具输出" value={output} />}
+      {value.submission?.confirmed && <p>生成程序已确认收到请求。</p>}
+      {value.output === undefined || !Object.keys(output).length ? <p>工具输出：{running ? "尚未返回。" : isImageTool ? "生成程序未返回。" : "CLI 未返回。"}</p> : <TraceField title="工具输出" value={output} />}
       <details><summary>查看记录 JSON</summary><TraceField title="工具记录 JSON" value={data.record} /></details>
     </>}
     {omissions?.length > 0 && <details className="chat-trace-omissions" open><summary>记录中有省略或隐藏的内容</summary><ul>{omissions.map((note, index) => <li key={index}><code>{note.path}</code>：{note.reason}{note.originalChars !== undefined && `（原 ${note.originalChars} 字符，保存 ${note.savedChars} 字符）`}</li>)}</ul></details>}

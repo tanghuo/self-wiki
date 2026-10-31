@@ -55,6 +55,22 @@ test("every page header has the same structure: back link, one title, actions on
   assert.match(html, /<div class="page-header-actions"><button class="primary">运行<\/button><\/div>/);
 });
 
+test("the floating tool layer puts title and search on top, actions top-right and filters in one bottom capsule", () => {
+  const html = renderToStaticMarkup(h(ui.FloatingLayer, { title: h("h1", null, "全部内容"), search: h("label", { className: "wiki-search" }, "搜索"), actions: h("button", { className: "primary" }, "添加内容"), filters: h("button", null, "图片") }, h("div", { className: "grid" })));
+  assert.match(html, /^<div class="ui-float-layer is-sticky"><header class="ui-float-top"><div class="ui-float-title"><h1>全部内容<\/h1><\/div><div class="ui-float-search"><label class="wiki-search">搜索<\/label><\/div><div class="ui-float-actions page-header-actions"><button class="primary">添加内容<\/button><\/div><\/header>/);
+  assert.match(html, /<div class="ui-float-content"><div class="grid"><\/div><\/div><div class="ui-float-bottom"><div class="ui-float-capsule" role="toolbar" aria-label="筛选与视图"><button>图片<\/button><\/div><\/div><\/div>$/);
+  assert.doesNotMatch(renderToStaticMarkup(h(ui.FloatingLayer, { title: "x" })), /ui-float-bottom/);
+});
+
+test("every Agent surface uses one skeleton: sessions nav, timeline, resources aside", () => {
+  const html = renderToStaticMarkup(h(ui.AgentShell, { sessions: h("button", null, "新建对话"), header: h("h1", null, "Agent 对话"), resources: h("p", null, "引用") }, h("div", null, "时间线")));
+  assert.equal(html, '<div class="agent-shell"><nav class="agent-shell-sessions" aria-label="会话列表"><button>新建对话</button></nav><div class="agent-shell-timeline"><h1>Agent 对话</h1><div>时间线</div></div><aside class="agent-shell-resources" aria-label="资源"><p>引用</p></aside></div>');
+});
+
+test("AgentShell can reopen the folded resource column as a phone sheet", () => {
+  assert.match(renderToStaticMarkup(h(ui.AgentShell, { resourcesOpen: true, className: "workbench-layout" })), /^<div class="agent-shell is-resources-open workbench-layout">/);
+});
+
 test("tabs are tabs and segmented controls are pressed toggles, not button styles", () => {
   const tabs = renderToStaticMarkup(h(ui.Tabs, { label: "页面", value: "b", items: [{ value: "a", label: "运行" }, { value: "b", label: "记录", count: 3 }] }));
   assert.match(tabs, /class="ui-tabs" role="tablist" aria-label="页面"/);

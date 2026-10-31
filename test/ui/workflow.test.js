@@ -501,7 +501,8 @@ test('content elements expose sources and typed run fields; normal model setting
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } }); page.setDefaultTimeout(10000);
   const errors = []; page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(`${app.url}#workflow`);
-  await page.getByRole('button', { name: '＋ 从空白开始搭建', exact: true }).click();
+  await page.getByRole('button', { name: '新建工作流', exact: true }).click();
+  await page.getByRole('button', { name: '从空白开始搭建', exact: true }).click();
   await page.locator('.workflow-canvas').waitFor();
   const palette = page.locator('.workflow-palette'), inspector = page.locator('.workflow-inspector');
   await palette.getByRole('button', { name: /^内容\s/ }).click();
@@ -625,7 +626,8 @@ test('workflow canvas creates from blank, binds outputs, saves, runs and restore
   }
   await page.setViewportSize({ width: 1500, height: 1000 });
   await page.screenshot({ path: '.local/workflow-list-fixed.png' });
-  await page.getByRole('button', { name: '＋ 从空白开始搭建', exact: true }).click();
+  await page.getByRole('button', { name: '新建工作流', exact: true }).click();
+  await page.getByRole('button', { name: '从空白开始搭建', exact: true }).click();
   await page.locator('.workflow-canvas').waitFor();
   await page.getByLabel('工作流名称').fill('浏览器工作流');
   const palette = page.locator('.workflow-palette');
@@ -790,6 +792,8 @@ test('workflow list runs directly, separates editing, and keeps review from savi
   assert.equal(await page.locator('.workflow-execution-details .workflow-code:visible').count(), 0);
   assert.equal(await page.getByRole('button', { name: '通过', exact: true }).isEnabled(), true);
   assert.equal(await page.getByRole('button', { name: '跳过', exact: true }).isEnabled(), true);
+  assert.deepEqual(await page.locator('.workflow-review-actions').first().locator('button').allTextContents(), ['跳过', '通过'], 'review reads [跳过] [通过]');
+  assert.doesNotMatch(await page.getByRole('button', { name: '跳过', exact: true }).getAttribute('class') || '', /danger|primary/, '跳过 is a normal button');
   await page.getByLabel('修改「第 2 步 · 核对文字」的文字', { exact: true }).fill('改过的说明');
   await page.getByRole('button', { name: '通过', exact: true }).click();
   await page.locator('.workflow-run h2 [data-state="succeeded"]').waitFor();
@@ -1020,9 +1024,19 @@ test('home one-liner and templates create editable valid canvas definitions', { 
   const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } }); page.setDefaultTimeout(10000);
   const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${app.url}#workflow`);
-  await page.getByRole('region', { name: '一句话搭建' }).waitFor();
-  await page.getByRole('region', { name: '从模板开始' }).waitFor();
-  assert.ok(await page.locator('.workflow-template-card').count() >= 4);
+  // The home lists 我的工作流 first; building from a sentence or a template lives in the 新建工作流 dialog.
+  await page.getByRole('region', { name: '我的工作流' }).waitFor();
+  assert.equal(await page.getByRole('region', { name: '一句话搭建' }).count(), 0);
+  const header = await page.locator('.workflow-app > .page-header').boundingBox();
+  const create = await page.getByRole('button', { name: '新建工作流', exact: true }).boundingBox();
+  assert.ok(create.x + create.width > header.x + header.width - 40, '新建工作流 is the rightmost header action');
+  await page.getByRole('button', { name: '新建工作流', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '新建工作流' });
+  await dialog.getByRole('region', { name: '一句话搭建' }).waitFor();
+  await dialog.getByRole('region', { name: '从模板开始' }).waitFor();
+  assert.ok(await dialog.locator('.workflow-template-card').count() >= 4);
+  const order = await dialog.locator(':is(.workflow-home-build,.workflow-home-templates,.workflow-home-blank)').evaluateAll((nodes) => nodes.map((node) => node.className));
+  assert.deepEqual(order, ['workflow-home-build', 'workflow-home-templates', 'workflow-home-blank']);
   await page.getByLabel('一句话描述要搭的流程', { exact: true }).fill('把图片逐张写描述并存进资料库');
   await page.getByRole('button', { name: '帮我搭好', exact: true }).click();
   const plan = page.getByRole('region', { name: '搭建计划' });
@@ -1033,7 +1047,14 @@ test('home one-liner and templates create editable valid canvas definitions', { 
   await page.waitForFunction(() => document.querySelectorAll('.react-flow__node').length >= 2);
   await page.getByRole('button', { name: '检查', exact: true }).click();
   await page.getByText(/检查通过/).waitFor();
+  // 运行 left the tabs: it is the rightmost primary header action.
+  assert.deepEqual(await page.locator('.workflow-view-tabs button').allTextContents(), ['运行记录', '修改流程']);
+  const runAction = page.locator('.workflow-app > .page-header .page-header-actions > button').last();
+  assert.equal(await runAction.textContent(), '运行');
+  assert.match(await runAction.getAttribute('class'), /\bprimary\b/);
   await page.getByRole('button', { name: '返回工作流列表', exact: true }).click();
+  assert.equal(await page.getByRole('dialog', { name: '新建工作流' }).count(), 0, 'creating closes the dialog');
+  await page.getByRole('button', { name: '新建工作流', exact: true }).click();
   await page.locator('.workflow-template-card').filter({ hasText: '一句话生图并挑选' }).getByRole('button', { name: '使用模板', exact: true }).click();
   await page.locator('.workflow-canvas').waitFor();
   assert.match(await page.getByLabel('工作流名称').inputValue(), /一句话生图/);

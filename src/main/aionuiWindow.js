@@ -1,12 +1,17 @@
 export function createAionuiWindow({ BrowserWindow, shell, backend, parent }) {
-  let window, opening;
+  let window, opening, closed = false;
+  function assertOpen() {
+    if (closed || parent?.isDestroyed()) throw new Error('实验窗口已关闭');
+  }
   async function open() {
+    assertOpen();
     return opening ||= (async () => {
       const response = await fetch(new URL('/api/aionui/start', backend.url), { method: 'POST', headers: { cookie: backend.localCookie } });
       const state = await response.json();
       if (!response.ok) throw new Error(state.error || 'AionUi 启动失败');
       const address = new URL(state.url);
       if (address.protocol !== 'http:' || address.hostname !== '127.0.0.1' || !address.port) throw new Error('实验版地址无效');
+      assertOpen();
       if (window && !window.isDestroyed()) {
         if (new URL(window.webContents.getURL()).origin === address.origin) { window.show(); window.focus(); return state; }
         window.destroy();
@@ -31,14 +36,20 @@ export function createAionuiWindow({ BrowserWindow, shell, backend, parent }) {
           const first = cookie.split(';')[0], at = first.indexOf('=');
           const name = first.slice(0, at);
           if (!['aionui-session', 'aionui-refresh'].includes(name)) continue;
+          assertOpen();
+          if (current.isDestroyed()) throw new Error('实验窗口已关闭');
           const cookiePath = /;\s*Path=([^;]+)/i.exec(cookie)?.[1] || '/';
           await current.webContents.session.cookies.set({ url: address.origin, name, value: first.slice(at + 1), path: cookiePath, httpOnly: true, sameSite: 'lax' });
         }
+        assertOpen();
+        if (current.isDestroyed()) throw new Error('实验窗口已关闭');
         await current.loadURL(new URL('/guid', address).href);
-        if (!current.isDestroyed()) { current.show(); current.focus(); }
+        assertOpen();
+        if (current.isDestroyed()) throw new Error('实验窗口已关闭');
+        current.show(); current.focus();
         return state;
       } catch (error) { if (!current.isDestroyed()) current.destroy(); throw error; }
     })().finally(() => { opening = null; });
   }
-  return { open, close() { if (window && !window.isDestroyed()) window.destroy(); } };
+  return { open, close() { closed = true; if (window && !window.isDestroyed()) window.destroy(); } };
 }

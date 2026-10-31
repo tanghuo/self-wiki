@@ -1,6 +1,6 @@
 import { Fragment, useState } from "react";
-import { Activity, ArrowDownWideNarrow, BarChart3, ChevronDown, Info, RefreshCw, X } from "lucide-react";
-import Dialog from "./Dialog.jsx";
+import { ArrowDownWideNarrow, BarChart3, ChevronDown, Info, RefreshCw } from "lucide-react";
+import { DialogFrame } from "./ui/ConfirmDialog.jsx";
 import useWikiResource from "./useWikiResource.js";
 import "./tokenUsage.css";
 
@@ -18,11 +18,8 @@ export default function TokenUsagePanel({ onClose }) {
   const records = (costly ? data?.costly : data?.recent) || [];
   const pageCount = Math.max(1, Math.ceil(records.length / 10)), currentPage = Math.min(page, pageCount);
   const coverage = summary?.calls ? Math.round(summary.measured / summary.calls * 100) : null;
-  return <Dialog open onClose={onClose} label="Token 用量" className="token-usage-dialog">
-    <header className="usage-header">
-      <div className="usage-title"><span className="usage-title-icon"><Activity size={20} /></span><div><h2>Token 用量</h2></div></div>
-      <button className="usage-close" aria-label="关闭" onClick={onClose}><X size={19} /></button>
-    </header>
+  return <DialogFrame bare title="Token 用量" className="token-usage-dialog" headerClassName="usage-header" footerClassName="usage-footer" closeLabel="关闭 Token 用量" onClose={onClose}
+    footer={<><details><summary><Info size={14} />统计说明<ChevronDown size={13} /></summary><p>从接入统计后开始记录。未知用量显示为「—」，不计入总数。非缓存输入逐次按「输入 − 缓存输入」计算后汇总；缺少缓存计数的输入列为「缓存归属未知」，不会当作非缓存。缓存只拆分输入，输出单列，推理包含在输出中，不重复相加。输入字符、图片数量和工具次数用于辅助定位，不等同于 token 数，也不包含模型内部历史上下文。</p></details></>}>
     <div className="usage-body">
       <div className="usage-toolbar"><label>时间范围 <select value={days} onChange={(e) => { setDays(Number(e.target.value)); setPage(1); setExpanded(null); }}><option value={1}>最近 24 小时</option><option value={7}>最近 7 天</option><option value={30}>最近 30 天</option><option value={0}>全部</option></select></label><button className="usage-refresh" onClick={() => setRevision((r) => r + 1)} disabled={loading}><RefreshCw size={14} />刷新</button></div>
       {error && <p className="usage-error" role="alert">{error}</p>}
@@ -55,6 +52,5 @@ export default function TokenUsagePanel({ onClose }) {
         </>}
       </>}
     </div>
-    <footer className="usage-footer"><details><summary><Info size={14} />统计说明<ChevronDown size={13} /></summary><p>从接入统计后开始记录。未知用量显示为「—」，不计入总数。非缓存输入逐次按「输入 − 缓存输入」计算后汇总；缺少缓存计数的输入列为「缓存归属未知」，不会当作非缓存。缓存只拆分输入，输出单列，推理包含在输出中，不重复相加。输入字符、图片数量和工具次数用于辅助定位，不等同于 token 数，也不包含模型内部历史上下文。</p></details></footer>
-  </Dialog>;
+  </DialogFrame>;
 }

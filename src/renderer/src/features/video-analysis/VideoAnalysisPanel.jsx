@@ -3,6 +3,7 @@ import { Check, Play, RefreshCw, ScanEye, Square, WandSparkles, X } from "lucide
 import { apiUrl, request } from "../../api.js";
 import { formatMarkerTime, markerTimeLabel } from "../../../../shared/domain/videoMarkers.js";
 import { openSettings } from "../../openSettings.js";
+import { Button } from "../../ui/Button.jsx";
 
 const states = { pending: "等待分析", queued: "等待分析", extracting: "正在抽取画面", running: "正在分析", analyzing: "正在分析", indexing: "正在建立索引", ready: "分析完成", succeeded: "分析完成", completed: "分析完成", partial: "部分分析", failed: "分析失败", cancelled: "已取消" };
 const activeStates = new Set(["pending", "queued", "extracting", "running", "analyzing", "indexing"]);
@@ -61,7 +62,7 @@ export default function VideoAnalysisPanel({ videoId, revision, onChanged, onSee
   return <section className="wiki-video-analysis" aria-label="视频自动标注">
     <header><h2><WandSparkles size={18} />自动画面标注</h2>{!readOnly && <div className="wiki-actions">
       {active ? <button disabled={blocked} onClick={() => mutate(`/api/elements/${videoId}/video-analysis/cancel`, {}, "已请求取消分析，已完成结果保留。") }><Square size={14} />取消分析</button>
-        : <><button className="primary" disabled={blocked || !status} onClick={() => mutate(`/api/elements/${videoId}/video-analysis`, { restart: false }, "分析请求已提交，进度会自动更新。") }><WandSparkles size={15} />{run && ["partial", "failed", "cancelled"].includes(run.state) ? "继续分析" : "分析视频"}</button>
+        : <><Button variant="primary" type="submit" disabled={blocked || !status} onClick={() => mutate(`/api/elements/${videoId}/video-analysis`, { restart: false }, "分析请求已提交，进度会自动更新。") }><WandSparkles size={15} />{run && ["partial", "failed", "cancelled"].includes(run.state) ? "继续分析" : "分析视频"}</Button>
           {run && <button disabled={blocked} onClick={() => mutate(`/api/elements/${videoId}/video-analysis`, { restart: true }, "重新分析已提交，人工修改会保留。") }><RefreshCw size={14} />重新分析</button>}</>}
     </div>}</header>
     <p className="wiki-muted">按抽样画面生成标签和时间证据。区间为近似定位；可在下方编辑已应用标注。</p>

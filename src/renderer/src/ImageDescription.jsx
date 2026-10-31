@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Pencil, RotateCw, Save } from "lucide-react";
 import { request } from "./api.js";
+import { Button } from "./ui/Button.jsx";
 
 export default function ImageDescription({ id, revision, disabled, readOnly, onBusyChange, onChanged }) {
   const [data, setData] = useState(null), [error, setError] = useState("");
@@ -48,7 +49,7 @@ export default function ImageDescription({ id, revision, disabled, readOnly, onB
       <label>图片说明<textarea aria-label="图片说明内容" rows={7} maxLength={2000} value={editing.text} disabled={busy || disabled} onChange={(event) => setEditing({ ...editing, text: event.target.value })} /></label>
       <div className="wiki-image-description-footer"><small>{editing.text.length} / 2000</small><div className="wiki-actions">
         <button type="button" disabled={busy || disabled} onClick={() => setEditing(null)}>取消修改</button>
-        <button className="primary" disabled={busy || disabled || !editing.text.trim()}><Save size={14} />{busy ? "正在保存…" : "保存说明"}</button>
+        <Button variant="primary" type="submit" disabled={busy || disabled || !editing.text.trim()}><Save size={14} />{busy ? "正在保存…" : "保存说明"}</Button>
       </div></div>
     </form> : data ? <>
       {data.description ? <p className="wiki-image-description-text">{data.description}</p> : <p className="wiki-muted">暂无图片说明。</p>}

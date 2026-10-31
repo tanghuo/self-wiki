@@ -45,7 +45,7 @@ async function setup(t) {
 
 async function addCard(page, id) {
   await page.locator(`[data-element-id="${id}"]`).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+  await page.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
 }
 const trayFor = (page) => page.getByRole("complementary", { name: "资料篮", exact: true });
 const savedIds = (page) => page.evaluate(() => JSON.parse(decodeURIComponent(document.cookie.split(";").map((entry) => entry.trim()).find((entry) => entry.startsWith("selfWikiReferences=")).split("=")[1])).ids);
@@ -136,14 +136,14 @@ test("detail image menu adds references and the tray survives browser and server
   await original.evaluate((node) => node.decode());
   await original.click({ button: "right" });
   await page.getByRole("menuitem", { name: "复制", exact: true }).waitFor();
-  await page.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+  await page.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   let tray = trayFor(page);
   assert.equal(await tray.locator("li").count(), 2);
   await original.click({ button: "right" });
   await page.keyboard.press("Escape");
   await page.getByRole("menu").waitFor({ state: "hidden" });
   await original.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "加入资料", exact: true }).click();
+  await page.getByRole("menuitem", { name: "放进资料篮", exact: true }).click();
   assert.equal(await tray.locator("li").count(), 2, "Repeated additions are deduplicated");
   await tray.getByRole("button", { name: /资料篮/ }).click();
   await fixture.api(`elements/${note.id}`, "PATCH", { body: "重启后读取最新文字" });
@@ -278,7 +278,7 @@ test("renaming a confirmed relation through vocabulary settings preserves both e
   await page.getByRole("button", { name: "预览归一", exact: true }).click();
   await page.getByRole("button", { name: "应用归一", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "已统一名称" }).waitFor();
-  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "关闭设置", exact: true }).click();
   await sources.getByText("借鉴了", { exact: true }).waitFor();
   await sources.getByRole("button", { name: `打开内容：${source.body}`, exact: true }).click();
   const incoming = page.getByRole("region", { name: "被参考", exact: true });

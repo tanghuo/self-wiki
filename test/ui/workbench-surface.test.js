@@ -34,7 +34,7 @@ test('workbench renders markdown in a centered neutral surface and keeps mobile 
   await page.locator('.workbench-markdown strong').filter({ hasText: 'Markdown 展示示例' }).waitFor();
   await page.getByRole('button', { name: '发送', exact: true }).waitFor();
   assert.match(await page.locator('.workbench-markdown pre code').innerText(), /console.log/);
-  assert.equal(await page.getByRole('complementary', { name: '会话详情' }).count(), 0);
+  assert.equal(await page.getByRole('complementary', { name: '会话详情' }).count(), 1, 'the session panel is always the right column');
   assert.equal(await page.locator('input[type=file]').isVisible(), false);
   const composer = await page.locator('.workbench-composer').boundingBox();
   const transcript = await page.locator('.workbench-timeline').boundingBox();

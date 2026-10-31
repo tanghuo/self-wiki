@@ -121,9 +121,12 @@ export async function openGrokWorkbench(settings, { cwd, neutralCwd, sessionId, 
     const actualEffort = configured.configOptions?.find(option => option.id === 'reasoning_effort')?.currentValue;
     if (actualModel !== settings.model || effort && actualEffort !== effort) throw new Error('Grok 模型或推理强度未按配置生效，已停止发送任务');
     return {
-      sessionId: thread, version, capabilities: { model: actualModel, effort: actualEffort, clientFiles: !restricted, clientTerminal: !restricted, images: init.agentCapabilities?.promptCapabilities?.image === true, approval: 'host', approvalMode: policy.mode, osSandbox: false, restricted, applicationTools, ...verification },
+      sessionId: thread, version, capabilities: { model: actualModel, effort: actualEffort, clientFiles: !restricted, clientTerminal: !restricted, images: true, approval: 'host', approvalMode: policy.mode, osSandbox: false, restricted, applicationTools, ...verification },
       async prompt(text, onDelivery = () => {}, images = []) {
-        if (images.length && init.agentCapabilities?.promptCapabilities?.image !== true) throw new Error('此引擎未声明支持图片输入');
+        // Grok Build's ACP `initialize` advertises only embeddedContext, so
+        // promptCapabilities.image is false, yet `session/prompt` forwards inline
+        // image blocks to the model (xai-org/grok-build acp_agent.rs). Gating on
+        // the stale flag rejected every pasted screenshot before sending.
         await onEvent('resource.queued', {});
         const release = await acquireExternalResource('grok', signal);
         try {

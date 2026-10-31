@@ -3,7 +3,7 @@
 .usage-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: var(--sp-6) 28px; border-bottom: 1px solid var(--line); }
 .usage-title { display: flex; align-items: center; gap: var(--sp-3); }
 .usage-title-icon { display: grid; place-items: center; width: 42px; height: 42px; border: 1px solid var(--line); border-radius: var(--r-lg); color: var(--accent); background: var(--accent-soft); }
-.usage-title h2 { font-size: var(--fs-dialog); font-weight: 650; letter-spacing: -.3px; line-height: 1.5; }
+.usage-title h2 { font-size: var(--fs-dialog); font-weight: 600; letter-spacing: -.3px; line-height: 1.5; }
 .token-usage-dialog button.usage-close { width: 32px; min-height: var(--h-md); padding: 0; border: 0; background: transparent; color: var(--muted); border-radius: var(--r-md); }
 .usage-body { padding: var(--sp-6) 28px 28px; }
 .usage-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sp-6); gap: var(--sp-3); }

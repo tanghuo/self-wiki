@@ -62,7 +62,7 @@ test("material actions, batch editing and remembered filtering work across categ
   await page.reload();
   const card = (id) => page.locator(`article[data-element-id="${id}"]`);
   await card(a.id).click({ button: "right" });
-  await page.getByRole("menuitem", { name: "设为资料", exact: true }).click();
+  await page.getByRole("menuitem", { name: "标记为资料", exact: true }).click();
   await card(a.id).locator(".wiki-material-badge").waitFor();
   await openViewMenu(page);
   await page.getByRole("checkbox", { name: "仅看资料", exact: true }).check();
@@ -75,7 +75,8 @@ test("material actions, batch editing and remembered filtering work across categ
   assert.equal(await page.getByRole("checkbox", { name: "仅看资料", exact: true }).isChecked(), true);
   await card(a.id).locator(".wiki-card-open").click();
   const detail = page.getByRole("region", { name: "内容详情", exact: true });
-  await detail.getByRole("checkbox", { name: "用作资料", exact: true }).click();
+  await openDetailMenu(page);
+  await detail.getByRole("checkbox", { name: "标记为资料", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "已取消资料标记" }).waitFor();
   await detail.getByRole("button", { name: "返回", exact: true }).click();
   await card(a.id).waitFor({ state: "detached" });
@@ -85,8 +86,8 @@ test("material actions, batch editing and remembered filtering work across categ
   await page.getByRole("button", { name: "批量管理", exact: true }).click();
   const batch = page.getByRole("region", { name: "批量管理", exact: true });
   await batch.getByRole("button", { name: "全选已加载内容", exact: true }).click();
-  await batch.getByRole("button", { name: "设为资料", exact: true }).click();
-  await page.getByRole("status").filter({ hasText: "已设为资料" }).waitFor();
+  await batch.getByRole("button", { name: "标记为资料", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: "已标记为资料" }).waitFor();
   await page.locator(".wiki-material-badge").nth(1).waitFor();
   assert.equal(await page.locator(".wiki-material-badge").count(), 2);
   await batch.getByRole("button", { name: "全选已加载内容", exact: true }).click();
@@ -102,7 +103,7 @@ test("new mixed content can be saved as materials without changing the category 
   const { page, app } = await setup(t);
   await page.locator(".wiki-page-header").getByRole("button", { name: "添加内容", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "添加内容", exact: true });
-  const material = dialog.getByRole("checkbox", { name: "本次内容用作资料", exact: true });
+  const material = dialog.getByRole("checkbox", { name: "本次内容标记为资料", exact: true });
   assert.equal(await material.isChecked(), false);
   await material.check();
   await dialog.getByLabel("文字", { exact: true }).fill("可反复使用的人物设定");
@@ -185,7 +186,7 @@ test("text editing from card menu and document persists full content and preserv
   assert.deepEqual(saved.tags, ["原标签", "新增标签"]);
   assert.equal((await api(`elements/${note.id}/relations`)).relations[0].element.id, linked.id);
   await page.locator(`[data-element-id="${note.id}"] .wiki-card-open`).click();
-  await page.getByRole("button", { name: "编辑文字", exact: true }).click();
+  await page.locator(".wiki-detail-bar").getByRole("button", { name: "编辑", exact: true }).click();
   await text.fill("详情修改后保存\n保留换行");
   await editor.getByRole("button", { name: "保存", exact: true }).click();
   await editor.waitFor({ state: "hidden" });
@@ -202,7 +203,7 @@ test("text editor protects unsaved changes, rejects blank body and retains draft
   const note = await create("文字编辑草稿保护");
   await page.reload();
   await page.getByRole("button", { name: `打开内容：${note.body}`, exact: true }).click();
-  await page.getByRole("button", { name: "编辑文字", exact: true }).click();
+  await page.locator(".wiki-detail-bar").getByRole("button", { name: "编辑", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "编辑内容", exact: true });
   const text = editor.getByRole("textbox", { name: "文字", exact: true });
   await text.fill("   \n");
@@ -222,7 +223,7 @@ test("text editor protects unsaved changes, rejects blank body and retains draft
   await page.unroute(route);
   await editor.getByRole("button", { name: "保存", exact: true }).click();
   await editor.waitFor({ state: "hidden" });
-  await page.getByRole("button", { name: "编辑文字", exact: true }).click();
+  await page.locator(".wiki-detail-bar").getByRole("button", { name: "编辑", exact: true }).click();
   await text.fill("应放弃的修改");
   await editor.getByRole("button", { name: "取消", exact: true }).click();
   await discard.getByRole("button", { name: "放弃修改", exact: true }).click();
@@ -338,7 +339,7 @@ test("text similarity scan queues existing content and text stacks follow usage,
   await page.getByRole("button", { name: "检查已有文字相似关系", exact: true }).click();
   await page.getByText("已安排 3 条文字检查，已有待处理任务会复用。可在整理历史查看结果。", { exact: true }).waitFor();
   assert.equal((await api("organization/status")).counts.queued, 3);
-  await page.getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "关闭设置", exact: true }).click();
   await page.getByRole("button", { name: "文字", exact: true }).click();
   await chooseOption(page, "文字排序", "usage");
   await openViewMenu(page);
@@ -650,7 +651,7 @@ test("token usage opens from the sidebar and shows filters, unknown coverage and
   assert.match(await dialog.innerText(), /100.0%/);
   await page.setViewportSize({ width: 390, height: 844 });
   const box = await dialog.boundingBox(); assert.ok(box.width <= 390);
-  await dialog.getByRole("button", { name: "关闭", exact: true }).click();
+  await dialog.getByRole("button", { name: "关闭 Token 用量", exact: true }).click();
   assert.equal(await dialog.count(), 0);
 });
 
@@ -820,7 +821,7 @@ test("Card tags remain overlays, obey hover and keyboard focus, persist, and sta
     if (await more.isVisible() && !await target.getByRole("button", { name: "设置", exact: true }).isVisible()) await more.click();
     await target.getByRole("button", { name: "设置", exact: true }).click();
     await target.getByLabel("标签显示", { exact: true }).selectOption(value);
-    await target.getByRole("button", { name: "关闭", exact: true }).click();
+    await target.getByRole("button", { name: "关闭设置", exact: true }).click();
   }
   await openViewMenu(page);
   for (const view of ["网格视图", "瀑布流视图"]) {

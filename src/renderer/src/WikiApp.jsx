@@ -12,7 +12,7 @@ import useWikiList from "./useWikiList.js";
 import WikiGrid from "./WikiGrid.jsx";
 import WindowedWikiGrid from "./WindowedWikiGrid.jsx";
 import AddContentDialog from "./AddContentDialog.jsx";
-import { ConfirmDialog, EmptyState, PageHeader } from "./ui/index.js";
+import { Button, ConfirmDialog, EmptyState, FloatingLayer } from "./ui/index.js";
 import WikiSidebar, { contentSections, wikiSections as tabs } from "./WikiSidebar.jsx";
 import CanvasBoundary from "./CanvasBoundary.jsx";
 import WikiContextMenu from "./WikiContextMenu.jsx";
@@ -322,7 +322,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
         await request("/api/elements/material", { method: "PATCH", body: JSON.stringify({ ids: ids.slice(offset, offset + 100), material }) });
         setSelected((current) => { const next = new Set(current); ids.slice(offset, offset + 100).forEach((id) => next.delete(id)); return next; });
       }
-      setPurgeNotice(material ? "已设为资料" : "已取消资料标记");
+      setPurgeNotice(material ? "已标记为资料" : "已取消资料标记");
     } catch (failure) { setError(`资料标记修改未全部完成：${failure.message}。未完成项保留选中，可重试。`); }
     finally { refresh(); writeLock.current = false; setBusy(false); }
   }
@@ -420,13 +420,16 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
       {stack.length === 0 && imports.length > 0 && <section className="wiki-imports" aria-label="保存结果"><header><strong>保存结果</strong><button className="text-button" disabled={busy || creationBusy} onClick={() => setImports([])}>收起</button></header><ul>{imports.map((row, index) => <li key={index}><span>{row.name}</span><span>{row.status}</span><button className="text-button" disabled={busy || detailBusy || creationBusy} onClick={() => open(row.id)} aria-label={`查看保存结果：${row.name}`}>查看</button></li>)}</ul></section>}
       {tab === "canvas" && <div hidden={stack.length > 0}><CanvasBoundary onBack={() => chooseTab("all")}><Suspense fallback={<p className="wiki-muted">正在打开画布…</p>}><WikiCanvas headerActions={askAgent} quietAdd={agentOpen} readOnly={readOnly} revision={resourceRevision} addedIds={canvasAdded} visible={stack.length === 0} externalBusy={busy || detailBusy || Boolean(creation)} onChanged={refresh} onBusyChange={setCanvasBusy} onAdd={addContent} onOpen={open} /></Suspense></CanvasBoundary></div>}
       <div hidden={stack.length > 0 || tab === "canvas"}>
-        <PageHeader className="wiki-page-header" title={tabs.find((t) => t.key === tab).label}
+        {/* One floating tool layer: title + search on top, actions top-right, filters in the bottom capsule. */}
+        <FloatingLayer className="wiki-float" headerClassName="wiki-page-header page-header" filtersClassName="wiki-toolbar"
+          title={<h1>{tabs.find((t) => t.key === tab).label}</h1>}
           subtitle={tab === "trash" ? "移入回收站的内容可以恢复；清空回收站或永久删除后不可恢复。" : undefined}
+          search={<label className="wiki-search"><Search size={18} aria-hidden="true" /><input ref={searchInput} aria-label="搜索内容" aria-keyshortcuts="Control+K Meta+K /" value={q} disabled={busy} onChange={(e) => { setQ(e.target.value); }}
+            onKeyDown={(event) => { if (event.key === "Escape" && q) { event.preventDefault(); event.stopPropagation(); setQ(""); } }} placeholder={readOnly || tab === "trash" ? "搜索文字或文件名…" : "搜索文字、文件名或描述画面…"} />{!q && <kbd className="wiki-search-hint" aria-hidden="true">{modKey} K</kbd>}</label>}
           actions={!readOnly && (tab === "trash"
             ? <button className="danger-quiet" disabled={busy || list.loading} onClick={() => { setPurgeConfirmPhrase(""); setPurgeConfirmation({ all: true }); }}><Trash2 size={16} />清空回收站</button>
-            : <>{askAgent}<button className={agentOpen ? "" : "primary"} disabled={busy} onClick={addContent}><Plus size={16} />添加内容</button></>)} />
-        <div className="wiki-toolbar">{["all", "image", "video", "text"].includes(tab) && <div className="wiki-type-chips" role="group" aria-label="快速筛选">{contentSections.filter((section) => section.key !== "canvas").map((section) => <button type="button" key={section.key} aria-label={`快速筛选：${section.label}`} aria-pressed={tab === section.key} disabled={busy} onClick={() => chooseTab(section.key)}>{section.key === "all" ? "全部" : section.label}</button>)}</div>}<label className="wiki-search"><Search size={18} aria-hidden="true" /><input ref={searchInput} aria-label="搜索内容" aria-keyshortcuts="Control+K Meta+K /" value={q} disabled={busy} onChange={(e) => { setQ(e.target.value); }}
-            onKeyDown={(event) => { if (event.key === "Escape" && q) { event.preventDefault(); event.stopPropagation(); setQ(""); } }} placeholder={readOnly || tab === "trash" ? "搜索文字或文件名…" : "搜索文字、文件名或描述画面…"} />{!q && <kbd className="wiki-search-hint" aria-hidden="true">{modKey} K</kbd>}</label><TagFilter aliases={availableTags.data?.aliases || []} tags={availableTags.data?.tags || []} selected={tags} match={tagMatch} disabled={busy} onChange={(next) => { setTags(next); }} />{tags.length > 1 && <Select className="wiki-tag-match" aria-label="标签匹配方式" value={tagMatch} disabled={busy} onChange={setTagMatch} options={[{ value: "any", label: "任意匹配" }, { value: "all", label: "全部匹配" }]} />}<span>{list.data ? (list.data.possible?.length ? "0 条明确匹配" : hasCollapsedMembers ? `${list.data.pagination.total} 项 · ${list.data.totalElements} 条内容` : `${list.data.pagination.total} 条内容`) : "正在读取…"}</span>
+            : <>{askAgent}<Button variant={agentOpen ? "secondary" : "primary"} disabled={busy} onClick={addContent}><Plus size={16} />添加内容</Button></>)}
+          filters={<>{["all", "image", "video", "text"].includes(tab) && <div className="wiki-type-chips" role="group" aria-label="快速筛选">{contentSections.filter((section) => section.key !== "canvas").map((section) => <button type="button" key={section.key} aria-label={`快速筛选：${section.label}`} aria-pressed={tab === section.key} disabled={busy} onClick={() => chooseTab(section.key)}>{section.key === "all" ? "全部" : section.label}</button>)}</div>}<TagFilter aliases={availableTags.data?.aliases || []} tags={availableTags.data?.tags || []} selected={tags} match={tagMatch} disabled={busy} onChange={(next) => { setTags(next); }} />{tags.length > 1 && <Select className="wiki-tag-match" aria-label="标签匹配方式" value={tagMatch} disabled={busy} onChange={setTagMatch} options={[{ value: "any", label: "任意匹配" }, { value: "all", label: "全部匹配" }]} />}<span>{list.data ? (list.data.possible?.length ? "0 条明确匹配" : hasCollapsedMembers ? `${list.data.pagination.total} 项 · ${list.data.totalElements} 条内容` : `${list.data.pagination.total} 条内容`) : "正在读取…"}</span>
           {tab === "text" && !readOnly && <Select className="wiki-text-sort" aria-label="文字排序" title="使用次数 = 引用次数 + 复制次数（全部历史记录）" value={textSort} disabled={busy} onChange={setTextSort}
             options={[{ value: "updated", label: "最近更新" }, { value: "usage", label: "使用次数从多到少" }]} />}
           <ViewMenu disabled={busy} changed={materialOnly && tab !== "trash" || !stackSimilar && ["all", "text", "image", "video"].includes(tab)}>
@@ -458,14 +461,13 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
           {!readOnly && !managing && <details className="library-menu wiki-list-menu" onKeyDown={(event) => { if (event.key === "Escape") event.currentTarget.open = false; }}>
             <summary aria-label="更多操作" title="更多操作"><MoreHorizontal size={18} /></summary>
             <div className="menu-panel"><button disabled={busy || list.loading || !list.data?.elements.length} onClick={(event) => { event.currentTarget.closest("details").open = false; setSelected(new Set()); setManaging(true); }}><ListChecks size={16} />批量管理</button></div>
-          </details>}
-        </div>
+          </details>}</>}>
         {managing && <div className="wiki-batch-toolbar" role="region" aria-label="批量管理">
           <span>已选 {selected.size} 项</span>
           {stackSimilar && <span className="wiki-muted">已展开堆叠，逐项选择内容</span>}
           <button className="text-button" disabled={busy || list.loading || !list.data?.elements.length} onClick={() => setSelected(new Set(list.data.elements.map((element) => element.id)))}>全选已加载内容</button>
           <button className="text-button" disabled={busy || !selected.size} onClick={() => setSelected(new Set())}>清空选择</button>
-          {tab !== "trash" && <><button disabled={busy || list.loading || !selected.size} onClick={() => setMaterial([...selected], true)}>设为资料</button><button disabled={busy || list.loading || !selected.size} onClick={() => setMaterial([...selected], false)}>取消资料标记</button></>}
+          {tab !== "trash" && <><button disabled={busy || list.loading || !selected.size} onClick={() => setMaterial([...selected], true)}>标记为资料</button><button disabled={busy || list.loading || !selected.size} onClick={() => setMaterial([...selected], false)}>取消资料标记</button></>}
           <button className="danger-quiet" disabled={busy || list.loading || !selected.size} onClick={() => { if (tab === "trash") { setPurgeConfirmPhrase(""); setPurgeConfirmation({ ids: [...selected] }); } else trashSelected(); }}><Trash2 size={15} />{busy ? "正在处理…" : tab === "trash" ? "永久删除选中项" : "移入回收站"}</button>
           <button className="text-button" disabled={busy} onClick={finishManaging}>退出管理</button>
         </div>}
@@ -486,6 +488,7 @@ export default function WikiApp({ onBusyChange, readOnly = false, workspaceNavig
           <p className="wiki-muted">没有找到明确匹配。以下内容由相似度推荐，可能不完全符合搜索条件。</p>
           <WikiGrid masonry={view === "masonry"} cardWidth={cardWidth}>{list.data.possible.map((element, index) => <MediaStackCard key={element.id} element={element} loading={index < 8 ? "eager" : "lazy"} onOpen={open} onShowStack={setMediaStackId} disabled={busy} />)}</WikiGrid>
         </section>}
+        </FloatingLayer>
       </div>
       {stack.length > 0 && <ElementDetail readOnly={readOnly} externalBusy={busy} key={stack.length} id={stack.at(-1).id} relationPage={stack.at(-1).page} externalRevision={resourceRevision}
         prepared={stack.at(-1).prepared?.revision === resourceRevision ? stack.at(-1).prepared : undefined}

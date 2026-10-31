@@ -4,31 +4,38 @@ import { createWriteStream } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { terminateProcessTree } from './executorsPort.js';
 
-export function createAionuiExperiment({ root, dataDir, timeoutMs = 120000 }) {
+export function createAionuiExperiment({ root, dataDir, timeoutMs = 120000, terminateTree = terminateProcessTree }) {
   const directory = path.join(dataDir, 'aionui-experiment');
   const runtime = path.join(root, '.local/aionui-experiment');
   let child, pending, stopping, ready, failure = '', closed = false, generation = 0;
   const temporaryDirectories = new WeakMap();
+  let stopUnconfirmed = false;
+  const stopError = () => Object.assign(new Error('AionUi 后台进程未确认停止；请确认后台进程退出后重启应用，当前禁止重新启动实验服务'), { statusCode: 409, code: 'AIONUI_STOP_UNCONFIRMED' });
   async function terminate(current) {
-    const result = await terminateProcessTree(current);
+    let result;
+    try { result = await terminateTree(current); }
+    catch { stopUnconfirmed = true; throw stopError(); }
+    if (!result.treeConfirmed) stopUnconfirmed = true;
     const temporary = temporaryDirectories.get(current);
     if (result.treeConfirmed && temporary && path.dirname(temporary) === directory && path.basename(temporary).startsWith('runtime-temp-')) {
       await rm(temporary, { recursive: true, force: true, maxRetries: 3 }).catch(() => {});
     }
+    return result;
   }
   const files = [path.join(runtime, 'host.mjs'), path.join(runtime, 'backend/aioncore.exe'), path.join(root, '.local/references/AionUi/out/renderer/index.html')];
   async function status() {
     const prepared = (await Promise.all(files.map(file => access(file).then(() => true, () => false)))).every(Boolean);
-    return { prepared, state: ready ? 'running' : pending ? 'starting' : failure ? 'failed' : 'stopped', url: ready?.url || '', agentName: ready?.agentName || 'Google 官方 ACP · self-wiki', dataDir: directory, error: failure, version: 'AionUi 2.2.2 / AionCore 0.2.2' };
+    return { prepared, state: stopping ? 'stopping' : stopUnconfirmed ? 'failed' : ready ? 'running' : pending ? 'starting' : failure ? 'failed' : 'stopped', url: ready?.url || '', agentName: ready?.agentName || 'Google 官方 ACP · self-wiki', dataDir: directory, error: stopUnconfirmed ? stopError().message : failure, version: 'AionUi 2.2.2 / AionCore 0.2.2' };
   }
   function start() {
     if (closed) return Promise.reject(new Error('实验服务正在关闭'));
     if (stopping) return stopping.then(() => start());
+    if (stopUnconfirmed) return Promise.reject(stopError());
     if (ready) return Promise.resolve(ready);
     if (pending) return pending;
     const epoch = ++generation;
     return pending ||= (async () => {
-      if (!(await status()).prepared) throw new Error('AionUi 实验环境尚未准备，请运行 tools/setup-aionui-experiment.ps1');
+      if (!(await status()).prepared) throw Object.assign(new Error('AionUi 实验环境尚未准备，请运行 tools/setup-aionui-experiment.ps1'), { statusCode: 409, code: 'AIONUI_NOT_PREPARED' });
       await mkdir(directory, { recursive: true });
       const temporary = await mkdtemp(path.join(directory, 'runtime-temp-'));
       if (closed || epoch !== generation) throw new Error('AionUi 启动已取消');
@@ -54,6 +61,7 @@ export function createAionuiExperiment({ root, dataDir, timeoutMs = 120000 }) {
           let buffer = '', settled = false;
           const finish = (error, info) => {
             if (settled) return;
+            if (!error && (closed || epoch !== generation)) error = new Error('AionUi 启动已取消');
             settled = true; clearTimeout(timer);
             if (error) { failure = error.message; reject(error); }
             else { ready = info; resolve(info); }
@@ -78,7 +86,7 @@ export function createAionuiExperiment({ root, dataDir, timeoutMs = 120000 }) {
           });
         });
       } catch (error) {
-        await terminate(current);
+        if (!stopping) await terminate(current);
         throw error;
       }
     })().catch(error => { failure = error.message; throw error; }).finally(() => { pending = null; });
@@ -100,15 +108,19 @@ export function createAionuiExperiment({ root, dataDir, timeoutMs = 120000 }) {
     return { status: await status(), cookies };
   }
   function stop() {
+    if (stopUnconfirmed) return Promise.reject(stopError());
     generation++;
     return stopping ||= (async () => {
       const current = child;
       ready = null;
       if (current) {
-        current.stdin.end();
-        await terminate(current);
+        // Keep the host alive until the tree terminator has captured its
+        // descendants. EOF could otherwise make the parent exit first.
+        try { await terminate(current); } catch { /* Report after pending startup has settled. */ }
       }
       await pending?.catch(() => {});
+      if (stopUnconfirmed) throw stopError();
+      failure = '';
     })().finally(() => { stopping = null; });
   }
   return { status, launch, stop, async close() { closed = true; await stop(); } };

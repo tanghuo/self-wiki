@@ -1,7 +1,7 @@
 import { relationLabel } from "../../shared/domain/elements.js";
 import { useEffect, useState } from "react";
-import { Tag, X } from "lucide-react";
-import Dialog from "./Dialog.jsx";
+import { Tag } from "lucide-react";
+import { DialogFrame } from "./ui/ConfirmDialog.jsx";
 import ElementCard from "./ElementCard.jsx";
 import WikiPaging from "./WikiPaging.jsx";
 import useWikiResource from "./useWikiResource.js";
@@ -13,8 +13,9 @@ export default function TagRelationMembers({ relation, revision, onClose, onOpen
   useEffect(() => {
     if (members.data && page > members.data.pagination.pageCount) setPage(members.data.pagination.pageCount);
   }, [members.data, page]);
-  return <Dialog open label={`标签内容：${relation.targetTag}`} className="wiki-dialog wiki-tag-members" onClose={onClose}>
-    <header className="wiki-dialog-header"><h2><Tag size={19} />#{relation.targetTag}</h2><button className="icon-only" aria-label="关闭标签内容" onClick={onClose}><X size={18} /></button></header>
+  // × closes; the footer only pages (one close action per dialog).
+  return <DialogFrame bare label={`标签内容：${relation.targetTag}`} title={<><Tag size={19} />#{relation.targetTag}</>} className="wiki-dialog wiki-tag-members" closeLabel="关闭标签内容" onClose={onClose}
+    footer={members.data?.pagination?.pageCount > 1 ? <WikiPaging pagination={members.data?.pagination} onPage={setPage} disabled={members.loading} /> : undefined}>
     <div className="wiki-form-fields">
       <p className="wiki-muted">{`当前内容 — ${relationLabel({ ...relation, targetTag: undefined }, relation.sourceId)} — 以下成员`}；不包含当前内容自身。</p>
       {members.loading && <p className="wiki-muted" role="status">正在读取标签内容…</p>}
@@ -25,6 +26,5 @@ export default function TagRelationMembers({ relation, revision, onClose, onOpen
         <div className="wiki-grid">{members.data.elements.map((element) => <ElementCard key={element.id} element={element} onOpen={onOpen} />)}</div>
       </>}
     </div>
-    <footer className="wiki-dialog-footer"><WikiPaging pagination={members.data?.pagination} onPage={setPage} disabled={members.loading} /><button onClick={onClose}>关闭</button></footer>
-  </Dialog>;
+  </DialogFrame>;
 }

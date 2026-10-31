@@ -113,7 +113,7 @@ test("video imports keep original bytes, play and seek, support tags, relations,
   await page.waitForFunction(() => document.querySelector(".wiki-detail video")?.currentTime > 0.2);
   await player.evaluate((element) => { element.pause(); element.currentTime = 0.7; });
   await page.waitForFunction(() => { const video = document.querySelector(".wiki-detail video"); return video && !video.seeking && video.currentTime >= 0.65; });
-  assert.equal(await page.getByRole("button", { name: "加入资料", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "放进资料篮", exact: true }).count(), 0);
   await page.getByRole("link", { name: "保存原视频", exact: true }).waitFor();
   await player.dispatchEvent("error");
   await page.getByRole("link", { name: "下载原视频", exact: true }).waitFor();

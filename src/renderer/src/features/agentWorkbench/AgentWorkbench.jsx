@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Square, ArrowUp, ShieldCheck, PanelRight, Folder, FolderOpen, PanelLeft, Monitor, ChevronRight, Check, CircleAlert, LoaderCircle } from 'lucide-react';
+import { Plus, Square, ArrowUp, ShieldCheck, Folder, FolderOpen, PanelLeft, PanelRight, Monitor, ChevronRight, Check, CircleAlert, LoaderCircle } from 'lucide-react';
 import { apiUrl, request } from '../../api.js';
 import ReactMarkdown from 'react-markdown';
 import { DialogFrame } from '../../ui/ConfirmDialog.jsx';
+import AgentShell from '../../ui/AgentShell.jsx';
 import './workbench.css';
 import './workbenchSurface.css';
 import WorkbenchPolicy from './WorkbenchPolicy.jsx';
@@ -20,6 +21,7 @@ import { maxWorkbenchImages, workbenchImageError, workbenchImageFiles } from './
 
 import { workbenchTimeline } from '../../../../shared/domain/agentWorkbench/events.js';
 import { activityTitle, commandState } from './workbenchActivity.js';
+import { Button } from '../../ui/Button.jsx';
 
 const base = '/api/agent';
 const post = (route, value = {}) => request(base + route, { method: 'POST', body: JSON.stringify(value) });
@@ -67,17 +69,17 @@ function Approval({ approval, decide, busy }) {
     <div className="workbench-actions"><button disabled={busy} onClick={() => decide(approval, 'reject')}>拒绝</button><button disabled={busy} onClick={() => decide(approval, 'allow')}>允许一次</button></div>
   </section>;
 }
-function ExecutionEvent({ item, turnId }) {
+function ExecutionEvent({ item, turnId, latest = false }) {
   const [open, setOpen] = useState(false);
   const value = item.data;
   if (item.type === 'plan.updated') return <ol>{(value.entries || []).map((entry, index) => <li key={index}>{entry.content} · {({ pending: '待执行', in_progress: '执行中', completed: '完成' })[entry.status] || entry.status}</li>)}</ol>;
   const output = item.type === 'command.output' ? value : item.output?.data;
-  const state = item.type === 'command.output' ? commandState(value) : value.status;
-  const title = item.type === 'command.output' ? '运行命令' : activityTitle(value);
+  const state = item.type === 'command.output' ? commandState(value) : value.status || 'unknown';
+  const title = item.type === 'command.output' ? activityTitle({ ...value, kind: 'commandExecution' }) : activityTitle(value);
   const text = (value.content || []).filter(item => item.type === 'content' && item.content?.type === 'text').map(item => item.content.text).join('\n');
   const line = <>{active(state) ? <LoaderCircle size={14} className="workbench-activity-spinner" /> : state === 'completed' ? <Check size={14} /> : <CircleAlert size={14} />}<span className="workbench-operation-title">{title}</span>{state !== 'completed' && <span className="workbench-operation-state">{labels[state] || '状态未知'}</span>}<ChevronRight size={13} className="workbench-operation-chevron" /></>;
-  return <details className="workbench-operation" data-status={state} onToggle={event => { if (event.target === event.currentTarget) setOpen(event.currentTarget.open); }}>
-    <summary className="workbench-activity-line" aria-label={`${title} · ${labels[state] || '状态未知'}`}>{line}</summary>
+  return <details className="workbench-operation" data-status={state} data-latest={latest || undefined} onToggle={event => { if (event.target === event.currentTarget) setOpen(event.currentTarget.open); }}>
+    <summary className="workbench-activity-line" title={title} aria-label={`${title} · ${labels[state] || '状态未知'}`}>{line}{latest && <span className="workbench-operation-latest">最新</span>}</summary>
     {open && <div className="workbench-operation-detail">
       {value.title && <pre aria-label="调用内容">{value.title}</pre>}
       {text && <pre aria-label="调用详情">{text}</pre>}
@@ -97,12 +99,13 @@ function ExecutionGroup({ group, turnId, live }) {
   const recent = group.items.filter((item, index) => index >= group.items.length - 3 || item.type === 'plan.updated' || item.type === 'tool.updated' && active(item.data.status));
   const visible = running && !showAll ? recent : group.items;
   const hidden = group.items.length - visible.length;
+  const latest = live ? group.items.findLast(item => item.type !== 'plan.updated') : null;
   return <details className="workbench-execution" open={expanded ?? running} onToggle={event => {
     if (event.target !== event.currentTarget) return;
     if (event.currentTarget.open !== (expanded ?? running)) setExpanded(event.currentTarget.open);
   }}><summary><ChevronRight size={14} /><span>{running ? current ? '正在执行' : '最近操作' : '执行过程'}</span><span className="workbench-activity-count">{tools.length || group.items.filter(item => item.type === 'command.output').length} 次操作</span></summary>
     <div className="workbench-activity-list">
-      {visible.map(item => <div className="workbench-event" data-status={item.data.status} key={item.seq}><ExecutionEvent item={item} turnId={turnId} /></div>)}
+      {visible.map(item => <div className="workbench-event" data-status={item.data.status} key={item.seq}><ExecutionEvent item={item} turnId={turnId} latest={item === latest} /></div>)}
       {hidden > 0 && <button type="button" className="workbench-earlier-activity" onClick={() => setShowAll(true)}>查看全部 {group.items.length} 项操作</button>}
       {running && showAll && group.items.length > recent.length && <button type="button" className="workbench-earlier-activity" onClick={() => setShowAll(false)}>只看最近操作</button>}
     </div>
@@ -121,9 +124,11 @@ function TurnStatus({ turn, groups }) {
   const tools = groups.flatMap(group => group.items).filter(item => item.type === 'tool.updated');
   const current = tools.findLast(item => active(item.data.status));
   const description = turn.state === 'running' ? current ? activityTitle(current.data) : tools.length ? '正在继续处理' : '正在等待引擎响应' : labels[turn.state] || turn.state;
+  const latest = tools.at(-1);
   return <div className="workbench-turn-state" data-state={turn.state} role={running ? 'status' : undefined}>
     <span className="workbench-status-label">{running && <span className="workbench-working-dot" aria-hidden="true" />}{description}</span>
     {running && Number.isFinite(elapsed) && <span className="workbench-elapsed">已用时 {duration}</span>}
+    {running && !current && latest && <span className="workbench-last-operation" title={activityTitle(latest.data)}>最近操作：{activityTitle(latest.data)}</span>}
     {turn.state === 'unknown' && <span>不会自动重发，请先核对文件和命令结果。</span>}
   </div>;
 }
@@ -166,7 +171,7 @@ export default function AgentWorkbench({ onOpen }) {
       return model === previous.model ? previous : { ...previous, model };
     });
   }, [modelCatalog, settings.engine]);
-  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [inspecting, setInspecting] = useState(false), [railOpen, setRailOpen] = useState(false), [pendingImages, setPendingImages] = useState([]);
+  const [busy, setBusy] = useState(false), [error, setError] = useState(''), [railOpen, setRailOpen] = useState(false), [detailsOpen, setDetailsOpen] = useState(false), [pendingImages, setPendingImages] = useState([]);
   const fileInput = useRef(null), scroll = useRef(null), follows = useRef(true), sending = useRef(false), pendingRef = useRef([]);
   pendingRef.current = pendingImages;
   const editor = useWorkbenchDraft(selected, setError), draft = editor.value?.text || '';
@@ -236,7 +241,7 @@ export default function AgentWorkbench({ onOpen }) {
     }).catch(error => { if (!stopped) setError(error.message); });
     load(); const timer = setInterval(load, 1000);
     const stream = new EventSource(apiUrl(`${base}/sessions/${selected}/events?after=0`));
-    stream.onmessage = event => { try { const item = JSON.parse(event.data); if (!stopped) setEvents(previous => previous.some(e => e.seq === item.seq) ? previous : [...previous, item]); } catch { if (!stopped) setError('事件格式无效，请刷新会话'); } };
+    stream.onmessage = event => { try { const item = JSON.parse(event.data); if (!stopped) { setEvents(previous => previous.some(e => e.seq === item.seq) ? previous : [...previous, item]); if (item.type === 'turn.finished') void load(); } } catch { if (!stopped) setError('事件格式无效，请刷新会话'); } };
     return () => { stopped = true; clearInterval(timer); stream.close(); };
   }, [selected]);
   useEffect(() => { if (follows.current && scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight; }, [events, detail?.turns.length, selected]);
@@ -330,8 +335,12 @@ export default function AgentWorkbench({ onOpen }) {
   }
   const current = detail?.turns.find(turn => active(turn.state));
   const reloadDetail = async () => { const value = await request(`${base}/sessions/${selected}`); applyDetail(value); return value; };
+  // Grok forwards image blocks even though its ACP flag says otherwise; other
+  // engines that reported no image input must not get a turn that fails later.
+  const imagesUnsupported = Boolean(detail && detail.session.engine !== 'grok-build' && detail.session.capabilities?.images === false);
   async function attachFiles(files) {
     const existing = editor.value?.attachments || [];
+    if (imagesUnsupported) { setError('此引擎未声明支持图片输入，未添加参考图'); return; }
     const problem = workbenchImageError(files, existing.length);
     if (busy) { setError('请等待当前操作完成后再添加图片'); return; }
     if (problem) { setError(problem); return; }
@@ -354,14 +363,18 @@ export default function AgentWorkbench({ onOpen }) {
   const chats = sessions.filter(session => session.purpose !== 'workflow');
   return <main className="wiki-main workbench-page" data-c-surface="workbench">
     {error && <p role="alert" className="workbench-error">{error}</p>}
-    <div className={`workbench-layout${railOpen ? " rail-open" : ""}`}>
-    <header className="workbench-topbar">
-      <button className="icon-only workbench-rail-toggle" aria-label="切换会话列表" disabled={!status} aria-expanded={railOpen} onClick={() => setRailOpen(!railOpen)}><PanelLeft size={18} /></button>
-      <div className="workbench-topbar-title"><strong>{detail?.session.data.title || '新任务'}</strong>{detail && <span title={detail.workspace.path}><FolderOpen size={13} />{projectLabel(detail.workspace)}</span>}</div>
-      <div className="workbench-topbar-actions">{detail && <button className="icon-only" title="会话设置" aria-label="会话设置" aria-expanded={inspecting} onClick={() => setInspecting(!inspecting)}><PanelRight size={18} /></button>}</div>
-    </header>
-    {!status ? <p className="workbench-conversation" role="status">正在加载工作台…</p> : !status.agentWorkbenchEnabled ? <section className="workbench-empty"><h2>启用 Agent 工作台</h2><p>项目需要先确认信任；文件写入和命令逐次审批。已批准的命令使用当前用户权限运行。</p><button onClick={() => action(async () => { await request(base + '/settings', { method: 'PUT', body: JSON.stringify({ agentWorkbenchEnabled: true }) }); await refresh(); })} disabled={busy}>启用工作台</button></section> : <>
-      <nav className="workbench-sessions" aria-label="工作台会话">
+    {/* Same AgentShell as Agent 对话 and AionUi: sessions left, timeline centre, session panel right (always). */}
+    <AgentShell className={`workbench-layout${railOpen ? " rail-open" : ""}`} resourcesOpen={detailsOpen} sessionsClassName="workbench-sessions" sessionsLabel="工作台会话"
+      resourcesClassName="workbench-inspector" resourcesLabel="会话详情"
+      header={<>
+      <header className="workbench-topbar">
+        <button className="icon-only workbench-rail-toggle" aria-label="切换会话列表" disabled={!status} aria-expanded={railOpen} onClick={() => setRailOpen(!railOpen)}><PanelLeft size={18} /></button>
+        <div className="workbench-topbar-title"><strong>{detail?.session.data.title || '新任务'}</strong>{detail && <span title={detail.workspace.path}><FolderOpen size={13} />{projectLabel(detail.workspace)}</span>}</div>
+        {/* Only on phones, where the 会话详情 column folds away. */}
+        <div className="workbench-topbar-actions"><button type="button" className="icon-only agent-shell-resources-toggle" aria-label="会话设置" title="会话设置" aria-expanded={detailsOpen} onClick={() => setDetailsOpen(!detailsOpen)}><PanelRight size={18} /></button></div>
+      </header>
+      </>}
+      sessions={status?.agentWorkbenchEnabled && <>
         <button className="workbench-new-chat" onClick={() => choose(null)} disabled={busy}><Plus size={17} />新建会话</button>
         {projects.length > 0 && <p className="workbench-rail-title">项目</p>}
         {projects.map(project => {
@@ -377,11 +390,15 @@ export default function AgentWorkbench({ onOpen }) {
         <p className="workbench-rail-title">最近</p>
         {chats.map(session => <button type="button" className="workbench-recent" key={session.id} aria-current={selected === session.id ? 'page' : undefined} disabled={busy} onClick={() => choose(session.id)}><span className="workbench-thread-label">{session.data.title}</span><SessionStatus state={session.state} /></button>)}
         {!chats.length && <p className="workbench-muted">首次发送后，会话会保存在这里。</p>}
-      </nav>
+      </>}
+      resources={detail && selected ? <><h3>会话设置</h3><p className="workbench-path">{detail.workspace.path}</p>
+        <WorkbenchPolicy key={selected} session={detail.session} busy={busy} act={action} refresh={reloadDetail} /></>
+        : <><h3>会话设置</h3><p className="agent-shell-empty">打开或新建一个会话后，这里显示它的项目路径和审批规则。</p></>}>
+    {!status ? <p className="workbench-conversation" role="status">正在加载工作台…</p> : !status.agentWorkbenchEnabled ? <section className="workbench-empty"><h2>启用 Agent 工作台</h2><p>项目需要先确认信任；文件写入和命令逐次审批。已批准的命令使用当前用户权限运行。</p><button onClick={() => action(async () => { await request(base + '/settings', { method: 'PUT', body: JSON.stringify({ agentWorkbenchEnabled: true }) }); await refresh(); })} disabled={busy}>启用工作台</button></section> : <>
       <section className="workbench-conversation">
         {!selected ? <WorkbenchStart settings={settings} change={change} projects={projects} engines={status.engines} models={models} modelState={modelCatalog[settings.engine]} retryModels={() => loadEngineModels(settings.engine, true)} text={newText} setText={setNewText} busy={busy} create={create} createProject={createProject} selectEngine={selectEngine} loadModels={loadModels} connectAntigravity={connectAntigravity} images={pendingImages} addImages={addPendingImages} removeImage={removePendingImage} /> : !detail ? <p role="status">正在打开会话…</p> : <>
 
-          <div className={`workbench-session-grid${inspecting ? ' inspecting' : ''}`}>
+          <div className="workbench-session-grid">
             <div className="workbench-chat-column">
               <div className="workbench-scroll" ref={scroll} onScroll={event => { const el = event.currentTarget; follows.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; }}>
                 {detail.session.data.provenance && <p className="workbench-muted">已转换上下文，使用新的原生会话。最近最多 20 轮摘录会在首次发送时作为参考；原历史、分支、附件和来源继续保留。{detail.session.data.provenance.sessionId && <a href={`#agent?session=${detail.session.data.provenance.sessionId}`}>查看旧会话</a>}</p>}
@@ -400,23 +417,20 @@ export default function AgentWorkbench({ onOpen }) {
                 })}<input ref={fileInput} aria-label="选择参考图文件" hidden type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busy || !editor.value || (editor.value?.attachments.length || 0) >= maxWorkbenchImages} onChange={event => { const files = [...event.target.files]; event.target.value = ''; if (files.length) void attachFiles(files); }} /></div>
                 <textarea ref={textarea} aria-label="任务内容" placeholder={current ? '可以先写下一条任务，当前任务结束后发送，也可粘贴图片…' : '描述要完成的任务，也可直接粘贴图片…'} value={draft} disabled={busy || !editor.value} onChange={event => editor.update({ text: event.target.value })} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); event.currentTarget.form.requestSubmit(); } }} rows={3} />
                 <div className="workbench-composer-toolbar">
-                  <button type="button" className="icon-only" aria-label="添加参考图" title="添加参考图" disabled={busy || !editor.value || (editor.value?.attachments.length || 0) >= maxWorkbenchImages} onClick={() => fileInput.current?.click()}><Plus size={19} /></button>
+                  <button type="button" className="icon-only" aria-label="添加参考图" title={imagesUnsupported ? '此引擎未声明支持图片输入' : '添加参考图'} disabled={busy || imagesUnsupported || !editor.value || (editor.value?.attachments.length || 0) >= maxWorkbenchImages} onClick={() => fileInput.current?.click()}><Plus size={19} /></button>
                   <span className="workbench-project-chip" title={detail.workspace.path}><FolderOpen size={15} /><span>{projectLabel(detail.workspace)}</span></span>
                   <span className="workbench-machine"><Monitor size={14} />此计算机</span>
                   {!detail.session.data.restricted && detail.session.purpose !== 'workflow' && <WorkbenchApprovalPicker mode={detail.session.policy.approvalMode} engine={detail.session.engine} disabled={busy || !!current} onChange={mode => action(async () => { const saved = await request(`${base}/sessions/${selected}/policy`, { method: 'PUT', body: JSON.stringify({ revision: detail.session.revision, approvalMode: mode }) }); rememberApprovalMode(saved.engine, saved.policy?.approvalMode); setDetail(current => current?.session.id === saved.id ? { ...current, session: saved } : current); setSessions(current => current.map(item => item.id === saved.id ? saved : item)); await reloadDetail(); })} />}
                   <WorkbenchModelPicker engine={detail.session.engine} model={detail.session.data.model} effort={detail.session.data.effort} engines={status.engines} models={modelCatalog[detail.session.engine]?.models || []} modelState={modelCatalog[detail.session.engine]} retryModels={() => loadEngineModels(detail.session.engine, true)} busy={busy} change={changeSessionModel} loadModels={loadSessionModels} connectAntigravity={connectAntigravity} />
                   <span className="workbench-draft-state" data-saved={editor.value?.saved === editor.value?.edit ? "true" : "false"}>{current ? labels[current.state] : ""}</span>
-                  {current ? <button type="button" className="primary icon-only" aria-label="停止" title="停止" disabled={busy || current.state === 'cancelling'} onClick={stop}><Square size={14} fill="currentColor" /></button> : <button className="primary icon-only" aria-label="发送" title="发送" disabled={busy || !editor.value || !draft.trim()}><ArrowUp size={19} /></button>}
+                  {current ? <Button variant="primary" aria-label="停止" title="停止" disabled={busy || current.state === 'cancelling'} onClick={stop} className="icon-only"><Square size={14} fill="currentColor" /></Button> : <Button variant="primary" type="submit" aria-label="发送" title="发送" disabled={busy || !editor.value || !draft.trim()} className="icon-only"><ArrowUp size={19} /></Button>}
                 </div>
               </form>
             </div>
-            {inspecting && <aside className="workbench-inspector" aria-label="会话详情"><h3>会话设置</h3><p className="workbench-path">{detail.workspace.path}</p>
-              <WorkbenchPolicy key={selected} session={detail.session} busy={busy} act={action} refresh={reloadDetail} />
-            </aside>}
           </div>
         </>}
       </section>
     </>}
-    </div>
+    </AgentShell>
   </main>;
 }

@@ -122,3 +122,8 @@
   .canvas-footer .canvas-help { margin-left: 0; flex-basis: 100%; }
   .wiki-canvas .react-flow__minimap { width: 90px; height: 65px; }
 }
+
+/* Inside the floating layer's bottom capsule the view switch and the tools sit on one line. */
+.canvas-float-capsule > .canvas-viewbar, .canvas-float-capsule > .canvas-toolbar { margin: 0; flex-wrap: wrap; justify-content: center; }
+.canvas-float-capsule > .canvas-viewbar + .canvas-toolbar { padding-left: var(--sp-2); border-left: 1px solid var(--line); }
+.canvas-float .ui-float-content > .canvas-view-help:first-child { margin-top: 0; }

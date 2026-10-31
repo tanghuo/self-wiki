@@ -16,7 +16,7 @@ export function createAcpWorkbenchEvents(onEvent) {
     }
     if (['tool_call', 'tool_call_update'].includes(value.sessionUpdate)) {
       speaking = false;
-      return onEvent('tool.updated', { id: value.toolCallId, title: value.title, status: toolStatus(value.status), kind: value.kind, content: value.content });
+      return onEvent('tool.updated', { id: value.toolCallId, title: value.title, status: toolStatus(value.status ?? (value.sessionUpdate === 'tool_call' ? 'pending' : undefined)), kind: value.kind, content: value.content });
     }
   };
 }

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, Pencil, Copy, Link2, Unlink, Trash2, Download, Monitor, Plus, History, X, MoreHorizontal } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, LoaderCircle, Pencil, Copy, Link2, Unlink, Trash2, Download, Monitor, Plus, History, MoreHorizontal } from "lucide-react";
 import { apiUrl, request } from "./api.js";
 import { recordElementUsage } from "./elementUsage.js";
 import useWikiResource from "./useWikiResource.js";
@@ -14,7 +14,7 @@ import TagRelationCards from "./TagRelationCards.jsx";
 import TagRelationMembers from "./TagRelationMembers.jsx";
 import AiSource from "./AiSource.jsx";
 import OrganizationPanel from "./OrganizationPanel.jsx";
-import Dialog from "./Dialog.jsx";
+import { DialogFrame } from "./ui/ConfirmDialog.jsx";
 import RelatedContent from "./RelatedContent.jsx";
 import ImageDescription from "./ImageDescription.jsx";
 import DetailImage from "./DetailImage.jsx";
@@ -103,7 +103,7 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
     setBusy(true); setError(""); setMessage("");
     try {
       await request("/api/elements/material", { method: "PATCH", body: JSON.stringify({ ids: [id], material }) });
-      refresh(); setMessage(material ? "已设为资料" : "已取消资料标记");
+      refresh(); setMessage(material ? "已标记为资料" : "已取消资料标记");
     } catch (failure) { setError(failure.message); }
     finally { setBusy(false); }
   }
@@ -122,59 +122,62 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
     <span className="wiki-detail-navigation-progress" role="status" aria-label={navigation.switching ? "正在切换内容" : navigation.loading ? "正在读取下一条" : undefined}>{(navigation.switching || navigation.loading) && <LoaderCircle size={16} />}</span>
     <button className="text-button" aria-label="下一条" title="下一条" onClick={navigation.switching ? undefined : navigation.next} aria-disabled={navigation.switching || undefined} disabled={busy || externalBusy || !navigation.next}>{element.kind !== "image" && "下一条"}<ChevronRight size={element.kind === "image" ? 40 : 17} /></button>
   </nav>;
-  return <section className="wiki-detail" data-kind={element?.kind} aria-label="内容详情">
-    <div className="wiki-detail-sticky-navigation">
-      <button className="text-button button-sm wiki-back" onClick={onBack} disabled={busy}><ArrowLeft size={14} />返回</button>
-      {element?.kind !== "image" && adjacentNavigation}
-      {headerActions && <div className="wiki-detail-nav-actions">{headerActions}</div>}
-    </div>
-    <div className="wiki-detail-toolbar" inert={navigation?.switching || undefined}>
-      {element && <div className="wiki-actions">{!readOnly && !element.record && <button onClick={() => setModal("edit")} disabled={busy || externalBusy}><Pencil size={15} />编辑</button>}
-        {!readOnly && !element.localOnly && ["text", "image", "video"].includes(element.kind) && <label className="wiki-material-filter"><input type="checkbox" checked={Boolean(element.material)} disabled={busy || externalBusy} onChange={(event) => setMaterial(event.target.checked)} />用作资料{element.kind === "video" && <span className="wiki-material-note">（仅库内筛选；视频不能发给 Agent）</span>}</label>}
-        {!readOnly && onAddReference && element.kind !== "video" && <button disabled={busy || externalBusy} onClick={() => onAddReference(element)}><Plus size={15} />加入资料</button>}
+  return <section className="wiki-detail is-immersive" data-kind={element?.kind} aria-label="内容详情">
+    {/* Top glass bar: back + title on the left, secondary actions and the ··· menu on the right. */}
+    <header className="wiki-detail-bar wiki-detail-sticky-navigation">
+      <div className="wiki-detail-bar-start">
+        <button className="text-button button-sm wiki-back" onClick={onBack} disabled={busy}><ArrowLeft size={14} />返回</button>
+        {element && <div className="wiki-detail-header" inert={navigation?.switching || undefined}><span className="wiki-eyebrow">{elementKindLabels[element.kind]}</span><h1 title={elementLabel(element)}>{elementLabel(element)}</h1></div>}
+      </div>
+      <div className="wiki-detail-bar-end">
+        {element?.kind !== "image" && adjacentNavigation}
+        {headerActions && <div className="wiki-detail-nav-actions">{headerActions}</div>}
+        {element && <div className="wiki-actions wiki-detail-toolbar" inert={navigation?.switching || undefined}>{!readOnly && !element.record && <button onClick={() => setModal("edit")} disabled={busy || externalBusy}><Pencil size={15} />编辑</button>}
+        {!readOnly && onAddReference && element.kind !== "video" && <button disabled={busy || externalBusy} onClick={() => onAddReference(element)}><Plus size={15} />放进资料篮</button>}
         {element.kind === "image" && <a className="button" href={apiUrl(`/api/elements/${id}/download`)} download><Download size={15} />保存原图</a>}
         {element.kind === "video" && <a className="button" href={apiUrl(`/api/elements/${id}/download`)} download><Download size={15} />保存原视频</a>}
         {!readOnly && <details className="library-menu wiki-detail-menu" onKeyDown={(event) => { if (event.key === "Escape" && event.currentTarget.open) { event.stopPropagation(); event.currentTarget.open = false; event.currentTarget.querySelector("summary")?.focus(); } }}>
           <summary aria-label="更多内容操作" title="更多操作"><MoreHorizontal size={18} /></summary>
           <div className="menu-panel">
+            {!element.localOnly && ["text", "image", "video"].includes(element.kind) && <label className="wiki-material-filter wiki-detail-menu-check"><input type="checkbox" checked={Boolean(element.material)} disabled={busy || externalBusy} onChange={(event) => setMaterial(event.target.checked)} />标记为资料{element.kind === "video" && <span className="wiki-material-note">（仅库内筛选；视频不能发给 Agent）</span>}</label>}
             {element.kind === "image" && window.wikiDesktop?.setWallpaper && <button disabled={busy || externalBusy} onClick={setWallpaper}><Monitor size={15} />设为桌面壁纸</button>}
             <button className="danger-quiet" aria-label="移入回收站" onClick={(event) => { event.currentTarget.closest("details").open = false; mutate(`/api/elements/${id}`, "DELETE", () => onTrashed(element)); }} disabled={busy || externalBusy}><Trash2 size={15} /><span>移入回收站</span></button>
           </div>
         </details>}
-      </div>}
-    </div>
+        </div>}
+      </div>
+    </header>
     <div className="wiki-detail-body" inert={(navigation?.switching && element?.kind !== "image") || undefined}>
     {navigation?.error && <p className="wiki-error" role="alert">后续内容加载失败：{navigation.error}<button disabled={busy || externalBusy} onClick={navigation.retry}>重试加载</button></p>}
     {detail.loading && !detail.data && <p className="wiki-muted" role="status">正在读取内容…</p>}
     {detail.error && <p className="wiki-error" role="alert">{detail.error}<button onClick={refresh}>重试</button></p>}
-    {element && <>
-      <header className="wiki-detail-header" inert={navigation?.switching || undefined}>
-        <span className="wiki-eyebrow">{elementKindLabels[element.kind]}</span><h1 title={elementLabel(element)}>{elementLabel(element)}</h1>
-      </header>
-      <div className="wiki-detail-info" data-kind={element.kind} inert={navigation?.switching || undefined}>
-        <div className="wiki-detail-browse">
-          <div className="wiki-tags wiki-detail-tags" aria-label="内容标签">{element.tags?.length ? element.tags.map((tag) => <span className="wiki-tag" key={tag}>{tag}<AiSource resultId={element.aiTags?.find((a) => a.name === tag)?.resultId} onOpen={canOrganize ? openOrganization : undefined} disabled={busy || externalBusy} /></span>) : <span className="wiki-muted">暂无标签</span>}{!readOnly && <button className="text-button" onClick={() => setModal("tags")} disabled={busy || externalBusy}>{element.tags?.length ? <Pencil size={14} /> : <Plus size={14} />}{element.tags?.length ? "编辑标签" : "添加标签"}</button>}</div>
-        </div>
-        <div className="wiki-detail-metadata">
-          <div className="wiki-element-meta">保存于 {new Date(element.createdAt).toLocaleString("zh-CN")}{element.image && ` · ${(element.image.byteSize / 1024).toFixed(1)} KB · 原图`}{element.video && ` · ${(element.video.byteSize / 1024 / 1024).toFixed(1)} MiB · 原视频`}{element.kind !== "session" && ` · ${{ manual: "手动添加", chat: "会话保存", unknown: "添加来源未记录" }[element.creationSource || "unknown"]}`}</div>
-          {canOrganize && <button ref={organizationEntry} className="text-button wiki-organization-entry" onClick={() => openOrganization()} disabled={busy || externalBusy} aria-haspopup="dialog"><History size={14} />整理记录</button>}
-        </div>
-      </div>
-      <div className="wiki-detail-layout" data-kind={element.kind}>
-        <div className="wiki-detail-content">
+    {element && <div className="wiki-detail-columns" data-kind={element.kind}>
+      {/* Left: the media itself, full-bleed. */}
+      <div className="wiki-detail-main">
           {element.kind === "image" ? <div className="wiki-detail-image-stage"><DetailImage key={`${id}:${element.image.url}:${imageAttempt}`} src={apiUrl(`${element.image.url}?attempt=${imageAttempt}`)} alt={elementLabel(element)} inert={navigation?.switching || undefined}
             onContextMenu={(event) => { if (!busy && !externalBusy) onContentContextMenu?.(event, element); }}
             onLoad={() => { setImageReady(true); setImageFailed(false); }} onError={() => { setImageReady(true); setImageFailed(true); }} />{adjacentNavigation}</div>
             : element.kind === "video" ? <VideoDetailBlocks id={id} element={element} videoPlayer={videoPlayer} revision={revision} externalRevision={externalRevision} refresh={refresh} setSeekPosition={setSeekPosition} setVisualFrameRequest={setVisualFrameRequest} visualMatchesRef={visualMatches} seekPosition={seekPosition} markerId={markerId} onOpen={onOpen} setBusy={setBusy} externalBusy={externalBusy} readOnly={readOnly} /> : element.kind === "session" ? <SessionPreview element={element} contextId={contextId} /> : <div className="wiki-text-document">
-              <div className="wiki-text-actions">{!readOnly && !element.record && <button className="text-button" onClick={() => setModal("edit")} disabled={busy || externalBusy}><Pencil size={15} />编辑文字</button>}<button className="text-button" onClick={copy}><Copy size={15} />复制文字</button></div>
+              <div className="wiki-text-actions"><button className="text-button" onClick={copy}><Copy size={15} />复制文字</button></div>
               {element.body ? <pre>{element.body}</pre> : <p className="wiki-muted">{readOnly ? "暂无正文" : "可以关联图片或文字。"}</p>}
             </div>}
           <div inert={navigation?.switching || undefined}>
           {imageFailed && <p className="wiki-error" role="alert">原图无法加载。如文件缺失，请从备份恢复。<button onClick={() => { setImageReady(false); setImageFailed(false); setImageAttempt((n) => n + 1); }}>重新加载图片</button></p>}
+          </div>
+      </div>
+      {/* Right: one 360px information panel — tags, metadata, descriptions and relations. */}
+      <aside className="wiki-detail-panel" aria-label="内容信息">
+        <div className="wiki-detail-info" data-kind={element.kind} inert={navigation?.switching || undefined}>
+          <div className="wiki-tags wiki-detail-tags" aria-label="内容标签">{element.tags?.length ? element.tags.map((tag) => <span className="wiki-tag" key={tag}>{tag}<AiSource resultId={element.aiTags?.find((a) => a.name === tag)?.resultId} onOpen={canOrganize ? openOrganization : undefined} disabled={busy || externalBusy} /></span>) : <span className="wiki-muted">暂无标签</span>}{!readOnly && <button className="text-button" onClick={() => setModal("tags")} disabled={busy || externalBusy}>{element.tags?.length ? <Pencil size={14} /> : <Plus size={14} />}{element.tags?.length ? "编辑标签" : "添加标签"}</button>}</div>
+        <div className="wiki-detail-metadata">
+          <div className="wiki-element-meta">保存于 {new Date(element.createdAt).toLocaleString("zh-CN")}{element.image && ` · ${(element.image.byteSize / 1024).toFixed(1)} KB · 原图`}{element.video && ` · ${(element.video.byteSize / 1024 / 1024).toFixed(1)} MiB · 原视频`}{element.kind !== "session" && ` · ${{ manual: "手动添加", chat: "会话保存", unknown: "添加来源未记录" }[element.creationSource || "unknown"]}`}</div>
+          {canOrganize && <button ref={organizationEntry} className="text-button wiki-organization-entry" onClick={() => openOrganization()} disabled={busy || externalBusy} aria-haspopup="dialog"><History size={14} />整理记录</button>}
+        </div>
+        </div>
+        <div inert={navigation?.switching || undefined}>
           {element.kind === "image" && <EmbeddedPrompt key={id} id={id} />}
           {element.kind === "image" && !element.record && !element.localOnly && <ImageDescription key={id} id={id} revision={`${revision}:${externalRevision}`}
             readOnly={readOnly} disabled={busy || externalBusy} onBusyChange={setBusy} onChanged={refresh} />}
-          </div>
         </div>
         <section className="wiki-related" aria-label="关联内容" inert={navigation?.switching || undefined}>
           {["image", "video"].includes(element.kind) && !element.record && !element.localOnly && <div ref={visualMatches}><VisualMatches key={id} elementId={id} frameRequest={visualFrameRequest} revision={`${revision}:${externalRevision}`} onOpen={onOpen} onClearFrame={() => setVisualFrameRequest(null)} disabled={busy || externalBusy} readOnly={readOnly} /></div>}
@@ -197,15 +200,14 @@ export default function ElementDetail({ id, contextId, markerId, videoPosition, 
           </div>; }} />
           <WikiPaging pagination={related.data?.pagination} onPage={setPage} disabled={busy} />
         </section>
-      </div>
-    </>}
+      </aside>
+    </div>}
     {error && <p className="wiki-error" role="alert">{error}</p>}
     {message && <p className="wiki-feedback" role="status">{message}</p>}
-    {modal === "organization" && <Dialog open label="整理记录" className="wiki-dialog organization-dialog" onClose={closeOrganization}>
-      <header className="wiki-dialog-header"><h2>整理记录</h2><button className="icon-only" aria-label="关闭整理记录" disabled={busy} onClick={closeOrganization}><X size={18} /></button></header>
+    {modal === "organization" && <DialogFrame bare label="整理记录" className="wiki-dialog organization-dialog" onClose={closeOrganization} title="整理记录" closeLabel="关闭整理记录" busy={busy}>
       {element?.kind === "video" && <p className="wiki-muted">整理会比较视频首帧与候选图片、视频首帧，确认后建立“相似”关联。首帧相似不代表整段视频相同。</p>}
       <OrganizationPanel key={id} elementId={id} initialResultId={organizationResultId} onChanged={refresh} onBusyChange={setBusy} disabled={externalBusy} />
-    </Dialog>}
+    </DialogFrame>}
     {["edit", "tags"].includes(modal) && element && <ElementEditor key={`${id}:${modal}`} tagsOnly={modal === "tags"} element={element} onBusyChange={setBusy} onClose={() => setModal("")} onSaved={() => { setModal(""); refresh(); setMessage(modal === "tags" ? "标签已更新" : "内容已更新"); }} />}
     {modal === "relate" && <RelationPicker sourceId={id} sourceKind={relationKind} onClose={() => setModal("")} onChanged={refresh} />}
     {renaming && <RelationRenameDialog currentId={id} relation={renaming} busy={busy || externalBusy} onBusyChange={setBusy} onClose={() => setRenaming(null)} onSaved={() => { setRenaming(null); refresh(); setMessage("关联名称已更新"); }} />}

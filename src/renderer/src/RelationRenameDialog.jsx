@@ -1,8 +1,9 @@
 import RelationFields from "./RelationFields.jsx";
 import { useState } from "react";
-import { Save, X } from "lucide-react";
-import Dialog from "./Dialog.jsx";
+import { Save } from "lucide-react";
+import { DialogFrame } from "./ui/ConfirmDialog.jsx";
 import { request } from "./api.js";
+import { Button } from "./ui/Button.jsx";
 
 export default function RelationRenameDialog({ relation, relations, currentId, busy, onBusyChange, onClose, onSaved }) {
   const swapped = currentId !== undefined && Number(currentId) !== relation.sourceId;
@@ -33,9 +34,8 @@ export default function RelationRenameDialog({ relation, relations, currentId, b
     } catch (failure) { setError(failure.message); }
     finally { onBusyChange(false); }
   }
-  return <Dialog open label={title} className="wiki-dialog" onClose={() => !busy && onClose()}>
-    <form onSubmit={submit}>
-      <header className="wiki-dialog-header"><h2>{title}</h2><button type="button" className="icon-only" aria-label="关闭重命名" disabled={busy} onClick={onClose}><X size={18} /></button></header>
+  return <DialogFrame bare title={title} className="wiki-dialog" closeLabel="关闭重命名" busy={busy} onClose={onClose} onSubmit={submit}
+    footer={<><button type="button" disabled={busy} onClick={onClose}>取消</button><Button variant="primary" type="submit" disabled={busy}><Save size={16} />{busy ? "正在保存…" : batch ? "保存全部" : "保存"}</Button></>}>
       <div className="wiki-form-fields">
         {batch && <p className="wiki-muted">将修改这组的 {relations.length} 条关联。</p>}
         {batch || relation.type === "title" ? <label>关联名称<input autoFocus value={name} maxLength={60} disabled={busy} onChange={(event) => setName(event.target.value)} /></label>
@@ -44,7 +44,5 @@ export default function RelationRenameDialog({ relation, relations, currentId, b
         {tags.length > 0 && <p className="wiki-muted">此修改会应用到 {tags.map((tag) => `#${tag}`).join("、")} 下所有内容的对应标签关联，包括未在当前画布显示的内容及以后加入的内容。</p>}
         {error && <p className="wiki-error" role="alert">{error}</p>}
       </div>
-      <footer className="wiki-dialog-footer"><button type="button" disabled={busy} onClick={onClose}>取消</button><button className="primary" disabled={busy}><Save size={16} />{busy ? "正在保存…" : batch ? "保存全部" : "保存"}</button></footer>
-    </form>
-  </Dialog>;
+  </DialogFrame>;
 }

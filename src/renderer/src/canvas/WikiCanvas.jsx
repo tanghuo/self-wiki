@@ -14,7 +14,8 @@ import { relationshipGraph } from "./canvasLayout.js";
 import { maxCanvasNodes, maxCanvasEdges, canvasBatchSize } from "../../../shared/domain/canvas.js";
 import { elementLabel, relationLabel } from "../../../shared/domain/elements.js";
 import "@xyflow/react/dist/style.css";
-import PageHeader from "../ui/PageHeader.jsx";
+import FloatingLayer from "../ui/FloatingLayer.jsx";
+import { Button } from "../ui/Button.jsx";
 import "./canvas.css";
 import Select from "../Select.jsx";
 
@@ -311,8 +312,12 @@ export default function WikiCanvas({ readOnly, revision, addedIds, externalBusy 
     if (relations.length) setRenaming(relations);
   }
   return <section className="wiki-canvas" aria-label="关系画布">
-    <PageHeader className="canvas-heading" title="关系画布" subtitle="看清内容之间的关联：拖动整理位置，点连线可以改关系名称。"
-      actions={!readOnly && <>{headerActions}<button className={quietAdd ? "" : "primary"} disabled={blocked} onClick={onAdd}><Plus size={16} />添加内容</button></>} />
+    {/* The same floating tool layer as the library: search on top, actions top-right, views and filters in the bottom capsule. */}
+    <FloatingLayer className="canvas-float" headerClassName="canvas-heading" filtersClassName="canvas-float-capsule" filtersLabel="画布视图与筛选"
+      title={<h1 className="page-title">关系画布</h1>}
+      search={<label className="wiki-search"><Search size={17} /><input aria-label="搜索画布内容" placeholder="搜索文字或文件名…" value={q} disabled={blocked} onChange={(event) => setQ(event.target.value)} /></label>}
+      actions={!readOnly && <>{headerActions}<Button variant={quietAdd ? "secondary" : "primary"} disabled={blocked} onClick={onAdd}><Plus size={16} />添加内容</Button></>}
+      filters={<>
     <div className="canvas-viewbar">
       <div className="canvas-view-switch ui-segmented" role="group" aria-label="画布视图">
         <button aria-pressed={view === "relations"} disabled={blocked || loading} onClick={() => { if (view !== "relations") changeArrangement("relations"); }}><Network size={15} />关系视图</button>
@@ -322,13 +327,14 @@ export default function WikiCanvas({ readOnly, revision, addedIds, externalBusy 
       {view === "tags" && <nav className="canvas-breadcrumb" aria-label="标签路径"><button disabled={blocked || loading || isOverview} onClick={() => changeTag("")}>{!isOverview && <ArrowLeft size={14} />}标签总览</button>{!isOverview && <><ChevronRight size={14} /><strong title={filters.tag}>{filters.tag}</strong></>}</nav>}
     </div>
     <div className="canvas-toolbar">
-      <label className="wiki-search"><Search size={17} /><input aria-label="搜索画布内容" placeholder="搜索文字或文件名…" value={q} disabled={blocked} onChange={(event) => setQ(event.target.value)} /></label>
       <Select className="wiki-canvas-tag" aria-label="筛选画布标签" value={tag} disabled={blocked || loading} onChange={changeTag} options={[{ value: "", label: view === "tags" ? "标签总览" : "全部标签" }, ...Array.from(new Set([...(tags.data?.tags || []), ...(tag ? [tag] : [])])).map((name) => ({ value: name, label: name }))]} />
       <button disabled={blocked || loading} onClick={() => load({ reset: true, limit: canvasBatchSize })} title="重新加载筛选结果"><RefreshCw size={15} />刷新</button>
       <button disabled={!nodes.length} onClick={() => flow.current?.fitView({ padding: 0.1, maxZoom: 1, duration: 250 })}><Maximize2 size={15} />适应画面</button>
       <button aria-pressed={showAllEdges} disabled={!edges.length} onClick={() => setShowAllEdges((value) => !value)}><Network size={15} />全部连线</button>
       {!readOnly && view === "flat" && <button disabled={!nodes.length || !canInteract} onClick={() => saveLayout(elementNodes.map(({ id, position }) => ({ id: Number(id), ...position })))}><Save size={15} />保存布局</button>}
     </div>
+      </>}>
+    {view !== "tags" && <p className="canvas-view-help">看清内容之间的关联：拖动整理位置，点连线可以改关系名称。</p>}
     {view === "relations" && <div className="canvas-relation-guide"><span><i />连接中心</span><span className="canvas-guide-line" /><span>关联内容</span>{graph.groups.length > 0 && <button disabled={!canInteract} onClick={() => { setSelected(null); setEdgeId(null); setExpandedGroups(new Set(graph.groups.every((group) => expandedGroups.has(group.id)) ? [] : graph.groups.map((group) => group.id))); }}>{graph.groups.every((group) => expandedGroups.has(group.id)) ? "收起图片组" : "展开图片组"}</button>}</div>}
     {view === "tags" && <p className="canvas-view-help">{isOverview ? "打开标签查看内容与关联；无标签内容直接展示。多标签内容会出现在各个对应分组。" : readOnly ? "展开关联也可以找到其他标签下的内容。" : "编辑内容和标签会同步到所有视图；展开关联也可以找到其他标签下的内容。"}</p>}
     {tags.error && <p className="wiki-error" role="alert">标签列表读取失败<button onClick={() => setDetailRevision((value) => value + 1)}>重试</button></p>}
@@ -364,5 +370,6 @@ export default function WikiCanvas({ readOnly, revision, addedIds, externalBusy 
     {renaming && <RelationRenameDialog relation={renaming[0]} relations={renaming} busy={busy || externalBusy} onBusyChange={setBusy}
       onClose={() => setRenaming(null)} onSaved={() => { setRenaming(null); changed(); setMessage("关联名称已更新"); }} />}
     {message && <p className="canvas-status" role="status">{message}</p>}
+    </FloatingLayer>
   </section>;
 }

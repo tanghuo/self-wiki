@@ -20,8 +20,10 @@ function soften(options, atmosphere) {
   };
 }
 
+// The floating tool layer is a structural component now (ui/FloatingLayer.jsx), so the glass
+// follows the component instead of probing for position: fixed.
 function isLibraryFloatingSearch(element) {
-  return element && getComputedStyle(element).position === "fixed";
+  return Boolean(element?.closest(".ui-float-search"));
 }
 
 /**
@@ -61,46 +63,7 @@ export default function LiquidGlassController({ enabled, atmosphere = "full" }) 
     }
 
     function attach(element, kind) {
-      if (!element || surfaces.some((entry) => entry.element === element || (kind === "plate" && entry.source === element))) return;
-      if (kind === "plate") {
-        const source = element;
-        const plate = document.createElement("div");
-        plate.className = "lg-plate";
-        plate.setAttribute("aria-hidden", "true");
-        document.body.appendChild(plate);
-        source.classList.add("lg-has-plate");
-        const sync = () => {
-          const box = source.getBoundingClientRect();
-          Object.assign(plate.style, {
-            position: "fixed", left: `${box.left}px`, top: `${box.top}px`,
-            width: `${Math.max(0, box.width)}px`, height: `${Math.max(0, box.height)}px`,
-            borderRadius: "999px", zIndex: "11", pointerEvents: "none",
-          });
-        };
-        const rebuild = () => {
-          if (!source.isConnected) return;
-          sync();
-          if (plate.clientWidth && plate.clientHeight) buildLiquidFilter(plate, soften(SURFACE_OPTS.plate, atmosphere));
-        };
-        const observer = new ResizeObserver(() => {
-          clearTimeout(rebuildTimer);
-          rebuildTimer = window.setTimeout(rebuild, 80);
-        });
-        observer.observe(source);
-        window.addEventListener("resize", rebuild);
-        rebuild();
-        surfaces.push({
-          element: plate, kind, source, rebuild,
-          dispose: () => {
-            observer.disconnect();
-            window.removeEventListener("resize", rebuild);
-            clearLiquidFilter(plate);
-            plate.remove();
-            source.classList.remove("lg-has-plate");
-          },
-        });
-        return;
-      }
+      if (!element || surfaces.some((entry) => entry.element === element)) return;
       const rebuild = () => {
         if (!element.isConnected) return;
         const box = element.getBoundingClientRect();
@@ -123,17 +86,16 @@ export default function LiquidGlassController({ enabled, atmosphere = "full" }) 
       // Drop detached surfaces first.
       for (let i = surfaces.length - 1; i >= 0; i--) {
         const entry = surfaces[i];
-        const alive = entry.kind === "plate" ? entry.source?.isConnected : entry.element?.isConnected;
+        const alive = entry.element?.isConnected;
         if (!alive) { entry.dispose(); surfaces.splice(i, 1); }
       }
       attach(document.querySelector(".wiki-sidebar"), "sidebar");
-      const search = document.querySelector(".wiki-main .wiki-toolbar .wiki-search");
+      const search = document.querySelector(".wiki-main .ui-float-search .wiki-search");
       if (isLibraryFloatingSearch(search)) attach(search, "search");
-      const toolbar = document.querySelector(".wiki-main .wiki-toolbar");
-      if (toolbar && getComputedStyle(toolbar).position === "fixed"
-        && !document.querySelector(".app-layout.agent-docked")) {
-        attach(toolbar, "plate");
-      }
+      const toolbar = document.querySelector(".wiki-main .ui-float-capsule.wiki-toolbar");
+      // The capsule is an in-flow sticky element now, so the glass goes on the capsule itself
+      // (a body-level fixed plate could not follow it while the page scrolls).
+      if (toolbar) attach(toolbar, "plate");
     }
 
     const scheduleScan = () => {

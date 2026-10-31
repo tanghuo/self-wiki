@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Clock, Play, Plus, Search } from "lucide-react";
 import useWikiResource from "../../useWikiResource.js";
 import WikiPaging from "../../WikiPaging.jsx";
-import Dialog from "../../Dialog.jsx";
+import ConfirmDialog from "../../ui/ConfirmDialog.jsx";
 import VideoMarkerEditor from "./VideoMarkerEditor.jsx";
 import { request } from "../../api.js";
 import { markerTimeLabel } from "../../../../shared/domain/videoMarkers.js";
@@ -112,10 +112,9 @@ export default function VideoMarkers({ videoId, playerRef, initialMarkerId, init
     <WikiPaging pagination={data.data?.pagination} onPage={setPage} disabled={busy || data.loading} />
     {editing && <VideoMarkerEditor key={editing.id || "new"} marker={editing} videoId={videoId} playerRef={playerRef} onClose={() => setEditing(null)} onBusyChange={onBusyChange}
       onSaved={() => { setEditing(null); setPage(1); changed(); }} />}
-    {deleting && <Dialog open label="删除视频标注？" className="wiki-dialog" onClose={() => !busy && setDeleting(null)}>
-      <header className="wiki-dialog-header"><h2>删除视频标注？</h2></header><p>删除 {markerTimeLabel(deleting)} 的标注、片段标签和片段关联。原视频及关联内容会保留。</p>
+    {deleting && <ConfirmDialog title="删除视频标注？" confirmLabel="确认删除标注" busyLabel="正在删除…" busy={busy} onCancel={() => setDeleting(null)} onConfirm={remove}>
+      <p>删除 {markerTimeLabel(deleting)} 的标注、片段标签和片段关联。原视频及关联内容会保留。</p>
       {error && <p className="wiki-error" role="alert">{error}</p>}
-      <footer className="wiki-dialog-footer"><button autoFocus disabled={busy} onClick={() => setDeleting(null)}>取消</button><button className="danger-quiet" disabled={busy} onClick={remove}>确认删除标注</button></footer>
-    </Dialog>}
+    </ConfirmDialog>}
   </section>;
 }

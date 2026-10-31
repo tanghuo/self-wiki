@@ -116,7 +116,7 @@ test("Image selection survives pages, filters, preview, removal and failed saves
   for (const size of [{ width: 1280, height: 800 }, { width: 390, height: 844 }, { width: 320, height: 640 }, { width: 844, height: 390 }]) {
     await page.setViewportSize(size);
     const layout = await picker.evaluate((el) => {
-      const footer = el.querySelector(".wiki-dialog-footer").getBoundingClientRect();
+      const footer = el.querySelector(".ui-dialog-footer").getBoundingClientRect();
       const body = el.querySelector(".wiki-relation-body").getBoundingClientRect();
       const tray = el.querySelector(".wiki-relation-selection").getBoundingClientRect();
       return { fits: el.scrollWidth <= el.clientWidth, footerVisible: footer.bottom <= innerHeight && footer.top >= 0,

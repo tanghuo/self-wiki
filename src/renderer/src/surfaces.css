@@ -1,7 +1,7 @@
 /* Surface layering and typography shared by every theme. Colors come from themes.css:
    sidebar (deepest) → page background → cards and panels (raised). */
-.wiki-main h1 { font-size: var(--fs-page); font-weight: 700; letter-spacing: -.6px; line-height: 1.25; }
-.wiki-detail-header h1 { font-size: var(--fs-page); font-weight: 650; line-height: 1.4; }
+.wiki-main h1 { font-size: var(--fs-page); font-weight: 600; letter-spacing: -.6px; line-height: 1.25; }
+.wiki-detail-header h1 { font-size: var(--fs-page); font-weight: 600; line-height: 1.4; }
 .agent-source-body .wiki-detail-header h1 { font-size: var(--fs-page); }
 .wiki-search { min-height: var(--h-md); background: var(--panel); border-color: var(--line); box-shadow: var(--e-1); }
 
@@ -17,7 +17,7 @@
 .wiki-card.is-text.has-material:not(.wiki-related-item *)::before { background: var(--strip-material); }
 .wiki-card.is-text:not(.wiki-related-item *) .wiki-card-text { padding-left: var(--sp-6); }
 .wiki-card-text p { color: var(--muted); font-size: var(--fs-body); line-height: 1.75; }
-.wiki-card-text p::first-line { color: var(--ink); font-size: var(--fs-body); font-weight: 700; }
+.wiki-card-text p::first-line { color: var(--ink); font-size: var(--fs-body); font-weight: 600; }
 
 @media (max-width: 760px) {
   .wiki-main h1 { font-size: var(--fs-page); }

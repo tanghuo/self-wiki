@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, FileText, Video, Search, X, ZoomIn } from "lucide-react";
-import Dialog from "./Dialog.jsx";
+import { Check, FileText, Video, Search, ZoomIn } from "lucide-react";
+import { DialogFrame } from "./ui/ConfirmDialog.jsx";
 import { apiUrl } from "./api.js";
 import { elementLabel } from "../../shared/domain/elements.js";
 import useWikiResource from "./useWikiResource.js";
@@ -8,6 +8,7 @@ import WikiPaging from "./WikiPaging.jsx";
 import { maxChatImages } from "../../shared/domain/chat.js";
 import VideoPlayer from "./VideoPlayer.jsx";
 import Select from "./Select.jsx";
+import { Button } from "./ui/Button.jsx";
 
 export default function ChatSourcePicker({ selected, onChange, busy, onClose, limit = 12, imageLimit = maxChatImages }) {
   const [q, setQ] = useState(""), [kind, setKind] = useState(""), [tag, setTag] = useState("");
@@ -28,8 +29,7 @@ export default function ChatSourcePicker({ selected, onChange, busy, onClose, li
       : current.length < limit ? [...current, { ...element, label: element.label || elementLabel(element) }] : current);
   }
   const label = (element) => element.label || elementLabel(element);
-  return <><Dialog open label="选择会话资料" className="wiki-dialog chat-source-dialog" onClose={onClose}>
-    <header className="wiki-dialog-header"><div><h2>从资料库选择</h2><p className="wiki-muted">可跨页勾选，最多 {limit} 份；本轮图片合计最多 {maxChatImages} 张，当前还可选择 {Math.max(0, imageLimit - images)} 张。</p></div><button className="icon-only" aria-label="关闭从资料库选择" onClick={onClose}><X size={18} /></button></header>
+  return <><DialogFrame bare label="选择会话资料" className="wiki-dialog chat-source-dialog" onClose={onClose} title="从资料库选择" description={<>可跨页勾选，最多 {limit} 份；本轮图片合计最多 {maxChatImages} 张，当前还可选择 {Math.max(0, imageLimit - images)} 张。</>} closeLabel="关闭从资料库选择" footer={<><span role="status">已选 {selected.length} / {limit}{selected.length === limit ? " · 已达上限，可取消后替换" : ""}</span>{!showSelected && <WikiPaging pagination={results.data?.pagination} onPage={setPage} disabled={results.loading} />}<Button variant="primary" type="submit" onClick={onClose}>完成选择</Button></>}>
     <div className="chat-source-controls">
       <div className="chat-source-filters">
         <label className="wiki-search"><Search size={17} /><input autoFocus aria-label="搜索会话资料" disabled={showSelected} value={q} onChange={(e) => { setQ(e.target.value); setPage(1); }} placeholder="搜索文字或文件名…" /></label>
@@ -51,16 +51,13 @@ export default function ChatSourcePicker({ selected, onChange, busy, onClose, li
       </article>)}</div>
       {!visible.length && (showSelected || results.data) && <p className="wiki-empty-inline">{showSelected ? "还没有加入本轮资料，返回资料库开始勾选。" : "没有匹配的资料，试试其他关键词、类型或标签。"}</p>}
     </div>
-    <footer className="wiki-dialog-footer"><span role="status">已选 {selected.length} / {limit}{selected.length === limit ? " · 已达上限，可取消后替换" : ""}</span>{!showSelected && <WikiPaging pagination={results.data?.pagination} onPage={setPage} disabled={results.loading} />}<button className="primary" onClick={onClose}>完成选择</button></footer>
-  </Dialog>{preview && <SourcePreview element={preview} selected={ids.has(preview.id)} disabled={busy || full(preview)} onToggle={toggle} onClose={() => setPreview(null)} />}</>;
+  </DialogFrame>{preview && <SourcePreview element={preview} selected={ids.has(preview.id)} disabled={busy || full(preview)} onToggle={toggle} onClose={() => setPreview(null)} />}</>;
 }
 
 function SourcePreview({ element, selected, disabled, onToggle, onClose }) {
   const [retry, setRetry] = useState(0);
   const detail = useWikiResource(`/api/elements/${element.id}`, retry);
-  return <Dialog open label="资料预览" className="wiki-dialog chat-source-preview" onClose={onClose}>
-    <header className="wiki-dialog-header"><h2>资料预览 · #{element.id}</h2><button className="icon-only" aria-label="关闭资料预览" onClick={onClose}><X size={18} /></button></header>
+  return <DialogFrame bare label="资料预览" className="wiki-dialog chat-source-preview" onClose={onClose} title={<>资料预览 · #{element.id}</>} closeLabel="关闭资料预览" footer={<><span>{detail.data?.tags?.join(" · ")}</span><Button variant="primary" type="submit" aria-pressed={selected} disabled={disabled || !detail.data} onClick={() => onToggle(detail.data)}>{selected ? "取消选择" : "选择这份资料"}</Button></>}>
     <div className="chat-source-body">{detail.loading && <p role="status">正在加载…</p>}{detail.error && <p role="alert">{detail.error}<button onClick={() => setRetry((n) => n + 1)}>重试</button></p>}{detail.data && (detail.data.kind === "image" ? <img src={apiUrl(detail.data.image.url)} alt={elementLabel(detail.data)} /> : detail.data.kind === "video" ? <><VideoPlayer element={detail.data} /><p className="wiki-muted">视频暂不支持作为 AI 资料。</p></> : <p className="chat-source-full-text">{detail.data.body}</p>)}</div>
-    <footer className="wiki-dialog-footer"><span>{detail.data?.tags?.join(" · ")}</span><button className="primary" aria-pressed={selected} disabled={disabled || !detail.data} onClick={() => onToggle(detail.data)}>{selected ? "取消选择" : "选择这份资料"}</button></footer>
-  </Dialog>;
+  </DialogFrame>;
 }

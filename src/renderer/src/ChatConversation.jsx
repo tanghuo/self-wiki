@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AssistantRuntimeProvider, ComposerPrimitive, ThreadPrimitive, useExternalStoreRuntime, MessageNotSentError } from "@assistant-ui/react";
 import { ArrowUp, BookOpen, FileText, LoaderCircle, MessageCircle, Network, Plus, Search, Square, X } from "lucide-react";
 import { imageExecutorDefinition } from "../../shared/domain/imageGeneration.js";
@@ -18,12 +19,13 @@ import { chatMessageParts } from "../../shared/domain/chatMessageParts.js";
 import { maxChatImages, chatImageCount, checkChatImageCount } from "../../shared/domain/chat.js";
 import { ChatContext, post } from "./chatContext.js";
 import { Sources, PastedImages, UserMessage, AssistantMessage } from "./ChatMessages.jsx";
+import { Button } from "./ui/Button.jsx";
 
 export default function Conversation({ id, newDraft, session, connectionApi, models, shell }) {
   const { onStarted, selection, onSelectionConsumed, onSessionsChanged, onActivityChange, onForkCreated } = session;
   const { status: connection, onConnection, onProbe, probing } = connectionApi;
   const { catalog, loading: modelsLoading, error: modelsError, onRefresh: onRefreshModels, preference, onPreference, imagePreference, onImagePreference } = models;
-  const { currentIds, onOpen, onChanged, externalBusy, presentation, workbenchEnabled } = shell;
+  const { currentIds, onOpen, onChanged, externalBusy, presentation, workbenchEnabled, resourceHost } = shell;
   const [data, setData] = useState(null), [older, setOlder] = useState([]), [olderAvailable, setOlderAvailable] = useState(false);
   const [olderProposals, setOlderProposals] = useState([]);
   const [gap, setGap] = useState(null), [gapLoading, setGapLoading] = useState(false);
@@ -283,7 +285,7 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
     event.preventDefault(); event.stopPropagation();
     if (running || blocked || imageUpload.current || sendInFlight.current) { setError("请等待当前操作完成后再粘贴图片。"); return; }
     if (sources.length + attachments.length + files.length > 12) { setError("最多加入 12 份资料，请移除部分资料后重新粘贴。"); return; }
-    if (chatImageCount(sources, attachments) + files.length > maxChatImages) { setError(`本轮图片合计最多 ${maxChatImages} 张，请减少 Wiki 图片或粘贴图片后重试。`); return; }
+    if (chatImageCount(sources, attachments) + files.length > maxChatImages) { setError(`本轮图片合计最多 ${maxChatImages} 张，请减少内容库图片或粘贴图片后重试。`); return; }
     if (files.some((file) => file.size > maxImageBytes)) { setError("每张图片必须在 25 MiB 以内。"); return; }
     const upload = new AbortController();
     imageUpload.current = upload; setUploadingImages(true); setError("");
@@ -336,7 +338,7 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
   const proposals = [...new Map([...olderProposals, ...(data?.proposals || [])].map((p) => [p.id, p])).values()].sort((a, b) => b.id - a.id);
   const latestImage = images.at(-1);
   return <ChatContext.Provider value={{ onOpen, onArchive: archive, onExtract: extract, onEdit: editMessage, onSelectVersion: selectVersion, onVersionRendered, onFork: fork, onPreview: setPreview, onReference: reference, referenceDisabled: running || blocked, changed: (proposal) => { setOlderProposals((p) => [...p.filter((item) => item.id !== proposal.id), proposal]); onChanged(); onSessionsChanged(); }, externalBusy, proposals, setError }}>
-    <div className={`chat-stage${latestImage && presentation === "page" ? " has-preview" : ""}`}>
+    <div className="chat-stage">
     <AssistantRuntimeProvider runtime={runtime}><ThreadPrimitive.Root className="chat-thread">
       <ThreadPrimitive.Viewport ref={viewportRef} className="chat-viewport" autoScroll={running || sending} scrollToBottomOnInitialize={!focusedTurn}>
         {olderAvailable && <button className="text-button" onClick={loadOlder}>加载更早消息</button>}
@@ -344,8 +346,8 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
         {!turns.length && <div className="chat-empty">{presentation !== "page" && <span className="chat-welcome-mark"><MessageCircle size={28} /></span>}
           {presentation === "page" ? <><h2>新会话</h2>
             <div className="chat-starters">{[
-              { title: "查找资料", icon: Search, example: "例：海边旅行相关的笔记有哪些？", prompt: "帮我查找 Wiki 中关于…的资料，梳理要点并标明来源。" },
-              { title: "整理知识", icon: Network, example: "例：给最近的图片建议标签和关联", prompt: "帮我梳理 Wiki 中的内容，建议可以整理的主题、标签和关联。" },
+              { title: "查找资料", icon: Search, example: "例：海边旅行相关的笔记有哪些？", prompt: "帮我查找内容库中关于…的资料，梳理要点并标明来源。" },
+              { title: "整理知识", icon: Network, example: "例：给最近的图片建议标签和关联", prompt: "帮我梳理内容库中的内容，建议可以整理的主题、标签和关联。" },
               { title: "生成内容", icon: FileText, example: "例：用选中的资料写一份旅行计划", prompt: "根据我选择的资料，帮我写一份新笔记，并附上参考来源。" },
             ].map(({ title, icon: Icon, example, prompt }) => <button key={title} disabled={running || sendBlocked} onClick={() => draft.setText(prompt)}><Icon size={19} /><strong>{title}</strong><span>{example}</span></button>)}</div>
           </> : <><h3>新会话</h3></>}
@@ -402,17 +404,28 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
             <div className="chat-composer-sources"><button type="button" className="text-button" aria-label="从库中选择" title="从资料库加入本轮（资料篮是跨会话收藏）" aria-expanded={picker} disabled={running || blocked} onClick={() => setPicker(!picker)}><Plus size={20} /><span>从库中选择{sources.length ? ` · ${sources.length}` : ""}</span></button>{currentIds.length > 0 && <button type="button" className="text-button" disabled={running || blocked} onClick={addCurrent}>加入当前内容</button>}</div>
             <div className="chat-composer-tools" ref={setComposerTools} />
             {directImage ? <span className="wiki-muted">{imageExecutorDefinition(imageOptions.executor).label}</span> : <ChatModelPicker model={model} effort={effort} catalog={catalog} disabled={running || sendBlocked} loading={modelsLoading} error={modelsError} onChange={selectModel} onRefresh={onRefreshModels} />}
-            {running ? <ComposerPrimitive.Cancel aria-label="停止生成" title={stopping ? "正在停止…" : "停止生成"} aria-busy={stopping} disabled={stopping}><Square size={15} fill="currentColor" aria-hidden="true" /></ComposerPrimitive.Cancel> : <button type="submit" className="primary" aria-label="发送消息" title={sendBlocked && codexDown && needsCodex ? `请先连接 ${chatEngineLabel(connection?.engine)} 再发送` : !draft.text.trim() && !hasImages ? "输入问题后发送" : "发送（Enter）"} disabled={sendBlocked || !imageReady || (!draft.text.trim() && !hasImages && !(directImage && sources.length))}><ArrowUp size={17} /></button>}</div>
+            {running ? <ComposerPrimitive.Cancel aria-label="停止生成" title={stopping ? "正在停止…" : "停止生成"} aria-busy={stopping} disabled={stopping}><Square size={15} fill="currentColor" aria-hidden="true" /></ComposerPrimitive.Cancel> : <Button variant="primary" type="submit" aria-label="发送消息" title={sendBlocked && codexDown && needsCodex ? `请先连接 ${chatEngineLabel(connection?.engine)} 再发送` : !draft.text.trim() && !hasImages ? "输入问题后发送" : "发送（Enter）"} disabled={sendBlocked || !imageReady || (!draft.text.trim() && !hasImages && !(directImage && sources.length))}><ArrowUp size={17} /></Button>}</div>
         </ComposerPrimitive.Root>
       </div>
     </ThreadPrimitive.Root></AssistantRuntimeProvider>
-    {latestImage && presentation === "page" && (() => {
+    {/* The Agent page's right column is always there: the latest generated image when there is one,
+        otherwise the sources this conversation's latest turn cited. Rendered into the shell's panel. */}
+    {resourceHost && createPortal((() => {
+      if (!latestImage) {
+        const cited = turns.at(-1)?.sources || [];
+        return <div className="chat-resources-empty" role="region" aria-label="本轮引用资料">
+          <h2>本轮引用资料</h2>
+          {cited.length ? <ol>{cited.map((source, index) => <li key={source.id}><button type="button" className="text-button" aria-label={`预览栏引用：${source.label}`} disabled={externalBusy} onClick={() => onOpen(source.id)}><span className="chat-result-preview-index">{index + 1}</span>{source.kind === "image" ? <img src={apiUrl(`/api/elements/${source.id}/thumbnail?width=400`)} alt="" /> : <FileText size={14} aria-hidden="true" />}<span>{source.label}</span></button></li>)}</ol>
+            : <p className="agent-shell-empty">生成的图片和回答引用的资料会显示在这里。</p>}
+        </div>;
+      }
+
       const shown = images.find((image) => image.artifact === stagePick) || latestImage;
       const position = images.indexOf(shown);
       const turn = turns.find((entry) => entry.id === shown.turnId);
       const cited = turn?.sources || [];
       const caption = (turn?.text || "").trim().split("\n").find(Boolean) || "生成结果";
-      return <aside className="chat-result-preview" aria-label="生成结果">
+      return <div className="chat-result-preview" role="region" aria-label="生成结果">
         <div className="chat-result-preview-h">
           <div className="ui-segmented" role="group" aria-label="预览内容">
             <button type="button" aria-pressed={stageTab === "result"} onClick={() => setStageTab("result")}>生成结果</button>
@@ -426,8 +439,8 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
         </button> : <div className="chat-result-preview-sources">{cited.length ? cited.map((source, index) => <button type="button" key={source.id} className="chat-result-preview-source" aria-label={`预览栏引用：${source.label}`} disabled={externalBusy} onClick={() => onOpen(source.id)}><span className="chat-result-preview-index">{index + 1}</span>{source.kind === "image" ? <img src={apiUrl(`/api/elements/${source.id}/thumbnail?width=400`)} alt="" /> : <FileText size={18} aria-hidden="true" />}<span>{source.label}</span></button>) : <p className="wiki-muted">这一轮没有引用资料库内容。</p>}</div>}
         {images.length > 1 && <div className="chat-result-preview-strip" role="group" aria-label="切换生成图">{images.map((image, index) => <button type="button" key={image.artifact} aria-label={`切换到第 ${index + 1} 张生成图`} aria-pressed={image === shown} onClick={() => { setStagePick(image.artifact); setStageTab("result"); }}><img src={chatImageUrl(image)} alt="" /></button>)}</div>}
         {stageTab === "result" && cited.length > 0 && <div className="chat-result-preview-cited"><span>本轮引用</span><ol>{cited.slice(0, 3).map((source, index) => <li key={source.id}><span className="chat-result-preview-index">{index + 1}</span>{source.kind === "image" ? <img src={apiUrl(`/api/elements/${source.id}/thumbnail?width=400`)} alt="" /> : <FileText size={14} aria-hidden="true" />}<span>{source.label}</span></li>)}</ol></div>}
-      </aside>;
-    })()}
+      </div>;
+    })(), resourceHost)}
     </div>
     {preview && <ChatImageViewer initial={preview} images={images} turns={turns} progressNotice={data?.progressNotice} stopping={stopping} disabled={running || blocked} onEdit={editImage} onStop={stop} onClose={() => setPreview(null)} />}
   </ChatContext.Provider>;

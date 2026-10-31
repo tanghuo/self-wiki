@@ -1,4 +1,5 @@
 import { Component } from "react";
+import { Button } from "../ui/Button.jsx";
 
 export default class CanvasBoundary extends Component {
   state = { error: null };
@@ -14,7 +15,7 @@ export default class CanvasBoundary extends Component {
       <p>可以重新加载页面后再试，或返回内容库继续浏览。</p>
       <details><summary>错误信息</summary><pre>{String(this.state.error?.message || this.state.error)}</pre></details>
       <div className="wiki-actions">
-        <button className="primary" onClick={() => window.location.reload()}>重新加载页面</button>
+        <Button variant="primary" type="submit" onClick={() => window.location.reload()}>重新加载页面</Button>
         <button onClick={this.props.onBack}>返回内容库</button>
       </div>
     </section>;

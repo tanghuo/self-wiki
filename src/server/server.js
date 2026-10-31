@@ -167,7 +167,7 @@ export async function createServer(options = {}) {
     get credentialFile() { return credentialsPath; },
     close() {
       closing ||= (async () => {
-        await aionuiExperiment.close();
+        await aionuiExperiment.close().catch(error => console.error('AionUi shutdown was not confirmed:', error.message));
         await agentWorkbench.close();
         await agentTasks.close();
         await workflow.close();

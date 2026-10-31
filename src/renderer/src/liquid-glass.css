@@ -68,7 +68,7 @@ html[data-lg-scrolling] .lg-glass {
   z-index: 1;
 }
 
-.wiki-toolbar.lg-has-plate::before {
+.wiki-toolbar.lg-glass::before {
   display: none !important;
 }
 

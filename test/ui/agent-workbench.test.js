@@ -102,8 +102,12 @@ test('workbench starts from a task, keeps the composer visible and recovers a fa
   await page.getByRole('button', { name: '选择项目', exact: true }).filter({ hasText: '界面项目' }).waitFor();
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await page.locator('.workbench-event.assistant').filter({ hasText: '任务完成：检查这个项目' }).waitFor();
+  // The rail follows the finished turn without waiting for the next poll.
+  await page.getByRole('navigation', { name: '工作台会话' }).getByRole('button', { name: '检查这个项目', exact: true }).nth(1).waitFor({ timeout: 500 });
   assert.equal(await page.getByRole('navigation', { name: '工作台会话' }).getByRole('button', { name: '检查这个项目', exact: true }).count(), 2);
-  await page.locator('.workbench-draft-state[data-saved="true"]').waitFor();
+  // The label is empty once the turn has finished, so wait for the saved marker only.
+  await page.locator('.workbench-draft-state[data-saved="true"]').waitFor({ state: 'attached' });
+  await page.getByRole('button', { name: '发送', exact: true }).waitFor({ timeout: 500 });
   assert.equal(imageCounts[0], 1);
   await page.getByRole('button', { name: '查看参考图', exact: true }).click();
   const imagePreview = page.getByRole('dialog', { name: '参考图', exact: true });
@@ -145,13 +149,12 @@ test('workbench starts from a task, keeps the composer visible and recovers a fa
   const composerGap = 1000 - (composer.y + composer.height);
   assert.ok(composer.y >= 0 && composerGap >= 12 && composerGap <= 40, `composer bottom gap ${composerGap}`);
   await page.screenshot({ path: '.local/workbench-ui/conversation.png' });
-  assert.equal(await page.getByRole('complementary', { name: '会话详情' }).count(), 0);
-  await page.getByRole('button', { name: '会话设置' }).click();
-  await page.getByRole('complementary', { name: '会话详情' }).waitFor();
+  // The session panel is the AgentShell's right column: always there, no toggle.
+  assert.equal(await page.getByRole('button', { name: '会话设置' }).count(), 0);
+  await page.getByRole('complementary', { name: '会话详情' }).getByRole('heading', { name: '会话设置' }).waitFor();
   assert.equal(await page.getByRole('complementary', { name: '会话详情' }).getByRole('img').count(), 0);
   assert.equal(await page.getByRole('heading', { name: '已保存产物' }).count(), 0);
   assert.equal(await page.getByRole('button', { name: '保存到 Wiki', exact: true }).count(), 0);
-  await page.getByRole('button', { name: '会话设置' }).click();
   await page.getByLabel('任务内容').fill('待发送草稿'); await page.getByLabel('任务内容').press('Shift+Enter');
   assert.equal(await page.getByLabel('任务内容').inputValue(), '待发送草稿\n'); assert.equal(prompts.length, 2);
   if (page.viewportSize().width <= 900) await page.getByRole('button', { name: '切换会话列表' }).click();
@@ -164,7 +167,7 @@ test('workbench starts from a task, keeps the composer visible and recovers a fa
   assert.equal((await api('/sessions')).sessions.length, 2); assert.equal(prompts.length, 2);
   await page.getByRole('button', { name: '发送', exact: true }).click();
   await page.locator('.workbench-event.assistant').filter({ hasText: '任务完成：保留失败的首次任务' }).waitFor();
-  await page.locator('.workbench-draft-state[data-saved="true"]').waitFor();
+  await page.locator('.workbench-draft-state[data-saved="true"]').waitFor({ state: 'attached' });
   assert.equal((await api('/sessions')).sessions.length, 2); assert.equal(prompts.length, 3);
   await page.setViewportSize({ width: 390, height: 844 });
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
@@ -259,7 +262,7 @@ test('workbench creates trusted scratch, restores approval on refresh, rejects w
   await page.getByRole('button', { name: '带结果继续', exact: true }).click();
   await page.getByRole('button', { name: /^参考图/ }).waitFor();
   await page.getByRole('button', { name: '保存到 Wiki', exact: true }).click();
-  await page.getByRole('button', { name: '已存入 Wiki', exact: true }).waitFor();
+  await page.getByRole('button', { name: '已存入内容库', exact: true }).waitFor();
   await page.reload();
   await resultTurn.getByRole('img', { name: '生成图片', exact: true }).waitFor();
   assert.equal(generated, 1);

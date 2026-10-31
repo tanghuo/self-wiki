@@ -13,10 +13,10 @@
 }
 /* A real grid box. display:contents made this layer miss pointer hits in Chromium. */
 .workbench-page[data-c-surface="workbench"] .workbench-layout {
-  display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: 58px minmax(0, 1fr);
+  display: grid; grid-template-columns: 240px minmax(0, 1fr) 300px; grid-template-rows: minmax(0, 1fr);
   position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; gap: 0;
 }
-.workbench-topbar { grid-column: 2; grid-row: 1; display: flex; align-items: center; gap: 12px; padding: 0 24px; min-width: 0; }
+.workbench-topbar { flex: 0 0 58px; display: flex; align-items: center; gap: 12px; padding: 0 24px; min-width: 0; }
 .workbench-topbar-title { display: flex; flex: 1; align-items: center; gap: 14px; min-width: 0; }
 .workbench-topbar-title > strong { font-size: 14px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .workbench-topbar-title > span { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 40%; overflow: hidden; color: var(--muted); font-size: 12px; white-space: nowrap; }
@@ -25,7 +25,7 @@
 .workbench-attention { color: var(--bad); font-size: 11px; }
 .workbench-page button.workbench-rail-toggle.icon-only { display: none; }
 .workbench-page[data-c-surface="workbench"] .workbench-sessions {
-  grid-column: 1; grid-row: 1 / 3; position: relative; z-index: 1; padding: 18px 12px; background: var(--bg);
+  grid-column: 1; grid-row: 1; position: relative; z-index: 1; padding: 18px 12px; background: var(--bg);
   border: 0; border-right: 1px solid var(--line); border-radius: 0; box-shadow: none; gap: 3px;
   display: flex; flex-direction: column; overflow-y: auto; justify-content: flex-start;
 }
@@ -73,7 +73,7 @@
 .workbench-approval-picker { position: relative; display: inline-flex; align-items: center; min-width: 0; }
 .workbench-page .workbench-approval-trigger {
   display: inline-flex; align-items: center; gap: 6px; min-width: 0; min-height: var(--h-md); height: var(--h-md);
-  padding: 0 10px; border: 0; border-radius: 999px; background: var(--workbench-selected); box-shadow: none;
+  padding: 0 10px; border: 0; border-radius: 999px; background: transparent; box-shadow: none;
   color: var(--workbench-secondary); font-size: 12px; font-weight: 500; line-height: 1;
 }
 .workbench-page .workbench-approval-trigger > svg { flex-shrink: 0; }
@@ -116,7 +116,7 @@
 .workbench-source-folder { display: grid; justify-items: center; gap: 12px; padding: 28px 16px; border: 1px solid var(--line); border-radius: 12px; text-align: center; }
 .workbench-source-folder p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
 .workbench-sessions > .workbench-muted { margin: 10px; line-height: 1.7; font-size: 12px; }
-.workbench-page[data-c-surface="workbench"] .workbench-conversation { grid-column: 2; grid-row: 2; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: var(--panel); }
+.workbench-page[data-c-surface="workbench"] .workbench-conversation { flex: 1; padding: 0; border: 0; border-radius: 0; box-shadow: none; background: var(--panel); }
 .workbench-scroll { padding: 30px 32px 20px; scrollbar-gutter: stable both-edges; }
 .workbench-scroll > * { max-width: 760px; }
 .workbench-timeline { gap: 40px; padding: 0; }
@@ -177,6 +177,9 @@
 .workbench-activity-line > svg { flex-shrink: 0; align-self: center; }
 .workbench-operation-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
 .workbench-operation-state { flex-shrink: 0; color: var(--workbench-caption); font-size: 12px; }
+.workbench-operation-latest { flex-shrink: 0; color: var(--text); font-size: 12px; }
+.workbench-operation[data-latest] .workbench-operation-title { white-space: normal; overflow-wrap: anywhere; font-weight: 500; }
+.workbench-last-operation { flex-basis: 100%; min-width: 0; overflow-wrap: anywhere; }
 .workbench-operation-chevron { color: var(--workbench-caption); transition: transform .15s ease; }
 .workbench-operation[open] > summary > .workbench-operation-chevron { transform: rotate(90deg); }
 .workbench-operation[data-status="running"] > summary { color: var(--ink); }
@@ -247,10 +250,11 @@
 .workbench-inspector { background: var(--workbench-inspector); padding: 20px; }
 .workbench-inspector > h3 { font-size: 13px; font-weight: 600; margin: 0 0 16px; }
 .workbench-page > .workbench-error { position: absolute; z-index: 5; top: 58px; left: max(250px, 25%); right: 16px; margin: 0; padding: 10px; background: var(--bad-soft); border-radius: 8px; }
-.workbench-layout > .workbench-empty { grid-column: 2; grid-row: 2; margin: 24px; align-self: start; }
+.workbench-layout .agent-shell-timeline > .workbench-empty { margin: 24px; align-self: start; }
 @media (max-width: 900px) {
-  .workbench-page[data-c-surface="workbench"] .workbench-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: 52px minmax(0, 1fr); }
-  .workbench-topbar, .workbench-page[data-c-surface="workbench"] .workbench-conversation { grid-column: 1; }
+  .workbench-page[data-c-surface="workbench"] .workbench-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .workbench-page[data-c-surface="workbench"] .workbench-layout > .agent-shell-timeline { grid-row: 1; }
+  .workbench-topbar { flex-basis: 52px; }
   .workbench-page button.workbench-rail-toggle.icon-only { display: inline-flex; flex-shrink: 0; }
   .workbench-page[data-c-surface="workbench"] .workbench-sessions { display: none; }
   .workbench-page .rail-open .workbench-sessions { display: flex; position: absolute; top: 52px; bottom: 0; left: 0; width: 240px; max-height: none; z-index: 30; box-shadow: 12px 0 24px var(--workbench-shadow-rail); }
@@ -263,13 +267,17 @@
   .workbench-draft-state { font-size: 10px; }
   .workbench-composer-toolbar > .primary { margin-left: auto; }
   .workbench-page > .workbench-error { left: 12px; }
-  .workbench-layout > .workbench-empty { grid-column: 1; }
 }
 
 @media (max-width: 600px) {
   .workbench-composer-toolbar { gap: 6px; flex-wrap: wrap; }
 }
 .workbench-page[data-c-surface="workbench"] .workbench-chat-column > .workbench-composer { margin-bottom: 20px; }
+/* The composer lines up with the transcript column (scroll padding 32px + stable scrollbar gutters), now that
+   the always-present session panel makes the centre column narrower than the 760px transcript on most windows. */
+@media (min-width: 901px) {
+  .workbench-page[data-c-surface="workbench"] .workbench-chat-column > .workbench-composer { box-sizing: border-box; width: min(760px, calc(100% - 94px)); margin-inline: auto; }
+}
 @media (max-height: 500px) {
   .workbench-start { justify-content: flex-start; padding-block: 16px; }
   .workbench-welcome { margin-bottom: 12px; }
@@ -277,7 +285,7 @@
 @media (max-height: 420px) {
   .wiki-shell.workbench-shell > .wiki-sidebar { padding-block: 4px; }
   .wiki-shell.workbench-shell > .wiki-main.workbench-page { min-height: 0; max-height: 100%; overflow: hidden; }
-  .workbench-page[data-c-surface="workbench"] .workbench-layout { grid-template-rows: 40px minmax(0, 1fr); }
+  .workbench-topbar { flex-basis: 40px; }
   .workbench-start { padding-block: 4px; }
   .workbench-welcome { margin-bottom: 6px; }
   .workbench-welcome h2 { font-size: 20px; line-height: 1.2; }
@@ -287,4 +295,7 @@
   .workbench-composer-toolbar { flex-wrap: nowrap; gap: 6px; padding-top: 4px; }
   .workbench-page .workbench-machine { display: none; }
   .workbench-composer-toolbar .workbench-project-chip { max-width: 96px; }
+}
+@media (min-width: 901px) and (max-width: 1100px) {
+  .workbench-page[data-c-surface="workbench"] .workbench-layout { grid-template-columns: 200px minmax(0, 1fr) 240px; }
 }

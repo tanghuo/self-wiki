@@ -13,6 +13,7 @@ import ChatSourcePicker from "./ChatSourcePicker.jsx";
 import { chatImageUrl } from "./ChatImageViewer.jsx";
 import { maxChatImages, chatImageCount, checkChatImageCount } from "../../shared/domain/chat.js";
 import { ChatContext, post } from "./chatContext.js";
+import { Button } from "./ui/Button.jsx";
 
 function Sources({ sources, allowReference = true, label = "已读取资料", attachments = false, onRemove, onReorder, onAdd, disabled = false }) {
   const { onOpen, externalBusy, onReference, referenceDisabled } = useContext(ChatContext);
@@ -91,7 +92,7 @@ function Proposal({ proposal: p }) {
     } catch (e) { setError(e.message); } finally { setBusy(false); }
   }
   const pending = p.state === "pending", locked = busy || externalBusy;
-  return <section className="chat-proposal" aria-label="Wiki 修改建议">
+  return <section className="chat-proposal" aria-label="内容修改建议">
     <header><strong>{p.payload.kind === "create_text" ? "新文字" : p.payload.kind === "add_tags" ? "添加标签" : "添加关联"}</strong><span>{({ pending: "待采纳", accepted: "已采纳", rejected: "已拒绝", undone: "已撤销" })[p.state]}</span></header>
     <p className="wiki-muted">{p.payload.reason}</p>
     {p.payload.excerpts?.length > 0 && <details className="chat-excerpts"><summary>查看提取依据 · {p.payload.excerpts.length} 段原文</summary>{p.payload.excerpts.map((entry, index) => <blockquote key={index}><small>{({ user: "用户", assistant: "回答", tool: "工具提示词" })[entry.role]}</small><pre>{entry.deleted ? "这段原文已删除" : entry.quote}</pre></blockquote>)}</details>}
@@ -100,7 +101,7 @@ function Proposal({ proposal: p }) {
       <TagInput value={tags} onChange={setTags} disabled={locked} label="草稿标签" />
     </> : <p className="chat-saved-preview">{p.payload.body.slice(0, 180)}</p> : p.payload.kind === "add_tags" ? <p>为 #{p.payload.elementId} 添加：{p.payload.tags.join("、")}</p> : <p>#{p.payload.sourceId} — {relationLabel(p.payload, p.payload.sourceId)} {p.payload.direction && p.payload.direction !== "symmetric" ? "→" : "↔"} #{p.payload.targetId}</p>}
     <Sources sources={p.sources} />
-    <footer>{pending ? <><button className="primary" disabled={locked || (p.payload.kind === "create_text" && !body.trim())} onClick={() => act("accept")}><Check size={14} />{busy ? "处理中…" : "采纳并保存"}</button><button className="text-button" disabled={locked} onClick={() => act("reject")}>拒绝</button></> : p.state === "accepted" ? <>
+    <footer>{pending ? <><button className="text-button" disabled={locked} onClick={() => act("reject")}>拒绝</button><Button variant="primary" type="submit" disabled={locked || (p.payload.kind === "create_text" && !body.trim())} onClick={() => act("accept")}><Check size={14} />{busy ? "处理中…" : "采纳并保存"}</Button></> : p.state === "accepted" ? <>
       {p.changes.createdId && <button disabled={locked} onClick={() => onOpen(p.changes.createdId)}>查看新内容</button>}<button className="text-button" disabled={locked} onClick={() => act("undo")}>撤销这次修改</button>
     </> : null}</footer>
   </section>;
@@ -171,7 +172,7 @@ function UserMessage() {
     {(editing || text) && <div className={`chat-user-bubble${editing ? " is-editing" : ""}`}>
     {editing ? <div className="chat-message-editor"><label>编辑消息<textarea aria-label="编辑消息内容" value={edited} maxLength={12000} rows={4} autoFocus disabled={saving}
       onChange={(e) => { setEdited(e.target.value); editKey.current = null; }} onKeyDown={(e) => { if (e.key === "Escape" && !saving) setEditing(false); }} /></label>
-      <div className="chat-actions chat-message-editor-actions"><button disabled={saving} onClick={() => setEditing(false)}>取消</button><button className="primary" disabled={referenceDisabled || saving || (!edited.trim() && !editedAttachments.length && !imageEdit && !editedSources.some((source) => source.kind === "image"))} onClick={submit}>{saving ? "正在发送…" : "发送"}</button></div>
+      <div className="chat-actions chat-message-editor-actions"><button disabled={saving} onClick={() => setEditing(false)}>取消</button><Button variant="primary" type="submit" disabled={referenceDisabled || saving || (!edited.trim() && !editedAttachments.length && !imageEdit && !editedSources.some((source) => source.kind === "image"))} onClick={submit}>{saving ? "正在发送…" : "发送"}</Button></div>
     </div> : <MessagePrimitive.Parts />}
     </div>}
     {meta.turnId && <div className="chat-message-actions">
@@ -197,7 +198,7 @@ function GeneratedImage({ artifact, turnId, saved }) {
       <button className="chat-image-preview-button" aria-label="预览生成的图片" onClick={() => onPreview(value)}><img src={url} alt="生成的图片" onLoad={(event) => { const img = event.currentTarget; setImageWidth(Math.min(640, 720 * img.naturalWidth / img.naturalHeight)); setFailed(false); }} onError={() => setFailed(true)} /></button>
       {failed ? <p className="chat-image-card-error" role="alert">图片加载失败，点击重试。<button className="text-button" onClick={() => onPreview(value)}>重新打开图片</button></p> : <div className="chat-image-overlay">
         <button className="chat-image-overlay-edit" aria-label="编辑图片" disabled={referenceDisabled} title={referenceDisabled ? "等待当前操作完成后即可编辑" : "编辑图片"} onClick={() => onPreview({ ...value, editing: true })}>编辑</button>
-        {elementId ? <button className="chat-image-overlay-save" aria-label="已保存 · 查看 Wiki" title="已保存 · 查看 Wiki" disabled={externalBusy} onClick={() => onOpen(elementId)}><BookOpen size={20} strokeWidth={1.8} /></button> : <button className="chat-image-overlay-save" aria-label={saved ? "已删除" : saving ? "正在保存…" : "保存至 Wiki"} title={saved ? "已删除" : saving ? "正在保存…" : "保存至 Wiki"} disabled={saving || externalBusy || Boolean(saved)} onClick={save}><Download size={20} strokeWidth={1.8} /></button>}
+        {elementId ? <button className="chat-image-overlay-save" aria-label="已保存 · 在内容库查看" title="已保存 · 在内容库查看" disabled={externalBusy} onClick={() => onOpen(elementId)}><BookOpen size={20} strokeWidth={1.8} /></button> : <button className="chat-image-overlay-save" aria-label={saved ? "已删除" : saving ? "正在保存…" : "图片存入内容库"} title={saved ? "已删除" : saving ? "正在保存…" : "图片存入内容库"} disabled={saving || externalBusy || Boolean(saved)} onClick={save}><Download size={20} strokeWidth={1.8} /></button>}
       </div>}
     </div>
     {saved?.prompt?.elementId ? <button className="text-button chat-saved-prompt" onClick={() => onOpen(saved.prompt.elementId)}>查看提示词</button>
@@ -284,7 +285,7 @@ function AssistantMessage() {
     <MessagePrimitive.Parts components={{ Text: Markdown, Image: AssistantImage, data: { by_name: { "wiki-tool": AssistantTool } } }} />
     {meta.error && <p className="wiki-error" role="status">{meta.error}</p>}
     {meta.state !== "running" && <div className="chat-answer-actions">
-      {answer && draft === null && <button className="text-button chat-save" disabled={externalBusy} onClick={() => { setDraft(answer); draftKey.current = null; }}><FileText size={13} />保存为 Wiki 内容</button>}
+      {answer && draft === null && <button className="text-button chat-save" disabled={externalBusy} onClick={() => { setDraft(answer); draftKey.current = null; }}><FileText size={13} />回答存入内容库</button>}
       <details className="chat-answer-menu" ref={actionsMenu} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) e.currentTarget.open = false; }}>
         <summary aria-label="回答更多操作" title="更多操作"><MoreHorizontal size={18} /></summary>
         <div className="chat-answer-menu-items">
@@ -294,7 +295,7 @@ function AssistantMessage() {
       </details>
     </div>}
     {meta.saved?.filter((s) => s.key.startsWith("text:") && s.elementId).map((s) => <button key={s.key} className="text-button" disabled={externalBusy} onClick={() => onOpen(s.elementId)}>查看已保存文字</button>)}
-    {draft !== null && <div className="chat-manual-draft"><label className="chat-field">保存内容<textarea aria-label="保存内容" value={draft} rows={6} maxLength={12000} disabled={saving} onChange={(e) => { setDraft(e.target.value); draftKey.current = null; }} /></label><div className="chat-actions"><button className="primary" disabled={saving || externalBusy || !draft.trim()} onClick={saveContent}>保存至 Wiki</button><button disabled={saving || externalBusy || !draft.trim()} onClick={saveDraft}>生成保存建议</button><button className="text-button" disabled={saving} onClick={() => setDraft(null)}>取消</button></div></div>}
+    {draft !== null && <div className="chat-manual-draft"><label className="chat-field">保存内容<textarea aria-label="保存内容" value={draft} rows={6} maxLength={12000} disabled={saving} onChange={(e) => { setDraft(e.target.value); draftKey.current = null; }} /></label><div className="chat-actions"><button className="text-button" disabled={saving} onClick={() => setDraft(null)}>取消</button><button disabled={saving || externalBusy || !draft.trim()} onClick={saveDraft}>生成保存建议</button><Button variant="primary" type="submit" disabled={saving || externalBusy || !draft.trim()} onClick={saveContent}>存入内容库</Button></div></div>}
     {proposals.filter((p) => p.turnId === meta.turnId).map((p) => <Proposal key={p.id} proposal={p} />)}
   </MessagePrimitive.Root>;
 }

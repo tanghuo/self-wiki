@@ -11,3 +11,5 @@ export { Notice, EmptyState } from "./Notice.jsx";
 export { Toast } from "./Toast.jsx";
 export { default as Menu } from "./Menu.jsx";
 export { default as SaveBar } from "./SaveBar.jsx";
+export { default as FloatingLayer } from "./FloatingLayer.jsx";
+export { default as AgentShell } from "./AgentShell.jsx";

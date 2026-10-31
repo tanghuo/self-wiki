@@ -2,9 +2,10 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { request } from '../../api.js';
 import { configuredComfyuiWorkflow, maxComfyReferenceImages, maxComfyOutputImages } from '../../../../shared/domain/comfyui.js';
 import { comfyuiConfig } from '../../../../shared/domain/comfyui.js';
-import Dialog from '../../Dialog.jsx';
+import { DialogFrame } from '../../ui/ConfirmDialog.jsx';
 import './comfyuiConfiguration.css';
 import { alignComfyuiParameters, comfyuiParameterOptions, matchComfyuiImageSize } from '../../../../shared/domain/comfyuiParameters.js';
+import { Button } from '../../ui/Button.jsx';
 
 const parameterNames = { seed: '种子', noise_seed: '噪声种子', steps: '步数', cfg: '提示词强度', denoise: '降噪强度', width: '宽度', height: '高度', batch_size: '生成数量', sampler_name: '采样器', scheduler: '调度器', negative_prompt: '负面提示词', ckpt_name: '模型', unet_name: '扩散模型', clip_name: '文本编码器', vae_name: 'VAE', filename_prefix: '保存文件名前缀', strength_model: 'LoRA 强度' };
 const commonParameters = new Set(['batch_size', 'seed', 'noise_seed', 'steps', 'cfg', 'denoise', 'width', 'height', 'sampler_name', 'scheduler', 'strength_model']);
@@ -199,10 +200,10 @@ export default function ComfyuiConfiguration({ value = {}, onChange, adapterId, 
       {value.workflow && <small>{value.promptMode === 'workflow' ? '沿用原提示词' : '使用上游提示词'} · {value.imageInputs?.filter((entry) => entry.nodeId).length || 0} 个参考图入口</small>}
       <button type="button" onClick={() => { setDraft(structuredClone(value)); setError(''); }}>{buttonLabel}</button>
     </div>
-    {draft && <Dialog open label={parametersOnly ? '本次生图参数' : '配置 ComfyUI'} className="comfyui-dialog" onClose={close} onKeyDown={(event) => event.stopPropagation()}>
-      <header className="comfyui-dialog-header"><div><h2>{parametersOnly ? '本次生图参数' : '配置 ComfyUI'}</h2><p>{parametersOnly ? '只用于新一次运行，不修改流程默认值或已有结果。固定 seed 和相同输入可能生成相同图片。' : '选择已保存的工作流，设置本节点的输入与生成参数。'}</p></div><button type="button" aria-label="关闭 ComfyUI 配置" onClick={close}>关闭</button></header>
+    {draft && <DialogFrame bare title={parametersOnly ? '本次生图参数' : '配置 ComfyUI'} description={parametersOnly ? '只用于新一次运行，不修改流程默认值或已有结果。固定 seed 和相同输入可能生成相同图片。' : '选择已保存的工作流，设置本节点的输入与生成参数。'}
+      className="comfyui-dialog" headerClassName="comfyui-dialog-header" footerClassName="comfyui-dialog-footer" closeLabel="关闭 ComfyUI 配置" onClose={close} onKeyDown={(event) => event.stopPropagation()}
+      footer={<>{error && <p role="alert">{error}</p>}<button type="button" onClick={close}>取消</button><Button variant="primary" disabled={busy} onClick={apply}>{applyLabel}</Button></>}>
       <div className="comfyui-dialog-body"><ComfyuiEditor value={draft} onChange={(next) => { setDraft(next); setError(''); }} adapterId={adapterId} onBusyChange={setBusy} parametersOnly={parametersOnly} referenceImages={referenceImages} /></div>
-      <footer className="comfyui-dialog-footer">{error && <p role="alert">{error}</p>}<button type="button" onClick={close}>取消</button><button type="button" className="primary" disabled={busy} onClick={apply}>{applyLabel}</button></footer>
-    </Dialog>}
+    </DialogFrame>}
   </>;
 }

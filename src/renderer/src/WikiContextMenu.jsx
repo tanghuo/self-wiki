@@ -70,8 +70,8 @@ export default function WikiContextMenu({ menu, onClose, onAddReference, onSetMa
       {menu.element.kind === "video" ? <button type="button" role="menuitem" disabled={disabled} onClick={() => {
         const link = document.createElement("a"); link.href = apiUrl(`/api/elements/${menu.element.id}/download`); link.download = ""; link.click(); onClose();
       }}><Download size={16} />保存原视频</button> : <button type="button" role="menuitem" disabled={disabled} onClick={copy}><Copy size={16} />复制</button>}
-      {onAddReference && menu.element.kind !== "video" && <button type="button" role="menuitem" disabled={disabled} onClick={() => { onClose(); onAddReference(menu.element); }}><Plus size={16} />加入资料</button>}
-      {onSetMaterial && !menu.element.deletedAt && !menu.element.localOnly && ["text", "image", "video"].includes(menu.element.kind) && <button type="button" role="menuitem" disabled={disabled} onClick={() => { onClose(); onSetMaterial(menu.element); }}>{menu.element.material ? "取消资料标记" : "设为资料"}</button>}
+      {onAddReference && menu.element.kind !== "video" && <button type="button" role="menuitem" disabled={disabled} onClick={() => { onClose(); onAddReference(menu.element); }}><Plus size={16} />放进资料篮</button>}
+      {onSetMaterial && !menu.element.deletedAt && !menu.element.localOnly && ["text", "image", "video"].includes(menu.element.kind) && <button type="button" role="menuitem" disabled={disabled} onClick={() => { onClose(); onSetMaterial(menu.element); }}>{menu.element.material ? "取消资料标记" : "标记为资料"}</button>}
     </> : <button type="button" role="menuitem" disabled={disabled} onClick={onBack}><ArrowLeft size={16} />返回</button>}
   </div>;
 }

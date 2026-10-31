@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import Dialog from '../../Dialog.jsx';
 import DetailImage from '../../DetailImage.jsx';
 import { apiUrl } from '../../api.js';
+import { Button } from '../../ui/Button.jsx';
 
 export default function WorkflowImagePreview({ images, index, runId, chosen, onChoose, onIndex, onClose, onAccept }) {
   const [error, setError] = useState(''), [dimensions, setDimensions] = useState(null);
@@ -24,7 +25,7 @@ export default function WorkflowImagePreview({ images, index, runId, chosen, onC
     <header><strong>图片 {index + 1} / {images.length}{dimensions && <small> · {dimensions}</small>}</strong><button type="button" onClick={onClose}>关闭预览</button></header>
     <div ref={stage} tabIndex={0} className="workflow-image-preview-stage"><DetailImage key={src} src={src} alt={`${onChoose ? '审核' : ''}原图 ${index + 1}`} onLoad={(event) => setDimensions(`${event.currentTarget.naturalWidth} × ${event.currentTarget.naturalHeight}`)} onError={() => setError('图片加载失败，请关闭预览后重试。')} />{error && <p role="alert">{error}</p>}</div>
     {onChoose && <nav className="workflow-review-filmstrip" aria-label="切换审核图片">{images.map((image, at) => <button type="button" key={image.artifactId} aria-label={`切换到图片 ${at + 1}`} aria-current={at === index ? 'true' : undefined} onClick={() => navigate(at)}><img alt="" src={apiUrl(`/api/workflow-artifacts/${image.artifactId}/media?runId=${runId}`)} /><span>{at + 1} · {chosen.includes(image.artifactId) ? '保留' : '已排除'}</span></button>)}</nav>}
-    <footer><div className="workflow-actions"><button type="button" disabled={index === 0} onClick={() => navigate(index - 1)}>上一张</button><button type="button" disabled={index === images.length - 1} onClick={() => navigate(index + 1)}>下一张</button></div>{onChoose && <div className="workflow-review-decisions"><strong aria-live="polite">当前：{chosen.includes(item.artifactId) ? '保留' : '已排除'}</strong><button type="button" onClick={() => decide(false)}>排除{index < images.length - 1 ? '并下一张' : '这张'} (X)</button><button type="button" onClick={() => decide(true)}>保留{index < images.length - 1 ? '并下一张' : '这张'} (A)</button></div>}{onAccept && <button type="button" className="primary" disabled={!chosen.length} onClick={onAccept}>通过选中的 {chosen.length} / {images.length} 张</button>}</footer>
+    <footer><div className="workflow-actions"><button type="button" disabled={index === 0} onClick={() => navigate(index - 1)}>上一张</button><button type="button" disabled={index === images.length - 1} onClick={() => navigate(index + 1)}>下一张</button></div>{onChoose && <div className="workflow-review-decisions"><strong aria-live="polite">当前：{chosen.includes(item.artifactId) ? '保留' : '已排除'}</strong><button type="button" onClick={() => decide(false)}>排除{index < images.length - 1 ? '并下一张' : '这张'} (X)</button><button type="button" onClick={() => decide(true)}>保留{index < images.length - 1 ? '并下一张' : '这张'} (A)</button></div>}{onAccept && <Button variant="primary" disabled={!chosen.length} onClick={onAccept}>通过选中的 {chosen.length} / {images.length} 张</Button>}</footer>
     {onChoose && <small>← → 切换 · A 保留 · X 排除 · 选择暂存，点击“通过选中的”后提交；关闭预览可继续挑选。</small>}
   </Dialog>;
 }

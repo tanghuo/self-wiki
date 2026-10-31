@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Copy, Info, X } from "lucide-react";
+import { Copy, Info } from "lucide-react";
 import { request } from "./api.js";
-import Dialog from "./Dialog.jsx";
+import { DialogFrame } from "./ui/ConfirmDialog.jsx";
 
 export default function EmbeddedPrompt({ id }) {
   const [data, setData] = useState(null);
@@ -41,11 +41,7 @@ export default function EmbeddedPrompt({ id }) {
     <div className="wiki-embedded-prompt-entry">
       <button type="button" onClick={() => setOpen(true)} aria-haspopup="dialog"><Info size={15} />生成信息</button>
     </div>
-    {open && <Dialog open label="生成信息" className="wiki-dialog embedded-prompt-dialog" onClose={close}>
-      <header className="wiki-dialog-header">
-        <div><h2>生成信息</h2><p>{data.sourceLabel}</p></div>
-        <button type="button" className="icon-only" aria-label="关闭生成信息" onClick={close}><X size={18} /></button>
-      </header>
+    {open && <DialogFrame bare title="生成信息" description={data.sourceLabel} className="wiki-dialog embedded-prompt-dialog" closeLabel="关闭生成信息" onClose={close}>
       <div className="embedded-prompt-body">
         {data.sections.map((section, index) => <section className="embedded-prompt-section" key={`${section.title}:${index}`}>
           <header>
@@ -64,6 +60,6 @@ export default function EmbeddedPrompt({ id }) {
           {data.rawTruncated && <p className="wiki-muted">原文过长，这里只显示前面一部分。</p>}
         </details>}
       </div>
-    </Dialog>}
+    </DialogFrame>}
   </>;
 }
