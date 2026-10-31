@@ -20,7 +20,7 @@ test('workbench renders markdown in a centered neutral surface and keeps mobile 
   app = await createServer({ port: 0, dataDir: root, agentWorkbenchEnabled: true, async openWorkbenchEngine(_settings, callbacks) {
     return { sessionId: 'surface-fixture', version: 'test', capabilities: {}, cancel() {}, async close() {}, async prompt(_text, delivery) {
       delivery('attempted');
-      await callbacks.onEvent('message.delta', { text: '这是 **Markdown 展示示例**。\n\n可以在这里讨论任务、查看执行结果，并继续追问。\n\n- **对话**：消息和输入框保持相同宽度。\n- **文件**：通过输入框左下角的加号添加参考图。\n- **任务与产物**：点击右上角图标展开详情。\n\n代码示例：\n\n```js\nconst message = "Hello, world!";\nconsole.log(message);\n```' });
+      await callbacks.onEvent('message.delta', { text: '这是 **Markdown 展示示例**。\n\n可以在这里讨论任务、查看执行结果，并继续追问。\n\n- **对话**：消息和输入框保持相同宽度。\n- **文件**：通过输入框左下角的加号添加参考图。\n- **会话设置**：点击右上角图标查看权限与恢复。\n\n代码示例：\n\n```js\nconst message = "Hello, world!";\nconsole.log(message);\n```' });
       return { stopReason: 'end_turn' };
     } };
   } });
@@ -50,8 +50,11 @@ test('workbench renders markdown in a centered neutral surface and keeps mobile 
     const label = getComputedStyle(recent.querySelector('.workbench-thread-label'));
     const button = getComputedStyle(recent);
     const bubble = document.querySelector('.workbench-message.user').getBoundingClientRect();
+    const sidebar = document.querySelector('.workbench-shell > .wiki-sidebar');
+    const page = document.querySelector('.workbench-page');
     return {
-      back: hit(document.querySelector('.workbench-library-link')),
+      sidebar: hit(sidebar),
+      embedded: sidebar.getBoundingClientRect().right <= page.getBoundingClientRect().left + 1,
       create: hit(document.querySelector('.workbench-new-chat')),
       recent: hit(recent),
       labelMatchesButton: label.color === button.color,
@@ -60,7 +63,8 @@ test('workbench renders markdown in a centered neutral surface and keeps mobile 
     };
   });
   assert.equal(rail.layout, 'grid');
-  assert.equal(rail.back, true);
+  assert.equal(rail.sidebar, true);
+  assert.equal(rail.embedded, true);
   assert.equal(rail.create, true);
   assert.equal(rail.recent, true);
   assert.equal(rail.labelMatchesButton, true);

@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, realpath } from 'node
 import os from 'node:os';
 import path from 'node:path';
 import { createFileGateway } from '../../src/server/application/agentWorkbench/files.js';
-import { createWorkspaceScheduler, registerWorkspace } from '../../src/server/application/agentWorkbench/workspaces.js';
+import { registerWorkspace } from '../../src/server/application/agentWorkbench/workspaces.js';
 import { initDb } from '../../src/server/data/sqlite.js';
 import { createAgentWorkbenchRepository } from '../../src/server/data/agentWorkbenchRepository.js';
 
@@ -38,7 +38,7 @@ test('file gateway rejects outside roots, binary input, denied writes, approval 
   await symlink(outside, path.join(project, 'escape'), process.platform === 'win32' ? 'junction' : 'dir');
   await assert.rejects(gateway.write({ path: path.join(project, 'escape', 'outside.txt'), content: 'x' }), { code: 'PATH_DENIED' });
 });
-test('workspace trust is explicit; protected roots fail; overlap queue can cancel without occupying idle locks', async t => {
+test('workspace trust is explicit; protected roots fail; projects are reused by canonical path', async t => {
   const { root, project, data } = await fixture(t), db = initDb(':memory:'); t.after(() => db.close());
   const repo = createAgentWorkbenchRepository(db);
   await assert.rejects(registerWorkspace(repo, data, { kind: 'project', path: project }), { code: 'TRUST_REQUIRED' });
@@ -55,9 +55,4 @@ test('workspace trust is explicit; protected roots fail; overlap queue can cance
   assert.equal(listed.some(item => item.id === renamed.id && item.name === '界面项目'), true);
   assert.equal(listed.some(item => item.id === scratch.id), false);
   await assert.rejects(registerWorkspace(repo, data, { kind: 'project', path: project, name: '   ', trusted: true }), { code: 'INVALID_PROJECT' });
-  const scheduler = createWorkspaceScheduler(), controller = new AbortController();
-  const release = await scheduler.acquire(project, controller.signal);
-  const waiting = new AbortController(), next = scheduler.acquire(path.join(project, 'nested'), waiting.signal);
-  waiting.abort(); await assert.rejects(next, { name: 'AbortError' }); release();
-  const releaseNext = await scheduler.acquire(project, controller.signal); releaseNext();
 });

@@ -38,6 +38,7 @@ import { createAgentArtifactStore } from './assets/agentArtifactStore.js';
 import { createAgentCommandStore } from './assets/agentCommandStore.js';
 import { createAgentTaskService } from './application/agentTasks/service.js';
 import { createAgentTools } from './application/agentTools/service.js';
+import { createAionuiExperiment } from './application/aionuiExperiment.js';
 
 const projectRoot = path.resolve(import.meta.dirname, "../..");
 // Fetch Standard port blocking: https://fetch.spec.whatwg.org/#port-blocking
@@ -98,7 +99,9 @@ export async function createServer(options = {}) {
   agentWorkbench = await createAgentWorkbenchService({ repo: workbenchRepo, dataDir, legacyChat: chat, wiki, executionConfig: () => organization.executionConfig(), initiallyEnabled: options.agentWorkbenchEnabled === true, openEngine: options.openWorkbenchEngine, tools: agentTools, tasks: agentTasks, commandStore: createAgentCommandStore(dataDir), applicationToolsVerified, codexVerified: options.agentCodexWorkbenchEnabled !== false });
   agentTasks.schedule();
   const instance = { application: "self-wiki", protocolVersion: 1, instanceId: randomUUID(), dataDir };
+  const aionuiExperiment = createAionuiExperiment({ root: projectRoot, dataDir });
   const services = {
+    aionuiExperiment,
     authentication,
     instance,
     wiki,
@@ -164,6 +167,7 @@ export async function createServer(options = {}) {
     get credentialFile() { return credentialsPath; },
     close() {
       closing ||= (async () => {
+        await aionuiExperiment.close();
         await agentWorkbench.close();
         await agentTasks.close();
         await workflow.close();

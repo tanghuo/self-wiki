@@ -3,11 +3,12 @@ import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { openWorkbenchEngine, describeCodexWorkbench, describeGrokWorkbench, describeAntigravityWorkbench, createTerminalRuntime, grokTerminalOperation, workbenchGitSnapshot } from '../executorsPort.js';
 import { agentError, requestKey, agentText, activeTurnStates } from '../../../shared/domain/agentWorkbench/contracts.js';
-import { registerWorkspace, createWorkspaceScheduler, containsPath, pathIdentity, localPath } from './workspaces.js';
+import { registerWorkspace, containsPath, pathIdentity, localPath } from './workspaces.js';
 import { createFileGateway } from './files.js';
 import { workflowAgentTools, workflowCallChain } from '../../../shared/domain/agentWorkbench/workflow.js';
 import { createLegacyConversion } from './legacy.js';
 import { approvalMode } from '../../../shared/domain/agentWorkbench/approvalPolicy.js';
+import { toolStatus } from '../../../shared/domain/agentWorkbench/events.js';
 import { createTurnChanges } from './changes.js';
 
 export async function createAgentWorkbenchService({ repo, dataDir, executionConfig, legacyChat, wiki, openEngine = openWorkbenchEngine, describeGrok = describeGrokWorkbench, describeAntigravity = describeAntigravityWorkbench, initiallyEnabled = false, tools, tasks, commandStore, applicationToolsVerified = false, codexVerified = false }) {
@@ -15,7 +16,7 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
   await mkdir(neutralCwd, { recursive: true });
   const config = await readFile(configFile, 'utf8').then(JSON.parse).catch(error => { if (error.code === 'ENOENT') return {}; throw error; });
   let enabled = config.agentWorkbenchEnabled ?? initiallyEnabled, closing = false, antigravityConnection;
-  const active = new Map(), waiting = new Map(), resuming = new Map(), scheduler = createWorkspaceScheduler();
+  const active = new Map(), waiting = new Map(), resuming = new Map();
   repo.recover();
   const turnChanges = createTurnChanges({ repo, dataDir });
   function ready() { if (!enabled || closing) throw agentError('WORKBENCH_DISABLED', '工作台尚未启用或正在关闭', 409); }
@@ -50,12 +51,11 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
     });
   }
   async function run(job) {
-    let release, engine, terminals, turn, snapshot, emitted = Promise.resolve(), text = '', textTimer, textBytes = 0;
-    const flush = () => { clearTimeout(textTimer); textTimer = null; if (text) { const value = text; text = ''; repo.event(turn.id, turn.generation, 'message.delta', { text: value }); } };
+    let engine, terminals, turn, snapshot, emitted = Promise.resolve(), text = '', textTimer, textBytes = 0, messageMeta = {};
+    const flush = () => { clearTimeout(textTimer); textTimer = null; if (text) { const value = text; text = ''; repo.event(turn.id, turn.generation, 'message.delta', { ...messageMeta, text: value }); } };
     try {
       const session = repo.session(job.sessionId), workspace = repo.workspace(session.workspaceId);
       checkToolset(session);
-      release = await scheduler.acquire(workspace.path, job.controller.signal);
       job.controller.signal.throwIfAborted();
       if (pathIdentity(await realpath(workspace.path)) !== workspace.identity) throw agentError('WORKSPACE_CHANGED', '项目路径身份已变化，请新建会话', 409);
       turn = repo.startTurn(job.id); job.turn = turn;
@@ -86,9 +86,13 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
       engine = await openEngine(settings(session), { engine: session.engine, cwd: workspace.path, neutralCwd, sessionId: session.engineSessionId, signal: job.controller.signal,
         restricted: session.purpose === 'workflow' || session.data.restricted, approvalMode: mode, tools: applicationToolsVerified ? catalog(session) : [], onToolCall: callTool,
         async onEvent(type, data) {
-          if (type === 'command.completed') { const saved = commandStore ? await commandStore.save(turn.id, data.commandId, data) : data; return emit('command.output', { ...saved, namespace: data.namespace }); }
+          await emitted;
+          if (type !== 'message.delta' || data.messageId !== messageMeta.messageId || data.phase !== messageMeta.phase) flush();
+          if (type === 'tool.updated') data = { ...data, status: toolStatus(data.status) };
+          if (type === 'command.completed') { const saved = commandStore ? await commandStore.save(turn.id, data.commandId, data) : data; return emit('command.output', { ...saved, namespace: data.namespace, toolCallId: data.toolCallId }); }
           if (type === 'message.delta') {
             textBytes += Buffer.byteLength(data.text || ''); if (textBytes > 2 * 1024 * 1024) throw new Error('模型输出超过 2 MiB');
+            messageMeta = { ...(data.messageId && { messageId: data.messageId }), ...(data.phase && { phase: data.phase }) };
             text += data.text; if (Buffer.byteLength(text) >= 16384) flush(); else textTimer ||= setTimeout(() => { try { flush(); } catch { /* Stopped generation. */ } }, 100);
             return;
           }
@@ -160,7 +164,7 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
     } finally {
       clearTimeout(textTimer); settleApprovals(job.id);
       try { await Promise.allSettled([engine?.close(), terminals?.close()]); }
-      finally { release?.(); active.delete(job.id); }
+      finally { active.delete(job.id); }
     }
   }
   const service = {
@@ -245,12 +249,10 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
       if (resuming.has(session.id) || [...active.values()].some(job => job.sessionId === session.id)) throw agentError('ACTIVE_TURN', '请先停止此会话再撤销', 409);
       const controller = new AbortController(), finished = Promise.withResolvers();
       resuming.set(session.id, { controller, done: finished.promise });
-      let release;
       try {
-        release = await scheduler.acquire(workspace.path, controller.signal);
         if (pathIdentity(await realpath(workspace.path)) !== workspace.identity) throw agentError('WORKSPACE_CHANGED', '工作区路径身份已变化', 409);
         return await turnChanges.undo(turn.id, value.version, controller.signal);
-      } finally { release?.(); resuming.delete(session.id); finished.resolve(); }
+      } finally { resuming.delete(session.id); finished.resolve(); }
     },
     decideProposal(id, sessionId, value) { return tools.decideProposal(id, sessionId, value); },
     async resume(id) {
@@ -259,9 +261,8 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
       if (!session.engineSessionId) throw agentError('NO_CONTEXT', '此会话还没有可恢复的原生上下文', 409);
       if (resuming.has(id) || [...active.values()].some(job => job.sessionId === id)) throw agentError('ACTIVE_TURN', '会话正在执行或恢复', 409);
       const controller = new AbortController(), finished = Promise.withResolvers(); resuming.set(id, { controller, done: finished.promise });
-      let release, engine;
+      let engine;
       try {
-        release = await scheduler.acquire(workspace.path, controller.signal);
         if (pathIdentity(await realpath(workspace.path)) !== workspace.identity) throw agentError('WORKSPACE_CHANGED', '工作区路径身份已变化', 409);
         engine = await openEngine(settings(session), {
           engine: session.engine, cwd: workspace.path, neutralCwd, sessionId: session.engineSessionId, signal: controller.signal,
@@ -271,7 +272,7 @@ export async function createAgentWorkbenchService({ repo, dataDir, executionConf
         });
         return repo.resumed(id, engine);
       } catch (error) { throw agentError('CONTEXT_UNAVAILABLE', `原上下文不可恢复：${error.message}。可以明确新建会话，但不会自动重发任务。`, 409); }
-      finally { try { await engine?.close(); } finally { release?.(); resuming.delete(id); finished.resolve(); } }
+      finally { try { await engine?.close(); } finally { resuming.delete(id); finished.resolve(); } }
     },
     submit(id, value, onDispatch) {
       ready(); const key = requestKey(value.requestKey), input = { text: agentText(value.text) };

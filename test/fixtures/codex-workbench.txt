@@ -36,7 +36,8 @@ async function handle(value) {
   const command = await ask('item/commandExecution/requestApproval', { itemId: 'command-1', cwd, command: 'echo fixture', availableDecisions: ['accept', 'decline'] });
   notify('item/completed', { item: { id: 'command-1', type: 'commandExecution', command: 'echo fixture', cwd, status: command?.decision === 'accept' ? 'completed' : 'declined', aggregatedOutput: command?.decision === 'accept' ? 'fixture command output' : '', exitCode: command?.decision === 'accept' ? 0 : null } });
   await ask('item/tool/call', { callId: 'wiki-1', tool: 'wiki_search', arguments: { query: 'fixture' } });
-  notify('item/agentMessage/delta', { delta: 'fixture completed' });
+  notify('item/started', { item: { id: 'answer-1', type: 'agentMessage', phase: 'final_answer' } });
+  notify('item/agentMessage/delta', { itemId: 'answer-1', delta: 'fixture completed' });
   notify('turn/completed', { turn: { id: turn, status: 'completed' } });
 }
 readline.createInterface({ input: process.stdin }).on('line', line => { const value = JSON.parse(line); handle(value).catch(error => send({ id: value.id, error: { code: -32000, message: error.message } })); }).on('close', () => process.exit(0));

@@ -3,11 +3,13 @@ import { ArrowUp, Plus } from 'lucide-react';
 import WorkbenchModelPicker from './WorkbenchModelPicker.jsx';
 import WorkbenchProjectPicker from './WorkbenchProjectPicker.jsx';
 import WorkbenchApprovalPicker from './WorkbenchApprovalPicker.jsx';
+import useWorkbenchTextarea from './useWorkbenchTextarea.js';
 import { maxWorkbenchImages, workbenchImageFiles } from './workbenchImages.js';
 
 export default function WorkbenchStart({ settings, change, projects, engines, models, modelState, retryModels, text, setText, busy, create, createProject, selectEngine, loadModels, connectAntigravity, images, addImages, removeImage }) {
   const { kind, projectId, projectName, engine, model, effort, nativeReadAccepted } = settings;
   const form = useRef(null), fileInput = useRef(null);
+  const textarea = useWorkbenchTextarea(text);
   const ready = !busy && text.trim() && model;
   function submit(event) {
     event.preventDefault();
@@ -18,7 +20,7 @@ export default function WorkbenchStart({ settings, change, projects, engines, mo
     <div className="workbench-welcome"><h2>今天想完成什么？</h2></div>
     <form ref={form} className="workbench-launcher" onSubmit={submit} onPaste={event => { const files = workbenchImageFiles(event.clipboardData); if (!files.length) return; event.preventDefault(); event.stopPropagation(); addImages(files); }}>
       {!!images.length && <div className="workbench-pending-images">{images.map(image => <button type="button" className="workbench-image-chip" key={image.key} aria-label="移除参考图" title={image.file.name || '参考图'} disabled={busy} onClick={() => removeImage(image.key)}><img src={image.url} alt="" /><span className="workbench-image-remove" aria-hidden="true">×</span></button>)}</div>}
-      <textarea aria-label="任务内容" placeholder="描述任务，或提出一个问题，也可直接粘贴图片…" value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (ready) form.current.requestSubmit(); } }} rows={3} disabled={busy} autoFocus />
+      <textarea ref={textarea} aria-label="任务内容" placeholder="描述任务，或提出一个问题，也可直接粘贴图片…" value={text} onChange={event => setText(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); if (ready) form.current.requestSubmit(); } }} rows={3} disabled={busy} autoFocus />
       <div className="workbench-launcher-toolbar">
         <button type="button" className="icon-only" aria-label="添加参考图" title="添加参考图" disabled={busy || images.length >= maxWorkbenchImages} onClick={() => fileInput.current?.click()}><Plus size={19} /></button>
         <input ref={fileInput} aria-label="选择参考图文件" hidden type="file" accept="image/png,image/jpeg,image/webp" multiple disabled={busy || images.length >= maxWorkbenchImages} onChange={event => { const files = [...event.target.files]; event.target.value = ''; if (files.length) addImages(files); }} />

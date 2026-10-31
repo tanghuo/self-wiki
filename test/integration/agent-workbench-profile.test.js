@@ -29,3 +29,24 @@ test('profile fallback and injected native tools prevent prompting; workflow pro
   await writeFile(path.join(folder, 'tool_definitions.json'), '[{"function":{"name":"read_file"}}]');
   await assert.rejects(verifyGrokWorkbenchProfile({ cwd, sessionId, profile: text, home, requireEmptyTools: true }), /出现可调用工具/);
 });
+
+test('name-only persistence requires explicit profile selection and rejects mismatched or altered profiles', async t => {
+  const home = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-profile-'));
+  t.after(async () => { assert.equal(path.dirname(home), path.resolve(os.tmpdir())); assert.ok(path.basename(home).startsWith('wiki-workbench-profile-')); await rm(home, { recursive: true, force: true, maxRetries: 3 }); });
+  const cwd = path.resolve('synthetic-project'), sessionId = randomUUID(), profile = grokWorkbenchProfile();
+  const folder = path.join(home, 'sessions', encodeURIComponent(cwd), sessionId); await mkdir(folder, { recursive: true });
+  const save = summary => writeFile(path.join(folder, 'summary.json'), JSON.stringify(summary));
+  const options = { cwd, sessionId, profile, home, explicitlySelected: true };
+  await save({ agent_name: profile.name });
+  const result = await verifyGrokWorkbenchProfile(options);
+  assert.equal(result.profileVerification, 'explicit-selection');
+  await assert.rejects(verifyGrokWorkbenchProfile({ ...options, explicitlySelected: false }), /禁止发送任务/);
+  await save({ agent_name: 'grok-build-plan' });
+  await assert.rejects(verifyGrokWorkbenchProfile(options), /禁止发送任务/);
+  await save({ agent_name: profile.name, agent_profile: { ...profile, injectDefaultTools: true } });
+  await assert.rejects(verifyGrokWorkbenchProfile(options), /禁止发送任务/);
+  const restricted = grokWorkbenchProfile({ restricted: true });
+  await save({ agent_name: restricted.name });
+  await writeFile(path.join(folder, 'tool_definitions.json'), '[{"function":{"name":"read_file"}}]');
+  await assert.rejects(verifyGrokWorkbenchProfile({ ...options, profile: restricted, requireEmptyTools: true }), /出现可调用工具/);
+});

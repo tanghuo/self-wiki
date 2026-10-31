@@ -2,6 +2,8 @@
 
 ## 当前使用与实现参考
 
+- [AionUi 应用内实验入口](aionui-experiment.md)：在同一窗口与原工作台切换比较，接现有官方 Antigravity ACP 和 Grok；[集成方案](aionui-integration-design.md)。
+
 - **[通用 Agent 工作台重构](agent-workbench-plan.md)**：[实施进度与实机报告](agent-workbench-progress.md)、[使用说明](agent-workbench-usage.md)、[最终验证](agent-workbench-final-validation-2026-10-29.json)。P0–P6 与批次 A/B 已完成；默认关闭，启用后支持 Grok/Codex、审批、Wiki/图片/工作流任务与旧聊天转接。
 
 - [使用与配置](usage.md)、[CLI](cli.md)、[本机连接与认证](local-authentication.md)、[设计系统](design-system.md)。
@@ -13,6 +15,7 @@
 
 ## 待实施方案
 
+- [工作台交互打磨清单](workbench-interaction-polish.md)：流式更新、滚动、消息分层、异常反馈和内嵌 AionUi 整合的逐项实施与验收标准。
 - [工作流界面整理](workflow-ux-redesign.md)：主体已实现，但文件仍在修改且有“命名的最终输出”待设计事项，保留。
 
 ## 保留的历史设计

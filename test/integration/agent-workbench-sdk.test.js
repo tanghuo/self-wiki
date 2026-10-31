@@ -21,7 +21,9 @@ test('MCP catalog must resolve fully and excludes all external servers, includin
   const definition = { name: 'self_wiki', serverId: 'fixture' };
   assert.equal(verifyWorkbenchMcpCatalog({ sessionMcpResolved: true, servers: [] }).transport, 'none');
   assert.throws(() => verifyWorkbenchMcpCatalog({ sessionMcpResolved: true, servers: [{ name: 'foreign', session: { enabled: true } }] }), /其他 MCP/);
-  assert.throws(() => verifyWorkbenchMcpCatalog({ servers: [] }, definition), /尚未就绪/);
+  assert.equal(verifyWorkbenchMcpCatalog({ servers: [] }).transport, 'none');
+  assert.throws(() => verifyWorkbenchMcpCatalog({ servers: [], sessionMcpResolved: false }), /尚未就绪/);
+  assert.throws(() => verifyWorkbenchMcpCatalog({ servers: [] }, definition), /未连接/);
   assert.equal(verifyWorkbenchMcpCatalog({ servers: [{ name: 'self_wiki', type: 'stdio', command: '', args: [], env: [], session: { enabled: true, status: 'ready' } }], sessionMcpResolved: true }, definition).transport, 'acp');
   for (const name of ['other', 'self_wiki']) assert.throws(() => verifyWorkbenchMcpCatalog({ sessionMcpResolved: true, servers: [{ name, type: 'http', session: { enabled: true } }] }, definition), /其他 MCP/);
 });

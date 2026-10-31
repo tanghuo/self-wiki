@@ -16,10 +16,10 @@ export default function WorkbenchProjectPicker({ projects, kind, projectId, proj
     if (open) { close(); return; }
     trigger.current = event.currentTarget;
     const rect = event.currentTarget.getBoundingClientRect();
-    const above = rect.top > 280;
+    const above = rect.top >= window.innerHeight - rect.bottom;
     setPosition(above
-      ? { left: Math.max(12, Math.min(rect.left, window.innerWidth - 332)), bottom: window.innerHeight - rect.top + 8, maxHeight: Math.max(160, rect.top - 16) }
-      : { left: Math.max(12, Math.min(rect.left, window.innerWidth - 332)), top: rect.bottom + 8, maxHeight: Math.max(160, window.innerHeight - rect.bottom - 16) });
+      ? { left: Math.max(12, Math.min(rect.left, window.innerWidth - 332)), bottom: window.innerHeight - rect.top + 8, maxHeight: Math.max(0, rect.top - 20) }
+      : { left: Math.max(12, Math.min(rect.left, window.innerWidth - 332)), top: rect.bottom + 8, maxHeight: Math.max(0, window.innerHeight - rect.bottom - 20) });
     setQuery(''); setOpen(true);
   }
   useEffect(() => {

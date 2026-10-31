@@ -27,7 +27,8 @@ test('workbench shows live file lists, net summaries, line diffs and conflict-sa
   await stubWorkbenchModels(page);
   const errors = []; page.on('pageerror', error => errors.push(error.message));
   await page.goto(app.url + '#workbench');
-  await page.getByLabel('审批模式').selectOption('allow');
+  await page.getByLabel('审批模式').click();
+  await page.getByRole('dialog', { name: '选择审批模式' }).getByRole('button', { name: '全部允许', exact: true }).click();
   await page.getByLabel('任务内容').fill('整理四个项目文件');
   await page.getByRole('button', { name: '发送', exact: true }).click();
   const live = page.locator('.workbench-live-changes');

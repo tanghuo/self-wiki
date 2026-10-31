@@ -13,7 +13,7 @@ button.primary:hover:not(:disabled), a.button.primary:hover {
   background: var(--c-accent-hover);
   color: var(--c-on-accent);
 }
-button:not(.icon-only):not(.text-button):not(.danger):not(.danger-quiet):not(.primary),
+button:not(.icon-only):not(.text-button):not(.danger):not(.danger-quiet):not(.primary):not(:where(.workbench-page *, .workbench-changes-dialog *, .workbench-settings-dialog *, .workbench-reference-dialog *)),
 a.button:not(.primary):not(.text-button) {
   border-radius: var(--r-pill);
 }

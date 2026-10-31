@@ -29,6 +29,8 @@ test('Codex translates native approval snapshots, output, SDK tools, cancellatio
   await assert.rejects(readFile(path.join(root, 'result.txt')), { code: 'ENOENT' });
   assert.deepEqual(approvals.map(op => op.kind), ['native.file', 'native.command']); assert.match(approvals[0].changes[0].diff, /fixture/);
   assert.ok(events.some(event => event.type === 'command.completed' && event.data.exitCode === 0 && event.data.output === 'fixture command output')); assert.equal(tools, 1);
+  assert.ok(events.some(event => event.type === 'message.delta' && event.data.messageId === 'answer-1' && event.data.phase === 'final_answer'));
+  assert.ok(events.some(event => event.type === 'command.completed' && event.data.toolCallId === 'command-1'));
   const resumed = await openCodexWorkbench(config, { ...callbacks, sessionId: client.sessionId });
   assert.ok(!events.some(event => event.data.text?.includes('REPLAY')));
   const hanging = resumed.prompt('HANG'); await new Promise(resolve => setTimeout(resolve, 30)); await resumed.cancel();

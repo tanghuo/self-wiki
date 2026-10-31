@@ -17,4 +17,5 @@ export { openWorkbenchEngine } from '../../agent/engines/workbench.js';
 export { describeCodexWorkbench } from '../../agent/engines/codexWorkbench.js';
 export { describeAntigravityWorkbench } from '../../agent/engines/antigravityWorkbench.js';
 export { callRestrictedGrok } from '../../agent/engines/grokRestricted.js';
+export { terminateProcessTree } from '../../agent/executors/processTree.js';
 export { workbenchGitSnapshot } from '../../agent/engines/workbenchGit.js';

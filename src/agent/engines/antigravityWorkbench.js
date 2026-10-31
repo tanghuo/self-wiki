@@ -1,3 +1,4 @@
+import { createAcpWorkbenchEvents } from './acpWorkbenchEvents.js';
 import { randomUUID } from 'node:crypto';
 import { startAntigravityAcp, antigravityVersion } from '../executors/antigravityProcess.js';
 import { acquireExternalResource } from '../executors/resourceGate.js';
@@ -38,14 +39,14 @@ export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sess
   if (restricted || tools.length) throw new Error('Antigravity 暂不支持受限工作流或工作台应用工具');
   if (approvalMode !== 'ask') throw new Error('Antigravity 当前仅支持手动审批');
   let client, thread, prompting = false, closed = false;
+  const emitUpdate = createAcpWorkbenchEvents(onEvent);
   const calls = new Map();
   try {
     client = await startAntigravityAcp(settings, { cwd: neutralCwd, signal, onExit,
       async onNotification(method, params) {
         if (!prompting || closed || params.sessionId !== thread || method !== 'session/update') return;
         const value = params.update || {};
-        if (value.sessionUpdate === 'agent_message_chunk' && value.content?.type === 'text') return onEvent('message.delta', { text: value.content.text });
-        if (value.sessionUpdate === 'plan') return onEvent('plan.updated', { entries: value.entries });
+        if (['agent_message_chunk', 'plan'].includes(value.sessionUpdate)) return emitUpdate(value);
         if (value.sessionUpdate === 'config_option_update') {
           for (const option of value.configOptions || []) {
             if (option.id === 'mode' && option.currentValue !== 'default' || option.id === 'model' && option.currentValue !== settings.model) throw new Error('Antigravity 在执行中切换了模型或审批模式，请核查结果');
@@ -55,7 +56,7 @@ export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sess
           const previous = calls.get(value.toolCallId), diffs = previous?.diffs || new Map();
           for (const item of value.content || []) if (item.type === 'diff' && typeof item.path === 'string' && typeof item.newText === 'string') diffs.set(item.path, item);
           const call = { ...previous, ...value, diffs }; calls.set(value.toolCallId, call);
-          await onEvent('tool.updated', { id: call.toolCallId, title: call.title, status: call.status, kind: call.kind, content: call.content });
+          await emitUpdate(call);
           if (value.status === 'completed') {
             for (const item of diffs.values()) {
               // Provider-native changes are viewable, with no complete byte history for undo.
@@ -63,7 +64,7 @@ export async function openAntigravityWorkbench(settings, { cwd, neutralCwd, sess
             }
             if (call.kind === 'execute') {
               const output = (call.content || []).filter(item => item.type === 'content' && item.content?.type === 'text').map(item => item.content.text).join('\n');
-              if (output) await onEvent('command.completed', { commandId: randomUUID(), namespace: 'antigravity', output: output.slice(-1024 * 1024), exitCode: null, truncated: Buffer.byteLength(output) > 1024 * 1024 });
+              if (output) await onEvent('command.completed', { toolCallId: call.toolCallId, commandId: randomUUID(), namespace: 'antigravity', output: output.slice(-1024 * 1024), exitCode: null, truncated: Buffer.byteLength(output) > 1024 * 1024 });
             }
           }
         }

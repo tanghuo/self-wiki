@@ -77,7 +77,7 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
         if (!prompting || params.threadId !== thread || closed) return;
         if (method === 'turn/started' && !turn) turn = params.turn.id;
         if (params.turnId && turn && params.turnId !== turn) return;
-        if (method === 'item/agentMessage/delta') return onEvent('message.delta', { text: params.delta });
+        if (method === 'item/agentMessage/delta') return onEvent('message.delta', { text: params.delta, messageId: params.itemId, phase: items.get(params.itemId)?.phase });
         if (method === 'turn/plan/updated') return onEvent('plan.updated', { entries: (params.plan || []).map(entry => ({ content: entry.step, status: entry.status })) });
         if (method === 'thread/tokenUsage/updated') return onEvent('engine.usage', { namespace: 'codex', usage: params.tokenUsage });
         if (method === 'turn/diff/updated') return onEvent('engine.diff', { namespace: 'codex', diff: String(params.diff || '').slice(0, 2 * 1024 * 1024), truncated: String(params.diff || '').length > 2 * 1024 * 1024 });
@@ -86,10 +86,10 @@ export async function openCodexWorkbench(config, { cwd, neutralCwd, sessionId, s
           const completed = method === 'item/completed';
           if (item.type === 'commandExecution') {
             if (!commands.has(item.id)) commands.set(item.id, randomUUID());
-            if (completed) await onEvent('command.completed', { commandId: commands.get(item.id), output: bounded(item.aggregatedOutput), exitCode: item.exitCode ?? null, truncated: Buffer.byteLength(item.aggregatedOutput || '') > 1024 * 1024, namespace: 'codex' });
+            if (completed) await onEvent('command.completed', { toolCallId: item.id, commandId: commands.get(item.id), output: bounded(item.aggregatedOutput), exitCode: item.exitCode ?? null, truncated: Buffer.byteLength(item.aggregatedOutput || '') > 1024 * 1024, namespace: 'codex' });
           }
           if (item.type === 'fileChange' && completed) await onEvent('file.native_diff', { changes: item.changes, status: item.status, namespace: 'codex' });
-          if (['commandExecution', 'fileChange', 'dynamicToolCall', 'mcpToolCall', 'imageGeneration', 'collabToolCall'].includes(item.type)) await onEvent('tool.updated', { id: item.id, kind: item.type, title: item.type === 'commandExecution' ? item.command : item.type, status: completed ? item.status === 'failed' || item.status === 'declined' ? 'failed' : 'completed' : 'running' });
+          if (['commandExecution', 'fileChange', 'dynamicToolCall', 'mcpToolCall', 'imageGeneration', 'collabToolCall'].includes(item.type)) await onEvent('tool.updated', { id: item.id, kind: item.type, title: item.type === 'commandExecution' ? item.command : item.type, status: completed ? ['failed', 'declined', 'cancelled'].includes(item.status) ? item.status === 'declined' ? 'failed' : item.status : 'completed' : 'running' });
         }
         if (method === 'error' && !params.willRetry) completion?.reject(new Error(params.error?.message || 'Codex 执行失败'));
         if (method === 'turn/completed' && params.turn.id === turn) {

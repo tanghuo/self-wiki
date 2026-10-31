@@ -8,6 +8,42 @@ import { createAgentWorkbenchRepository } from '../../src/server/data/agentWorkb
 import { createAgentWorkbenchService } from '../../src/server/application/agentWorkbench/service.js';
 
 async function until(predicate) { for (let i = 0; i < 400; i++) { const value = predicate(); if (value) return value; await new Promise(resolve => setTimeout(resolve, 10)); } throw new Error('Runtime condition timed out'); }
+test('sessions in the same or nested workspace run concurrently and cancel independently', async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-concurrent-')), data = path.join(root, 'data'); await mkdir(data);
+  t.after(async () => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-workbench-concurrent-')); await rm(root, { recursive: true, force: true, maxRetries: 3 }); });
+  const db = initDb(':memory:'); t.after(() => db.close()); const repo = createAgentWorkbenchRepository(db);
+  const pending = new Map();
+  const service = await createAgentWorkbenchService({ repo, dataDir: data, initiallyEnabled: true, executionConfig: () => ({}), async openEngine(_settings, callbacks) {
+    const done = Promise.withResolvers();
+    return { sessionId: `synthetic-${pending.size}`, version: 'synthetic', capabilities: {}, cancel: () => done.resolve('cancelled'), async close() {}, async prompt(text, delivery) {
+      pending.set(text, { done, cwd: callbacks.cwd }); delivery('attempted');
+      const stopReason = await done.promise;
+      await callbacks.onEvent('message.delta', { text: `${text} finished` });
+      return { stopReason };
+    } };
+  } });
+  t.after(() => service.close());
+  const workspace = await service.workspace({ kind: 'scratch', trusted: true });
+  const nestedPath = path.join(workspace.path, 'nested'); await mkdir(nestedPath);
+  const nested = await service.workspace({ kind: 'project', path: nestedPath, trusted: true });
+  const sessions = [workspace, workspace, nested].map(ws => service.createSession({ engine: 'grok-build', workspaceId: ws.id }));
+  const turns = sessions.map((session, i) => service.submit(session.id, { requestKey: `parallel-${i}`, text: `task-${i}` }));
+  await until(() => pending.size === 3);
+  assert.deepEqual(turns.map(turn => repo.turn(turn.id).state), ['running', 'running', 'running']);
+  assert.deepEqual(sessions.map((_session, i) => pending.get(`task-${i}`).cwd), [workspace.path, workspace.path, nested.path]);
+  assert.throws(() => service.submit(sessions[1].id, { requestKey: 'another-turn', text: 'busy' }), { statusCode: 409 });
+  assert.equal(service.submit(sessions[1].id, { requestKey: 'parallel-1', text: 'task-1' }).id, turns[1].id);
+  await service.cancel(turns[0].id);
+  assert.equal(repo.turn(turns[0].id).state, 'cancelled');
+  assert.deepEqual(turns.slice(1).map(turn => repo.turn(turn.id).state), ['running', 'running']);
+  pending.get('task-1').done.resolve('end_turn'); pending.get('task-2').done.resolve('end_turn');
+  await until(() => turns.slice(1).every(turn => repo.turn(turn.id).state === 'completed'));
+  for (let i = 0; i < sessions.length; i++) {
+    const output = repo.events(sessions[i].id).filter(event => event.type === 'message.delta').map(event => event.data.text).join('');
+    assert.equal(output, i === 0 ? '' : `task-${i} finished`);
+  }
+});
+
 test('runtime approvals survive snapshots; duplicate requests do not redispatch; cancellation revokes pending file writes', async t => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-runtime-')), data = path.join(root, 'data'); await mkdir(data);
   t.after(async () => { assert.equal(path.dirname(root), path.resolve(os.tmpdir())); assert.ok(path.basename(root).startsWith('wiki-workbench-runtime-')); await rm(root, { recursive: true, force: true, maxRetries: 3 }); });

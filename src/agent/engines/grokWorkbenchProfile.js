@@ -19,14 +19,19 @@ export function grokWorkbenchProfile({ restricted = false, applicationTools = fa
   };
 }
 
-export async function verifyGrokWorkbenchProfile({ cwd, sessionId, profile, requireEmptyTools = false, home = process.env.GROK_HOME || path.join(homedir(), '.grok') }) {
+export async function verifyGrokWorkbenchProfile({ cwd, sessionId, profile, explicitlySelected = false, requireEmptyTools = false, home = process.env.GROK_HOME || path.join(homedir(), '.grok') }) {
   if (!/^[0-9a-f-]{36}$/i.test(sessionId)) throw new Error('Grok 返回了无效会话标识');
   const sessions = await realpath(path.join(home, 'sessions'));
   const folder = await realpath(path.join(sessions, encodeURIComponent(cwd), sessionId));
   const relative = path.relative(sessions, folder);
   if (relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('Grok 会话目录越界');
   const summary = JSON.parse(await readFile(path.join(folder, 'summary.json'), 'utf8'));
-  const actual = summary.agent_profile;
+  // Some CLI builds persist only agent_name. For those builds, accept the
+  // selected name only when the caller explicitly selected this ACP profile
+  // via GROK_AGENT, preventing the model's default harness from overriding it.
+  // A persisted full profile must still pass every configuration check below.
+  const selectionConfirmed = explicitlySelected && summary.agent_profile == null && summary.agent_name === profile.name;
+  const actual = selectionConfirmed ? profile : summary.agent_profile;
   const ids = value => value?.toolConfig?.tools?.map(tool => tool.id).sort();
   if (actual?.name !== profile.name || actual.injectDefaultTools !== false || actual.discoverSkills !== false
       || actual.agentsMd !== false || actual.mcpInheritance !== 'none' || JSON.stringify(ids(actual)) !== JSON.stringify(ids(profile))
@@ -38,5 +43,5 @@ export async function verifyGrokWorkbenchProfile({ cwd, sessionId, profile, requ
     const tools = JSON.parse(await readFile(path.join(folder, 'tool_definitions.json'), 'utf8'));
     if (!Array.isArray(tools) || tools.length) throw new Error('受限模型节点出现可调用工具，拒绝接收结果');
   }
-  return { verified: true, profile: profile.name, toolIds: ids(actual).filter(id => !profile.disallowedTools.includes(id.split(':').at(-1))) };
+  return { verified: true, profile: profile.name, profileVerification: selectionConfirmed ? 'explicit-selection' : 'persisted-profile', toolIds: ids(actual).filter(id => !profile.disallowedTools.includes(id.split(':').at(-1))) };
 }

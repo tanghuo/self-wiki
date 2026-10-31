@@ -1,10 +1,12 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from "electron";
+import { app, BrowserWindow, WebContentsView, dialog, ipcMain, Menu, shell } from "electron";
 import path from "node:path";
 import { startBackendProcess } from "./backendProcess.js";
 import { copyVideoFile, prepareVideoFile, videoDownloadUrl } from "./videoClipboard.js";
 import { prepareWallpaperFile, setDesktopWallpaper } from "./wallpaper.js";
 import { createQuitController } from './quitController.js';
 import { connect } from '../cli/client.js';
+import { createAionuiWindow } from './aionuiWindow.js';
+import { createAionuiView } from './aionuiView.js';
 
 let backend;
 let mainWindow;
@@ -64,6 +66,22 @@ async function createMainWindow() {
     if (new URL(url).origin !== pageOrigin) { event.preventDefault(); openExternal(url); }
   });
   const window = mainWindow;
+  const aionui = createAionuiWindow({ BrowserWindow, shell, backend, parent: window });
+  const aionuiView = createAionuiView({ WebContentsView, window, shell, backend });
+  window.once('closed', () => { aionui.close(); aionuiView.close(); });
+  ipcMain.removeHandler('wiki:embed-aionui');
+  ipcMain.handle('wiki:embed-aionui', async (event, value) => {
+    if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || new URL(event.senderFrame.url).origin !== pageOrigin) throw new Error('此页面无法嵌入本机实验版');
+    if (value?.type === 'show') return aionuiView.show(value.bounds);
+    if (value?.type === 'hide') return aionuiView.hide();
+    if (value?.type === 'bounds') return aionuiView.setBounds(value.bounds);
+    throw new Error('实验版页面操作无效');
+  });
+  ipcMain.removeHandler('wiki:open-aionui');
+  ipcMain.handle('wiki:open-aionui', async event => {
+    if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame || new URL(event.senderFrame.url).origin !== pageOrigin) throw new Error('此页面无法打开本机实验版');
+    return aionui.open();
+  });
   async function pairLocal() {
     if (!backend.localCookie) {
       const response = await fetch(new URL('/api/auth/bootstrap', backend.url), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: backend.bootstrapCode }), redirect: 'error' });

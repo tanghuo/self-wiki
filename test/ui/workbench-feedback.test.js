@@ -1,0 +1,87 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { createServer, chromium } from '../helpers/authenticatedServer.js';
+import { resolveBrowserPath } from '../resolveBrowserPath.js';
+import { stubWorkbenchModels } from '../helpers/workbenchModels.js';
+
+const executablePath = resolveBrowserPath();
+test('workbench keeps recent feedback visible between tool calls and collapses finished history', { timeout: 30000, skip: !executablePath }, async t => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'wiki-workbench-feedback-'));
+  const toolDone = Promise.withResolvers(), finish = Promise.withResolvers();
+  let app, browser;
+  t.after(async () => {
+    toolDone.resolve(); finish.resolve(); await browser?.close(); await app?.close();
+    assert.equal(path.dirname(root), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(root).startsWith('wiki-workbench-feedback-'));
+    await rm(root, { recursive: true, force: true, maxRetries: 3 });
+  });
+  app = await createServer({ port: 0, dataDir: root, agentWorkbenchEnabled: true, async openWorkbenchEngine(_settings, callbacks) {
+    return { sessionId: 'feedback', version: 'test', capabilities: {}, cancel() {}, async close() {}, async prompt(_text, delivery) {
+      delivery('attempted');
+      await callbacks.onEvent('message.delta', { text: '我先检查模型选择的保存方式，再调整首次进入时的默认值。' });
+      for (const [i, title] of ['读取项目说明', '读取本地偏好'].entries()) {
+        await callbacks.onEvent('tool.updated', { id: `read-${i}`, title, status: 'completed' });
+      }
+      await callbacks.onEvent('tool.updated', { id: 'search', title: 'Search tools: "approval permission_mode remember"', status: 'completed', content: [{ type: 'content', content: { type: 'text', text: 'Found configuration tools' } }] });
+      await callbacks.onEvent('tool.updated', { id: 'cmd', kind: 'commandExecution', title: 'Execute `rg -n -i "手动审批|自动审批|permission_mode|approvalMode" --glob "!node_modules/**" --glob "!dist/**" . | Select-Object -First 80`', status: 'running' });
+      await callbacks.onEvent('command.completed', { toolCallId: 'cmd', commandId: randomUUID(), output: 'rg : 无法将 rg 识别为 cmdlet、函数、脚本文件或可运行程序的名称。', exitCode: 1 });
+      await callbacks.onEvent('tool.updated', { id: 'cmd', status: 'completed' });
+      await callbacks.onEvent('tool.updated', { id: 'edit', title: '更新模型选择逻辑', status: 'running' });
+      await toolDone.promise;
+      await callbacks.onEvent('tool.updated', { id: 'edit', status: 'completed' });
+      await finish.promise;
+      await callbacks.onEvent('message.delta', { text: '已完成，首次进入会沿用上一次选择的模型。' });
+      return { stopReason: 'end_turn' };
+    } };
+  } });
+  browser = await chromium.launch({ executablePath, headless: true });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
+  page.setDefaultTimeout(8000);
+  await stubWorkbenchModels(page);
+  await page.goto(app.url + '#workbench');
+  await page.getByLabel('任务内容').fill('第一次进来的默认模型，改成之前选择的最后一次啊');
+  await page.getByRole('button', { name: '发送', exact: true }).click();
+  const status = page.locator('.workbench-turn-state');
+  await page.locator('.workbench-activity-spinner').waitFor();
+  assert.match(await status.innerText(), /更新模型选择逻辑.*已用时/s);
+  assert.equal(await page.locator('.workbench-activity-line').count(), 3);
+  const failed = page.getByText('运行命令', { exact: true });
+  assert.equal(await page.getByText('工具详情', { exact: true }).count(), 0);
+  assert.equal(await page.locator('.workbench-operation-state').filter({ hasText: '完成' }).count(), 0);
+  assert.equal(await page.locator('.workbench-operation-detail').count(), 0);
+  await failed.click();
+  const failedOperation = page.locator('.workbench-operation[data-status="failed"]');
+  await failedOperation.locator('.workbench-command-output').waitFor();
+  assert.match(await failedOperation.innerText(), /失败[\s\S]*Execute[\s\S]*退出码 1[\s\S]*无法将 rg/);
+  assert.equal(await failedOperation.locator('details').count(), 0);
+  assert.equal(await failedOperation.getByRole('button', { name: '读取完整输出' }).count(), 0);
+  assert.equal(await page.locator('.workbench-execution').getAttribute('open'), '');
+  await mkdir('.local/workbench-ui', { recursive: true });
+  await page.screenshot({ path: '.local/workbench-ui/compact-feedback-expanded.png' });
+  await failed.click();
+  await failedOperation.locator('.workbench-operation-detail').waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: '查看全部 5 项操作' }).click();
+  assert.equal(await page.locator('.workbench-activity-line').count(), 5);
+  await page.getByRole('button', { name: '只看最近操作' }).click();
+  await mkdir('.local/workbench-ui', { recursive: true });
+  await page.screenshot({ path: '.local/workbench-ui/compact-feedback-desktop.png' });
+  toolDone.resolve();
+  await page.getByText('正在继续处理', { exact: true }).waitFor();
+  assert.equal(await page.locator('.workbench-execution').getAttribute('open'), '');
+  assert.equal(await page.locator('.workbench-activity-line').count(), 3);
+  assert.equal(await page.locator('.workbench-activity-spinner').count(), 0);
+  const elapsed = await page.locator('.workbench-elapsed').innerText();
+  await page.waitForFunction(previous => document.querySelector('.workbench-elapsed').textContent !== previous, elapsed);
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+  await page.screenshot({ path: '.local/workbench-ui/compact-feedback-mobile.png' });
+  finish.resolve();
+  await page.getByRole('button', { name: '发送', exact: true }).waitFor();
+  await page.waitForFunction(() => document.querySelector('.workbench-execution')?.open === false);
+  await page.locator('.workbench-execution > summary').click();
+  assert.equal(await page.locator('.workbench-activity-line').count(), 5);
+});

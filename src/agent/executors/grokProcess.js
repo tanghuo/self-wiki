@@ -22,7 +22,7 @@ export async function startGrokAcp(config, { cwd, signal, onNotification = () =>
   const denials = (config.denyRules || []).flatMap(rule => ['--deny', rule]);
   const permission = config.permissionMode ? ['--permission-mode', config.permissionMode] : [];
   const child = spawn(command.executable, [...command.prefix, "--no-auto-update", ...permission, ...denials, "agent", "--no-leader", "-m", config.model, "stdio"],
-    { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', env: { ...grokEnvironment(), GROK_MEMORY: "0" }, stdio: ["pipe", "pipe", "pipe"] });
+    { cwd, shell: false, windowsHide: true, detached: process.platform !== 'win32', env: { ...grokEnvironment(), GROK_MEMORY: "0", ...(config.agentProfileName && { GROK_AGENT: config.agentProfileName }) }, stdio: ["pipe", "pipe", "pipe"] });
   const decoder = new StringDecoder("utf8"), pending = new Map();
   let sequence = 0, buffer = "", ended = false, closing = false, closePromise, hostRequests = 0;
   const write = (value) => { if (!ended && !child.stdin.destroyed) child.stdin.write(JSON.stringify({ jsonrpc: "2.0", ...value }) + "\n"); };

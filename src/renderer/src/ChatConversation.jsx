@@ -23,7 +23,7 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
   const { onStarted, selection, onSelectionConsumed, onSessionsChanged, onActivityChange, onForkCreated } = session;
   const { status: connection, onConnection, onProbe, probing } = connectionApi;
   const { catalog, loading: modelsLoading, error: modelsError, onRefresh: onRefreshModels, preference, onPreference, imagePreference, onImagePreference } = models;
-  const { currentIds, onOpen, onChanged, externalBusy, presentation } = shell;
+  const { currentIds, onOpen, onChanged, externalBusy, presentation, workbenchEnabled } = shell;
   const [data, setData] = useState(null), [older, setOlder] = useState([]), [olderAvailable, setOlderAvailable] = useState(false);
   const [olderProposals, setOlderProposals] = useState([]);
   const [gap, setGap] = useState(null), [gapLoading, setGapLoading] = useState(false);
@@ -137,7 +137,7 @@ export default function Conversation({ id, newDraft, session, connectionApi, mod
   const blocked = composerBlocked || imageBusy;
   const imageOptions = pendingImageOptions ?? (id ? data?.session.imageOptions : newDraft.imageOptions ?? (newDraft.directImage ? { executor: "chatgpt-web", direct: true } : newDraft.directImage === false ? { ...imagePreference, direct: false } : imagePreference));
   const directImage = Boolean(imageOptions?.direct);
-  const needsCodex = !directImage;
+  const needsCodex = !directImage && !workbenchEnabled;
   const sendBlocked = blocked || codexDown && needsCodex;
   const legacyPending = !id && newDraft.pending && !newDraft.imageOptions;
   const imageReady = legacyPending || imageOptions?.executor !== "comfyui" || Boolean(imageOptions.workflowId && imageOptions.prompt && imageOptions.outputNodeId);

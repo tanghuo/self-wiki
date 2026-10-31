@@ -9,8 +9,9 @@ import { validateLanRequest, lanRequestToken, lanTokenMatches, lanRestriction, l
 import { createPairingLimiter } from "./pairingLimiter.js";
 import { handleLocalAuthRoute } from './localAuthRoutes.js';
 import { handleAgentWorkbenchRoute } from './agentWorkbenchRoutes.js';
+import { handleAionuiExperimentRoute } from './aionuiExperimentRoutes.js';
 
-export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, chat, workflow, agentWorkbench, agentTasks, usage, instance, authentication, rendererDist, access = "local" }) {
+export function createRequestHandler({ wiki, sharing, temporaryShares, organization, semantic, videoAnalysis, chat, workflow, agentWorkbench, agentTasks, aionuiExperiment, usage, instance, authentication, rendererDist, access = "local" }) {
   const routes = new Map([
     ["GET /api/token-usage", async (_req, res, url) => {
       const days = Number(url.searchParams.get("days") ?? 7);
@@ -89,6 +90,7 @@ export function createRequestHandler({ wiki, sharing, temporaryShares, organizat
       if (req.headers["x-self-wiki-instance"] && req.headers["x-self-wiki-instance"] !== instance?.instanceId) {
         throw httpError(409, "Server instance changed; reconnect before retrying");
       }
+      if (aionuiExperiment && await handleAionuiExperimentRoute(aionuiExperiment, req, res, url, access)) return;
       if (workflow && await handleWorkflowRoute(workflow, req, res, url, access)) return;
       if (agentWorkbench && await handleAgentWorkbenchRoute(agentWorkbench, req, res, url, access, agentTasks)) return;
       if (temporaryShares && await handleTemporaryShareRoute(temporaryShares, req, res, url, access)) return;

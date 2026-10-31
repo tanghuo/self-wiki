@@ -8,7 +8,6 @@ export function containsPath(root, file) {
   const relative = path.relative(pathIdentity(root), pathIdentity(file));
   return !relative || relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
-export const pathsOverlap = (a, b) => containsPath(a, b) || containsPath(b, a);
 export function localPath(value) {
   if (typeof value !== 'string' || !path.isAbsolute(value) || value.includes('\0') || /^(?:\\\\|\/\/)/.test(value)
       || process.platform === 'win32' && (value.slice(2).includes(':') || /[<>"|?*]/.test(value))) {
@@ -38,28 +37,4 @@ export async function registerWorkspace(repo, dataDir, input) {
     if (existing) return input.name != null && existing.name !== name ? repo.renameProject(existing.id, name) : existing;
   }
   return repo.createWorkspace({ kind, userPath, path: canonical, identity: pathIdentity(canonical), name });
-}
-
-// Idle sessions hold no lock. FIFO among overlapping roots; unrelated roots can run.
-export function createWorkspaceScheduler() {
-  const running = new Set(), queue = [];
-  function drain() {
-    for (let i = 0; i < queue.length;) {
-      const job = queue[i];
-      if ([...running].some(other => pathsOverlap(other.root, job.root)) || queue.slice(0, i).some(other => pathsOverlap(other.root, job.root))) { i++; continue; }
-      queue.splice(i, 1); running.add(job); job.signal.removeEventListener('abort', job.abort);
-      let released = false;
-      job.resolve(() => { if (released) return; released = true; running.delete(job); drain(); });
-    }
-  }
-  return {
-    acquire(root, signal) {
-      signal.throwIfAborted();
-      return new Promise((resolve, reject) => {
-        const job = { root, signal, resolve, reject };
-        job.abort = () => { const i = queue.indexOf(job); if (i !== -1) { queue.splice(i, 1); reject(signal.reason); drain(); } };
-        signal.addEventListener('abort', job.abort, { once: true }); queue.push(job); drain();
-      });
-    },
-  };
 }

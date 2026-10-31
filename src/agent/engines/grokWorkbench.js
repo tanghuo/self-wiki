@@ -1,3 +1,4 @@
+import { createAcpWorkbenchEvents } from './acpWorkbenchEvents.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { startGrokAcp, grokCommand } from '../executors/grokProcess.js';
@@ -52,18 +53,17 @@ export async function openGrokWorkbench(settings, { cwd, neutralCwd, sessionId, 
   const policy = grokApprovalPolicy(requestedMode, restricted);
   const command = await grokCommand(settings.executable);
   const version = (await promisify(execFile)(command.executable, [...command.prefix, '--version'], { windowsHide: true, env: grokEnvironment(), timeout: 10000 })).stdout.trim();
-  if (!/^grok 1\.0\.70 \(f50904eaee6c\)/.test(version)) throw new Error('此 Grok 版本尚未通过工作台能力验证，请使用已验证的 1.0.70 (f50904eaee6c)');
   const applicationTools = tools.length > 0;
   const profile = grokWorkbenchProfile({ restricted, applicationTools });
   const sdk = applicationTools ? createGrokSdkTools(tools, onToolCall) : null;
   let client, thread, prompting = false, closed = false;
+  const emitUpdate = createAcpWorkbenchEvents(onEvent);
   try {
-    client = await startGrokAcp({ ...settings, permissionMode: policy.autoMode ? 'auto' : policy.yoloMode ? 'bypassPermissions' : 'default' }, { cwd: neutralCwd, signal, onExit, pausePromptTimeoutOnRequest: true, onNotification(method, params) {
+    client = await startGrokAcp({ ...settings, agentProfileName: profile.name, permissionMode: policy.autoMode ? 'auto' : policy.yoloMode ? 'bypassPermissions' : 'default' }, { cwd: neutralCwd, signal, onExit, pausePromptTimeoutOnRequest: true, onNotification(method, params) {
       if (!prompting || params.sessionId !== thread || method !== 'session/update') return;
       const value = params.update || {};
-      if (value.sessionUpdate === 'agent_message_chunk' && value.content?.type === 'text') return onEvent('message.delta', { text: value.content.text });
-      if (value.sessionUpdate === 'plan') return onEvent('plan.updated', { entries: value.entries });
-      if (['tool_call', 'tool_call_update'].includes(value.sessionUpdate)) return onEvent('tool.updated', { id: value.toolCallId, title: value.title, status: value.status, kind: value.kind, content: value.content });
+      if (['agent_message_chunk', 'plan'].includes(value.sessionUpdate)) return emitUpdate(value);
+      if (['tool_call', 'tool_call_update'].includes(value.sessionUpdate)) return emitUpdate(value);
       return onEvent('engine.extension', { namespace: 'grok', type: String(value.sessionUpdate || '').slice(0, 100) });
     }, async onRequest(method, params) {
       if (sdk && method.replace(/^_/, '') === 'x.ai/mcp/sdk_call') return sdk.request(params);
@@ -96,7 +96,7 @@ export async function openGrokWorkbench(settings, { cwd, neutralCwd, sessionId, 
     const meta = { agentProfile: profile, yoloMode: policy.yoloMode, autoMode: policy.autoMode, ...(sdk && { 'x.ai/mcp/servers': [sdk.definition] }), 'x.ai/hooks': { pre_tool_use: [{ hookCallbackIds: ['workbench-policy-v1'], timeout: 30 }] } };
     const response = await client.request(sessionId ? 'session/load' : 'session/new', { ...(sessionId && { sessionId }), cwd, mcpServers: [], _meta: meta }, 60000);
     thread = sessionId || response.sessionId;
-    const verification = await verifyGrokWorkbenchProfile({ cwd, sessionId: thread, profile });
+    const verification = await verifyGrokWorkbenchProfile({ cwd, sessionId: thread, profile, explicitlySelected: true });
     async function verifyTools() {
       const response = await client.request('_x.ai/mcp/list', { sessionId: thread }, 10000);
       const catalog = response.result || response;
@@ -130,7 +130,7 @@ export async function openGrokWorkbench(settings, { cwd, neutralCwd, sessionId, 
           await onEvent('resource.acquired', {});
           signal?.throwIfAborted(); await verifyTools(); prompting = true; sdk?.begin({ sessionId: thread, turnId: randomUUID() }); onDelivery('attempted');
           const result = await client.request('session/prompt', { sessionId: thread, prompt: [{ type: 'text', text }, ...images] }, 30 * 60 * 1000);
-          if (restricted && !applicationTools) await verifyGrokWorkbenchProfile({ cwd, sessionId: thread, profile, requireEmptyTools: true });
+          if (restricted && !applicationTools) await verifyGrokWorkbenchProfile({ cwd, sessionId: thread, profile, explicitlySelected: true, requireEmptyTools: true });
           return result;
         } finally { prompting = false; sdk?.end(); release(); }
       },

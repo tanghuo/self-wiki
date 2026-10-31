@@ -128,7 +128,7 @@ export default function ChatPanel({ selection, onSelectionConsumed, currentIds, 
         catalog, loading: modelsLoading, error: modelsError, onRefresh: refreshModels,
         preference, onPreference: setPreference, imagePreference, onImagePreference: setImagePreference,
       }}
-      shell={{ currentIds, onOpen, onChanged, externalBusy, presentation }}
+      shell={{ currentIds, onOpen, onChanged, externalBusy, presentation, workbenchEnabled }}
     />}
   </section>;
 }
